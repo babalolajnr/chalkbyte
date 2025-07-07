@@ -1,0 +1,56 @@
+services:
+  # chalkbyte:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - DATABASE_URL=postgresql://chalkbyte:chalkbyte_password@postgres:5432/chalkbyte_db
+  #     - PORT=3000
+  #     - RUST_LOG=info
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   networks:
+  #     - chalkbyte-network
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      - POSTGRES_USER=chalkbyte
+      - POSTGRES_PASSWORD=chalkbyte_password
+      - POSTGRES_DB=chalkbyte_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chalkbyte -d chalkbyte_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - chalkbyte-network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@chalkbyte.com
+      - PGADMIN_DEFAULT_PASSWORD=admin123
+    ports:
+      - "8080:80"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - chalkbyte-network
+
+volumes:
+  postgres_data:
+
+networks:
+  chalkbyte-network:
+    driver: bridge
