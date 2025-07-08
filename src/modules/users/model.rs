@@ -10,7 +10,7 @@ pub struct User {
     pub email: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct CreateUserDto {
     pub first_name: String,
     pub last_name: String,

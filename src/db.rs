@@ -2,7 +2,7 @@ use sqlx::PgPool;
 
 use crate::config::database::init_db_pool;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AppState {
     pub db: PgPool,
 }
