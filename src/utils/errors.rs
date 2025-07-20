@@ -1,10 +1,12 @@
-use anyhow::Error;
+use anyhow::{Error, anyhow};
 use axum::{
     Json,
+    extract::rejection::FormRejection,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
 use serde_json::json;
+use validator::ValidationErrors;
 
 #[derive(Debug)]
 pub struct AppError {
@@ -56,6 +58,20 @@ impl AppError {
         E: Into<Error>,
     {
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, err)
+    }
+
+    pub fn validation(err: ValidationErrors) -> Self {
+        Self::new(
+            StatusCode::BAD_REQUEST,
+            anyhow!("Validation error: {}", err),
+        )
+    }
+
+    pub fn form_rejection(err: FormRejection) -> Self {
+        Self::new(
+            StatusCode::BAD_REQUEST,
+            anyhow!("Form parsing error: {}", err),
+        )
     }
 }
 

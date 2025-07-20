@@ -9,6 +9,7 @@ pub(crate) mod db;
 pub(crate) mod modules;
 pub(crate) mod router;
 pub(crate) mod utils;
+pub mod validator;
 
 #[tokio::main]
 async fn main() {

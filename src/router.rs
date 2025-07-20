@@ -1,7 +1,8 @@
 use std::time::Duration;
 
 use crate::db::AppState;
-use crate::modules::users::router::init_router as init_users_router;
+use crate::modules::auth::router::init_auth_router;
+use crate::modules::users::router::init_users_router;
 use axum::body::Bytes;
 use axum::extract::MatchedPath;
 use axum::http::Request;
@@ -12,7 +13,12 @@ use tracing::{Span, error, info, info_span, warn};
 
 pub fn init_router(state: AppState) -> Router {
     Router::new()
-        .nest("/api", init_users_router())
+        .nest(
+            "/api",
+            Router::new()
+                .nest("/users", init_users_router())
+                .nest("/auth", init_auth_router()),
+        )
         .with_state(state)
         .layer(
             TraceLayer::new_for_http()

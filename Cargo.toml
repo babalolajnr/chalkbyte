@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+validator = { version = "0.20.0", features = ["derive"] }
 axum = { version = "0.8", features = ["macros"] }
 tokio = { version = "1.0", features = ["full"] }
 tower = "0.5"
