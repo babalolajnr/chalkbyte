@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use crate::db::AppState;
+use crate::docs::ApiDoc;
 use crate::modules::auth::router::init_auth_router;
 use crate::modules::users::router::init_users_router;
 use axum::body::Bytes;
@@ -10,9 +11,14 @@ use axum::response::Response;
 use axum::{Router, http::HeaderMap};
 use tower_http::{classify::ServerErrorsFailureClass, trace::TraceLayer};
 use tracing::{Span, error, info, info_span, warn};
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
+use utoipa_scalar::{Scalar, Servable as _};
 
 pub fn init_router(state: AppState) -> Router {
     Router::new()
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .merge(Scalar::with_url("/scalar", ApiDoc::openapi()))
         .nest(
             "/api",
             Router::new()

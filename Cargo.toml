@@ -27,6 +27,9 @@ anyhow = "1.0"
 dotenvy = "0.15"
 bcrypt = "0.15"
 jsonwebtoken = "9.3"
+utoipa = { version = "5.4", features = ["axum_extras", "uuid", "chrono"] }
+utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
+utoipa-scalar = { version = "0.3", features = ["axum"] }
 
 
 

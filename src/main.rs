@@ -6,6 +6,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 pub(crate) mod config;
 pub(crate) mod db;
+pub(crate) mod docs;
 pub(crate) mod middleware;
 pub(crate) mod modules;
 pub(crate) mod router;
@@ -34,5 +35,8 @@ async fn main() {
     let app = init_router(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    println!("🚀 Server running on http://localhost:3000");
+    println!("📚 Swagger UI available at http://localhost:3000/swagger-ui");
+    println!("📖 Scalar UI available at http://localhost:3000/scalar");
     axum::serve(listener, app).await.unwrap();
 }

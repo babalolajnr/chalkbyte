@@ -9,6 +9,15 @@ This project implements JWT-based authentication for the Chalkbyte API.
 - Protected routes using authentication middleware
 - Token-based authorization
 
+## Interactive Documentation
+
+All API endpoints are documented with **Swagger UI**. Visit:
+```
+http://localhost:3000/swagger-ui
+```
+
+You can test all endpoints directly from the browser, including authentication flows!
+
 ## API Endpoints
 
 ### Public Endpoints

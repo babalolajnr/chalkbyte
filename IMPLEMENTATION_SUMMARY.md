@@ -1,7 +1,7 @@
 # Authentication Implementation Summary
 
 ## Overview
-Successfully implemented a complete JWT-based authentication system for the Chalkbyte API.
+Successfully implemented a complete JWT-based authentication system with interactive Swagger UI documentation for the Chalkbyte API.
 
 ## What Was Implemented
 
@@ -11,6 +11,8 @@ Successfully implemented a complete JWT-based authentication system for the Chal
 - ✅ JWT token verification
 - ✅ Authentication middleware for protected routes
 - ✅ Comprehensive error handling
+- ✅ **Interactive Swagger UI documentation**
+- ✅ **OpenAPI 3.0 specification**
 
 ### 2. New Files Created
 
@@ -27,8 +29,10 @@ Successfully implemented a complete JWT-based authentication system for the Chal
 
 #### Documentation
 - `AUTHENTICATION.md` - Complete authentication documentation
+- `SWAGGER.md` - Swagger UI usage and customization guide
 - `IMPLEMENTATION_SUMMARY.md` - This file
-- Updated `README.md` - Added authentication quick start
+- Updated `README.md` - Added authentication and Swagger quick start
+- `src/docs.rs` - OpenAPI specification configuration
 
 ### 3. Modified Files
 
@@ -37,6 +41,8 @@ Added:
 - `bcrypt = "0.15"` - Password hashing
 - `jsonwebtoken = "9.3"` - JWT token handling
 - `axum-extra = "0.9"` - Additional Axum utilities
+- `utoipa = "5.4"` - OpenAPI documentation generation
+- `utoipa-swagger-ui = "9.0"` - Swagger UI integration
 
 #### Configuration
 - Updated `src/db.rs` - Added `jwt_config` to AppState
@@ -170,11 +176,33 @@ Potential improvements for future iterations:
 - User roles and permissions
 - Session management
 
+## Swagger UI Documentation
+
+### Access Points
+- **Swagger UI**: `http://localhost:3000/swagger-ui`
+- **OpenAPI Spec**: `http://localhost:3000/api-docs/openapi.json`
+
+### Features
+- Interactive API testing
+- Request/response schemas with examples
+- JWT Bearer authentication integration
+- Auto-generated from code annotations
+- OpenAPI 3.0 compliant
+
+### Documentation Coverage
+All endpoints are fully documented:
+- `POST /api/auth/register` - User registration
+- `POST /api/auth/login` - User login
+- `GET /api/users` - List users (protected)
+- `POST /api/users` - Create user
+- `GET /api/users/profile` - Get current user (protected)
+
 ## Build Status
 
 - ✅ Compiles successfully in debug mode
 - ✅ Compiles successfully in release mode
-- ✅ All tests pass (manual testing with cURL)
+- ✅ All tests pass (manual testing with cURL and Swagger UI)
+- ✅ Swagger UI accessible and functional
 - ⚠️ Minor warnings (unused imports, naming conventions) - non-blocking
 
 ## Dependencies Version
