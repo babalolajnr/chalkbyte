@@ -5,12 +5,56 @@ use axum::{
         FromRequest, Request,
         rejection::{FormRejection, JsonRejection},
     },
-    http::{HeaderMap, header::CONTENT_TYPE},
+    http::header::CONTENT_TYPE,
 };
 use serde::de::DeserializeOwned;
-use validator::Validate;
+use validator::{Validate, ValidationErrors};
 
 use crate::utils::errors::AppError;
+
+/// Formats validation errors into a human-readable string.
+///
+/// Iterates over each field and its associated errors, generating a message
+/// for each error. If a custom message is provided, it is used; otherwise,
+/// a default message is generated based on the error code and parameters.
+///
+/// # Arguments
+///
+/// * `errors` - A reference to `ValidationErrors` containing field errors.
+///
+/// # Returns
+///
+/// A comma-separated string of formatted error messages.
+fn format_validation_errors(errors: &ValidationErrors) -> String {
+    let mut messages = Vec::new();
+
+    for (field, field_errors) in errors.field_errors() {
+        for error in field_errors {
+            let message = error
+                .message
+                .as_ref()
+                .map(|m| m.to_string())
+                .unwrap_or_else(|| match error.code.as_ref() {
+                    "email" => format!("{} must be a valid email address", field),
+                    "length" => {
+                        if let Some(min) = error.params.get("min") {
+                            format!("{} must be at least {} characters long", field, min)
+                        } else if let Some(max) = error.params.get("max") {
+                            format!("{} must be at most {} characters long", field, max)
+                        } else {
+                            format!("{} has invalid length", field)
+                        }
+                    }
+                    "range" => format!("{} is out of range", field),
+                    "required" => format!("{} is required", field),
+                    _ => format!("{} is invalid", field),
+                });
+            messages.push(message);
+        }
+    }
+
+    messages.join(", ")
+}
 
 #[derive(Debug, Clone, Default, Copy)]
 pub struct ValidatedForm<T>(pub T);
@@ -30,7 +74,7 @@ where
 
         value
             .validate()
-            .map_err(|e| AppError::unprocessable(anyhow!("Validation error: {}", e)))?;
+            .map_err(|e| AppError::bad_request(anyhow!("{}", format_validation_errors(&e))))?;
 
         Ok(ValidatedForm(value))
     }
@@ -54,7 +98,7 @@ where
 
         value
             .validate()
-            .map_err(|e| AppError::unprocessable(anyhow!("JSON validation error: {}", e)))?;
+            .map_err(|e| AppError::unprocessable(anyhow!("{}", format_validation_errors(&e))))?;
 
         Ok(ValidatedJson(value))
     }
@@ -104,7 +148,7 @@ where
 
         value
             .validate()
-            .map_err(|e| AppError::unprocessable(anyhow!("Validation error: {}", e)))?;
+            .map_err(|e| AppError::unprocessable(anyhow!("{}", format_validation_errors(&e))))?;
 
         Ok(Validated(value))
     }
@@ -141,7 +185,7 @@ where
 
         value
             .validate()
-            .map_err(|e| AppError::unprocessable(anyhow!("Validation error: {}", e)))?;
+            .map_err(|e| AppError::unprocessable(anyhow!("{}", format_validation_errors(&e))))?;
 
         Ok(ValidatedAuto(value))
     }
