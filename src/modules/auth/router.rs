@@ -1,13 +1,13 @@
 use crate::db::AppState;
 use axum::{
     Router,
-    routing::{get, post},
+    routing::post,
 };
 
-use super::controller::register_user;
+use super::controller::{login_user, register_user};
 
 pub fn init_auth_router() -> Router<AppState> {
-    Router::new().route("/register", post(register_user))
-    // .route("/login", post(login_user))
-    // .route("/profile", get(get_profile).put(update_profile))
+    Router::new()
+        .route("/register", post(register_user))
+        .route("/login", post(login_user))
 }

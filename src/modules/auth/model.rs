@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
-use crate::modules::User;
+use crate::modules::users::model::User;
 
 // JWT Claims structure
 #[derive(Debug, Serialize, Deserialize)]
@@ -10,7 +10,6 @@ pub struct Claims {
     pub email: String,
     pub exp: usize,
     pub iat: usize,
-    pub two_fa_verified: bool,
 }
 
 // Password reset token structure
@@ -23,48 +22,19 @@ pub struct ResetTokenClaims {
 }
 
 // Login request structure
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct LoginRequest {
+    #[validate(email)]
     pub email: String,
+    #[validate(length(min = 1))]
     pub password: String,
-    pub totp_code: Option<String>,
-}
-
-// 2FA setup response
-#[derive(Debug, Serialize)]
-pub struct TwoFactorSetupResponse {
-    pub secret: String,
-    pub qr_code_url: String,
-    pub backup_codes: Vec<String>,
 }
 
 // Login response
 #[derive(Debug, Serialize)]
 pub struct LoginResponse {
     pub access_token: String,
-    pub refresh_token: String,
     pub user: User,
-    pub requires_2fa: bool,
-}
-
-// Password reset request
-#[derive(Debug, Deserialize)]
-pub struct PasswordResetRequest {
-    pub email: String,
-}
-
-// Password reset confirmation
-#[derive(Debug, Deserialize)]
-pub struct PasswordResetConfirmation {
-    pub token: String,
-    pub new_password: String,
-}
-
-// Change password request
-#[derive(Debug, Deserialize)]
-pub struct ChangePasswordRequest {
-    pub current_password: String,
-    pub new_password: String,
 }
 
 #[derive(Debug, Deserialize, Validate)]

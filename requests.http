@@ -1,17 +1,47 @@
-### get-user
+@HOST = http://localhost:3000
+@TOKEN = 
 
-GET /api/users HTTP/1.1
-Host: {{HOST}}
-Accept: application/json
-
-
-### register
-
-POST /api/auth/register HTTP/1.1
-Host: {{HOST}}
-Accept: application/json
+### Register User
+POST {{HOST}}/api/auth/register HTTP/1.1
 Content-Type: application/json
 
 {
-  "Hello": "World"
+  "first_name": "John",
+  "last_name": "Doe",
+  "email": "john@example.com",
+  "password": "password123"
+}
+
+### Login User
+# @name login
+POST {{HOST}}/api/auth/login HTTP/1.1
+Content-Type: application/json
+
+{
+  "email": "john@example.com",
+  "password": "password123"
+}
+
+### Get User Profile (Protected)
+GET {{HOST}}/api/users/profile HTTP/1.1
+Authorization: Bearer {{TOKEN}}
+
+### Get All Users (Protected)
+GET {{HOST}}/api/users HTTP/1.1
+Authorization: Bearer {{TOKEN}}
+
+### Test Missing Token
+GET {{HOST}}/api/users/profile HTTP/1.1
+
+### Test Invalid Token
+GET {{HOST}}/api/users/profile HTTP/1.1
+Authorization: Bearer invalid_token_here
+
+### Test Wrong Password
+POST {{HOST}}/api/auth/login HTTP/1.1
+Content-Type: application/json
+
+{
+  "email": "john@example.com",
+  "password": "wrongpassword"
 }

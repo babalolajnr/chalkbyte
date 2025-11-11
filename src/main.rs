@@ -6,6 +6,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 pub(crate) mod config;
 pub(crate) mod db;
+pub(crate) mod middleware;
 pub(crate) mod modules;
 pub(crate) mod router;
 pub(crate) mod utils;

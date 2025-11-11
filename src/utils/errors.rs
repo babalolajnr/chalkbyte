@@ -73,6 +73,14 @@ impl AppError {
             anyhow!("Form parsing error: {}", err),
         )
     }
+
+    pub fn Unauthorized(message: String) -> Self {
+        Self::new(StatusCode::UNAUTHORIZED, anyhow!(message))
+    }
+
+    pub fn InternalError(message: String) -> Self {
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!(message))
+    }
 }
 
 impl IntoResponse for AppError {

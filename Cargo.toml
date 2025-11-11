@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 validator = { version = "0.20.0", features = ["derive"] }
 axum = { version = "0.8", features = ["macros"] }
+axum-extra = { version = "0.9", features = ["typed-header"] }
 tokio = { version = "1.0", features = ["full"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
@@ -24,6 +25,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1.0"
 dotenvy = "0.15"
+bcrypt = "0.15"
+jsonwebtoken = "9.3"
+
 
 
 [dev-dependencies]
