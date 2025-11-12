@@ -1,13 +1,13 @@
-use bcrypt::{hash, verify, DEFAULT_COST};
+use bcrypt::{DEFAULT_COST, hash, verify};
 
 use crate::utils::errors::AppError;
 
 pub fn hash_password(password: &str) -> Result<String, AppError> {
     hash(password, DEFAULT_COST)
-        .map_err(|e| AppError::InternalError(format!("Failed to hash password: {}", e)))
+        .map_err(|e| AppError::internal_error(format!("Failed to hash password: {}", e)))
 }
 
 pub fn verify_password(password: &str, hash: &str) -> Result<bool, AppError> {
     verify(password, hash)
-        .map_err(|e| AppError::InternalError(format!("Failed to verify password: {}", e)))
+        .map_err(|e| AppError::internal_error(format!("Failed to verify password: {}", e)))
 }

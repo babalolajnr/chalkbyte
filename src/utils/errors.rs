@@ -74,11 +74,11 @@ impl AppError {
         )
     }
 
-    pub fn Unauthorized(message: String) -> Self {
+    pub fn unauthorized(message: String) -> Self {
         Self::new(StatusCode::UNAUTHORIZED, anyhow!(message))
     }
 
-    pub fn InternalError(message: String) -> Self {
+    pub fn internal_error(message: String) -> Self {
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!(message))
     }
 }

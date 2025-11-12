@@ -22,11 +22,11 @@ impl FromRequestParts<AppState> for AuthUser {
             .headers
             .get(header::AUTHORIZATION)
             .and_then(|value| value.to_str().ok())
-            .ok_or_else(|| AppError::Unauthorized("Missing authorization header".to_string()))?;
+            .ok_or_else(|| AppError::unauthorized("Missing authorization header".to_string()))?;
 
-        let token = auth_header
-            .strip_prefix("Bearer ")
-            .ok_or_else(|| AppError::Unauthorized("Invalid authorization header format".to_string()))?;
+        let token = auth_header.strip_prefix("Bearer ").ok_or_else(|| {
+            AppError::unauthorized("Invalid authorization header format".to_string())
+        })?;
 
         let claims = verify_token(token, &state.jwt_config)?;
 

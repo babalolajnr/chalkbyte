@@ -9,6 +9,7 @@ use crate::modules::users::model::User;
 pub struct Claims {
     pub sub: String, // user_id
     pub email: String,
+    pub role: String,
     pub exp: usize,
     pub iat: usize,
 }
@@ -53,4 +54,6 @@ pub struct RegisterRequestDto {
     #[validate(length(min = 8))]
     #[schema(example = "password123")]
     pub password: String,
+    #[serde(default)]
+    pub role: Option<crate::modules::users::model::UserRole>,
 }

@@ -10,16 +10,18 @@ pub struct UserService;
 
 impl UserService {
     pub async fn create_user(db: &PgPool, dto: CreateUserDto) -> Result<User, AppError> {
+        let role = dto.role.unwrap_or_default();
         let user = sqlx::query_as!(
             User,
             r#"
-            INSERT INTO users (first_name, last_name, email)
-            VALUES ($1, $2, $3)
-            RETURNING id, first_name, last_name, email
+            INSERT INTO users (first_name, last_name, email, role)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, first_name, last_name, email, role as "role: _"
             "#,
             dto.first_name,
             dto.last_name,
-            dto.email
+            dto.email,
+            role as _
         )
         .fetch_one(db)
         .await
@@ -33,7 +35,7 @@ impl UserService {
         let users = sqlx::query_as!(
             User,
             r#"
-            SELECT id, first_name, last_name, email
+            SELECT id, first_name, last_name, email, role as "role: _"
             FROM users
             "#
         )
@@ -49,7 +51,7 @@ impl UserService {
         let user = sqlx::query_as!(
             User,
             r#"
-            SELECT id, first_name, last_name, email
+            SELECT id, first_name, last_name, email, role as "role: _"
             FROM users
             WHERE id = $1
             "#,
