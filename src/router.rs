@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use crate::db::AppState;
 use crate::docs::ApiDoc;
+use crate::middleware::role::{require_admin, require_system_admin};
 use crate::modules::auth::router::init_auth_router;
 use crate::modules::schools::router::init_schools_router;
 use crate::modules::users::router::init_users_router;
@@ -9,12 +10,12 @@ use axum::body::Bytes;
 use axum::extract::MatchedPath;
 use axum::http::Request;
 use axum::response::Response;
-use axum::{Router, http::HeaderMap};
+use axum::{Router, http::HeaderMap, middleware};
 use tower_http::{classify::ServerErrorsFailureClass, trace::TraceLayer};
 use tracing::{Span, error, info, info_span, warn};
 use utoipa::OpenApi;
-use utoipa_swagger_ui::SwaggerUi;
 use utoipa_scalar::{Scalar, Servable as _};
+use utoipa_swagger_ui::SwaggerUi;
 
 pub fn init_router(state: AppState) -> Router {
     Router::new()
@@ -23,9 +24,19 @@ pub fn init_router(state: AppState) -> Router {
         .nest(
             "/api",
             Router::new()
-                .nest("/users", init_users_router())
+                .nest(
+                    "/users",
+                    init_users_router()
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
+                )
                 .nest("/auth", init_auth_router())
-                .nest("/schools", init_schools_router()),
+                .nest(
+                    "/schools",
+                    init_schools_router().route_layer(middleware::from_fn_with_state(
+                        state.clone(),
+                        require_system_admin,
+                    )),
+                ),
         )
         .with_state(state)
         .layer(

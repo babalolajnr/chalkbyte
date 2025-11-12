@@ -37,6 +37,15 @@ enum Commands {
 async fn main() {
     dotenv().ok();
 
+    // Initialize database connection
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&database_url)
+        .await
+        .expect("Failed to connect to database");
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -45,11 +54,12 @@ async fn main() {
             last_name,
             email,
             password,
-        } => handle_create_sysadmin(first_name, last_name, email, password).await,
+        } => handle_create_sysadmin(&pool, first_name, last_name, email, password).await,
     }
 }
 
 async fn handle_create_sysadmin(
+    pool: &sqlx::postgres::PgPool,
     first_name: Option<String>,
     last_name: Option<String>,
     email: Option<String>,
@@ -84,15 +94,6 @@ async fn handle_create_sysadmin(
             .interact()
             .expect("Failed to read password")
     });
-
-    // Initialize database connection
-    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&database_url)
-        .await
-        .expect("Failed to connect to database");
 
     match create_system_admin(&pool, &first_name, &last_name, &email, &password).await {
         Ok(_) => {

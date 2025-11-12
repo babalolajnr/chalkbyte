@@ -1,13 +1,9 @@
 pub mod cli;
-
-// Only expose minimal modules needed by CLI
-pub mod modules {
-    pub mod users {
-        pub mod model;
-    }
-}
-
-pub mod utils {
-    pub mod password;
-    pub mod errors;
-}
+pub mod config;
+pub mod db;
+pub mod docs;
+pub mod middleware;
+pub mod modules;
+pub mod router;
+pub mod utils;
+pub mod validator;

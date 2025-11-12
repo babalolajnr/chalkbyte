@@ -1,0 +1,98 @@
+use chalkbyte::utils::password::hash_password;
+use sqlx::{PgPool, Postgres, Transaction};
+use uuid::Uuid;
+
+pub struct TestUser {
+    pub id: Uuid,
+    pub email: String,
+    pub password: String,
+    pub role: String,
+    pub school_id: Option<Uuid>,
+}
+
+pub struct TestSchool {
+    pub id: Uuid,
+    pub name: String,
+}
+
+pub async fn create_test_user(
+    tx: &mut Transaction<'_, Postgres>,
+    email: &str,
+    password: &str,
+    role: &str,
+    school_id: Option<Uuid>,
+) -> TestUser {
+    let hashed = hash_password(password).unwrap();
+    let user = sqlx::query!(
+        r#"
+        INSERT INTO users (first_name, last_name, email, password, role, school_id)
+        VALUES ($1, $2, $3, $4, $5::text::user_role, $6)
+        RETURNING id, email, role as "role: String", school_id
+        "#,
+        "Test",
+        "User",
+        email,
+        hashed,
+        role,
+        school_id
+    )
+    .fetch_one(&mut **tx)
+    .await
+    .unwrap();
+
+    TestUser {
+        id: user.id,
+        email: user.email,
+        password: password.to_string(),
+        role: user.role,
+        school_id: user.school_id,
+    }
+}
+
+pub async fn create_test_school(tx: &mut Transaction<'_, Postgres>, name: &str) -> TestSchool {
+    let school = sqlx::query!(
+        r#"
+        INSERT INTO schools (name, address)
+        VALUES ($1, $2)
+        RETURNING id, name
+        "#,
+        name,
+        Some("Test Address")
+    )
+    .fetch_one(&mut **tx)
+    .await
+    .unwrap();
+
+    TestSchool {
+        id: school.id,
+        name: school.name,
+    }
+}
+
+pub async fn cleanup_test_data(pool: &PgPool) {
+    sqlx::query!("DELETE FROM users WHERE email LIKE '%@test.com'")
+        .execute(pool)
+        .await
+        .unwrap();
+
+    sqlx::query!("DELETE FROM schools WHERE name LIKE 'Test%'")
+        .execute(pool)
+        .await
+        .unwrap();
+}
+
+pub async fn get_test_pool() -> PgPool {
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
+
+    PgPool::connect(&database_url)
+        .await
+        .expect("Failed to connect to test database")
+}
+
+pub fn generate_unique_email() -> String {
+    format!("test-{}@test.com", Uuid::new_v4())
+}
+
+pub fn generate_unique_school_name() -> String {
+    format!("Test School {}", Uuid::new_v4())
+}

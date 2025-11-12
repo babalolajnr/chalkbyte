@@ -19,10 +19,10 @@ impl SchoolService {
         .fetch_one(db)
         .await
         .map_err(|e| {
-            if let sqlx::Error::Database(db_err) = &e {
-                if db_err.is_unique_violation() {
-                    return AppError::bad_request(anyhow::anyhow!("School name already exists"));
-                }
+            if let sqlx::Error::Database(db_err) = &e
+                && db_err.is_unique_violation()
+            {
+                return AppError::bad_request(anyhow::anyhow!("School name already exists"));
             }
             AppError::from(e)
         })?;
@@ -43,13 +43,12 @@ impl SchoolService {
 
     #[instrument]
     pub async fn get_school_by_id(db: &PgPool, school_id: Uuid) -> Result<School, AppError> {
-        let school = sqlx::query_as::<_, School>(
-            "SELECT id, name, address FROM schools WHERE id = $1",
-        )
-        .bind(school_id)
-        .fetch_optional(db)
-        .await?
-        .ok_or_else(|| AppError::not_found(anyhow::anyhow!("School not found")))?;
+        let school =
+            sqlx::query_as::<_, School>("SELECT id, name, address FROM schools WHERE id = $1")
+                .bind(school_id)
+                .fetch_optional(db)
+                .await?
+                .ok_or_else(|| AppError::not_found(anyhow::anyhow!("School not found")))?;
 
         Ok(school)
     }

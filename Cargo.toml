@@ -44,3 +44,8 @@ utoipa-scalar = { version = "0.3", features = ["axum"] }
 
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["json"] }
+tokio-test = "0.4"
+serial_test = "3.2"
+tower = { version = "0.5", features = ["util"] }
+hyper = { version = "1.6", features = ["full"] }
+http-body-util = "0.1"

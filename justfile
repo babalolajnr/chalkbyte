@@ -46,6 +46,38 @@ test:
 test-verbose:
     cargo test -- --nocapture
 
+# Run integration tests only
+test-integration:
+    cargo test integration_
+
+# Run unit tests only
+test-unit:
+    cargo test unit_
+
+# Run authentication tests
+test-auth:
+    cargo test integration_auth
+
+# Run user tests
+test-users:
+    cargo test integration_users
+
+# Run school tests
+test-schools:
+    cargo test integration_schools
+
+# Setup test database
+test-db-setup:
+    psql -U postgres -c "CREATE DATABASE chalkbyte_test;" || true
+    DATABASE_URL=postgresql://postgres:postgres@localhost:5432/chalkbyte_test sqlx migrate run
+
+# Clean test database
+test-db-clean:
+    psql -U postgres -c "DROP DATABASE IF EXISTS chalkbyte_test;"
+
+# Reset test database
+test-db-reset: test-db-clean test-db-setup
+
 # Check code without building
 check:
     cargo check
