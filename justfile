@@ -2,21 +2,41 @@
 default:
     @just --list
 
-# Run the project locally
+# Run the server locally
 run:
-    cargo run
+    cargo run --bin chalkbyte
 
-# Run the project in release mode
+# Run the server in release mode
 run-release:
-    cargo run --release
+    cargo run --release --bin chalkbyte
 
-# Build the project
+# Run CLI (show help)
+cli:
+    cargo run --bin chalkbyte-cli -- --help
+
+# Create system admin via CLI (interactive mode)
+create-sysadmin-interactive:
+    cargo run --bin chalkbyte-cli -- create-sysadmin
+
+# Create system admin via CLI (non-interactive mode)
+create-sysadmin first_name last_name email password:
+    cargo run --bin chalkbyte-cli -- create-sysadmin --first-name {{first_name}} --last-name {{last_name}} --email {{email}} --password {{password}}
+
+# Build all binaries
 build:
-    cargo build
+    cargo build --bins
 
-# Build the project in release mode
+# Build all binaries in release mode
 build-release:
-    cargo build --release
+    cargo build --release --bins
+
+# Build only the server
+build-server:
+    cargo build --bin chalkbyte
+
+# Build only the CLI
+build-cli:
+    cargo build --bin chalkbyte-cli
 
 # Run tests
 test:

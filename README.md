@@ -29,11 +29,11 @@ cp .env.example .env
 # 3. Run migrations
 cargo sqlx migrate run
 
-# 4. Create system admin (CLI only)
-cargo run -- create-sysadmin FirstName LastName admin@domain.com password
+# 4. Create system admin (CLI - interactive mode)
+cargo run --bin chalkbyte-cli -- create-sysadmin
 
 # 5. Start server
-cargo run
+cargo run --bin chalkbyte
 ```
 
 Open `http://localhost:3000/swagger-ui` to explore the API! 🚀
@@ -62,6 +62,37 @@ http://localhost:3000/api-docs/openapi.json
    - Fill in the request body
    - Click "Execute"
 5. For protected endpoints, click "Authorize" button and enter your JWT token
+
+## CLI Tool
+
+The project includes a separate CLI binary for administrative tasks with support for both interactive and non-interactive modes:
+
+```bash
+# Show CLI help
+cargo run --bin chalkbyte-cli -- --help
+cargo run --bin chalkbyte-cli -- create-sysadmin --help
+
+# Interactive mode - prompts for all inputs with secure password entry
+cargo run --bin chalkbyte-cli -- create-sysadmin
+
+# Non-interactive mode - provide all arguments
+cargo run --bin chalkbyte-cli -- create-sysadmin \
+  --first-name John \
+  --last-name Doe \
+  --email john@example.com \
+  --password secure123
+
+# Mixed mode - provide some arguments, prompted for the rest
+cargo run --bin chalkbyte-cli -- create-sysadmin \
+  --first-name John \
+  --last-name Doe
+
+# Using justfile shortcuts
+just cli                                                    # Show help
+just create-sysadmin John Doe john@example.com secure123   # Create admin
+```
+
+The CLI binary is separate from the main server application for better separation of concerns and reduced binary size (77MB vs 114MB).
 
 ## Role-Based Access Control
 
@@ -127,6 +158,7 @@ my_axum_api/
 ## 📚 Documentation
 
 - **[docs/SETUP_GUIDE.md](./docs/SETUP_GUIDE.md)** - Complete setup walkthrough
+- **[docs/CLI_GUIDE.md](./docs/CLI_GUIDE.md)** - CLI tool usage and examples
 - **[docs/QUICK_REFERENCE.md](./docs/QUICK_REFERENCE.md)** - Quick command reference
 - **[docs/USER_ROLES.md](./docs/USER_ROLES.md)** - Role system and permissions
 - **[docs/AUTHENTICATION.md](./docs/AUTHENTICATION.md)** - Authentication guide

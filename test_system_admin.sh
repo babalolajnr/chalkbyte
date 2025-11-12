@@ -10,7 +10,11 @@ echo "======================================"
 echo ""
 
 echo "1. Create System Admin (via CLI - should be done before running this script)..."
-echo "   Run: cargo run -- create-sysadmin System Administrator sysadmin@test.com password123"
+echo "   Interactive mode: cargo run --bin chalkbyte-cli -- create-sysadmin"
+echo "   Non-interactive:  cargo run --bin chalkbyte-cli -- create-sysadmin \\"
+echo "                       --first-name System --last-name Administrator \\"
+echo "                       --email sysadmin@test.com --password password123"
+echo "   Or with justfile: just create-sysadmin-interactive"
 echo "   Assuming system admin already exists..."
 echo ""
 
