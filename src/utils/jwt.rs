@@ -16,6 +16,7 @@ pub fn create_access_token(
     let exp = now + jwt_config.access_token_expiry as usize;
 
     let role_str = match role {
+        crate::modules::users::model::UserRole::SystemAdmin => "system_admin",
         crate::modules::users::model::UserRole::Admin => "admin",
         crate::modules::users::model::UserRole::Teacher => "teacher",
         crate::modules::users::model::UserRole::Student => "student",

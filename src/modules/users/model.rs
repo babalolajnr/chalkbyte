@@ -3,10 +3,11 @@ use sqlx::FromRow;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, ToSchema)]
-#[sqlx(type_name = "user_role", rename_all = "lowercase")]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, ToSchema, PartialEq)]
+#[sqlx(type_name = "user_role", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
 pub enum UserRole {
+    SystemAdmin,
     Admin,
     Teacher,
     Student,
@@ -25,6 +26,7 @@ pub struct User {
     pub last_name: String,
     pub email: String,
     pub role: UserRole,
+    pub school_id: Option<Uuid>,
 }
 
 #[derive(Deserialize, Debug, ToSchema)]
@@ -34,4 +36,18 @@ pub struct CreateUserDto {
     pub email: String,
     #[serde(default)]
     pub role: Option<UserRole>,
+    pub school_id: Option<Uuid>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow, ToSchema)]
+pub struct School {
+    pub id: Uuid,
+    pub name: String,
+    pub address: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateSchoolDto {
+    pub name: String,
+    pub address: Option<String>,
 }

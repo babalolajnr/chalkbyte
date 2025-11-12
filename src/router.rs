@@ -3,6 +3,7 @@ use std::time::Duration;
 use crate::db::AppState;
 use crate::docs::ApiDoc;
 use crate::modules::auth::router::init_auth_router;
+use crate::modules::schools::router::init_schools_router;
 use crate::modules::users::router::init_users_router;
 use axum::body::Bytes;
 use axum::extract::MatchedPath;
@@ -23,7 +24,8 @@ pub fn init_router(state: AppState) -> Router {
             "/api",
             Router::new()
                 .nest("/users", init_users_router())
-                .nest("/auth", init_auth_router()),
+                .nest("/auth", init_auth_router())
+                .nest("/schools", init_schools_router()),
         )
         .with_state(state)
         .layer(

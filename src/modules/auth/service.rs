@@ -19,10 +19,10 @@ impl AuthService {
         let role = dto.role.unwrap_or_default();
 
         let user = sqlx::query_as::<_, User>(
-            "INSERT INTO users (first_name, last_name, email, password, role) 
-             VALUES ($1, $2, $3, $4, $5) 
+            "INSERT INTO users (first_name, last_name, email, password, role, school_id) 
+             VALUES ($1, $2, $3, $4, $5, NULL) 
              ON CONFLICT (email) DO NOTHING
-             RETURNING id, first_name, last_name, email, role",
+             RETURNING id, first_name, last_name, email, role, school_id",
         )
         .bind(&dto.first_name)
         .bind(&dto.last_name)
@@ -52,10 +52,11 @@ impl AuthService {
             email: String,
             password: String,
             role: UserRole,
+            school_id: Option<Uuid>,
         }
 
         let user_with_password = sqlx::query_as::<_, UserWithPassword>(
-            "SELECT id, first_name, last_name, email, password, role FROM users WHERE email = $1",
+            "SELECT id, first_name, last_name, email, password, role, school_id FROM users WHERE email = $1",
         )
         .bind(&dto.email)
         .fetch_optional(db)
@@ -79,6 +80,7 @@ impl AuthService {
             last_name: user_with_password.last_name,
             email: user_with_password.email,
             role: user_with_password.role,
+            school_id: user_with_password.school_id,
         };
 
         Ok(LoginResponse { access_token, user })

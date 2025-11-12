@@ -1,21 +1,21 @@
 # Chalkbyte
 
-A modern REST API built with Rust, Axum, and PostgreSQL featuring JWT-based authentication.
+A modern REST API built with Rust, Axum, and PostgreSQL featuring hierarchical role-based access control, school management, and JWT-based authentication.
 
 ## Features
 
 - 🔐 JWT-based authentication with bcrypt password hashing
+- 👥 Hierarchical role system (System Admin, School Admin, Teacher, Student)
+- 🏫 Multi-school management with school isolation
 - 🗄️ PostgreSQL database with SQLx migrations
 - 🚀 Fast and type-safe with Rust and Axum
-- 🔒 Protected routes with authentication middleware
+- 🔒 Protected routes with role-based authorization
 - ✅ Request validation using the validator crate
-- 📚 **Interactive Swagger UI documentation**
+- 📚 Interactive Swagger UI documentation
 - 🐳 Docker and Docker Compose support
-- 📊 pgAdmin for database management
+- 🛡️ CLI-only system admin creation for enhanced security
 
 ## Quick Start
-
-See [QUICKSTART.md](./QUICKSTART.md) for a detailed step-by-step guide!
 
 ### TL;DR
 
@@ -29,11 +29,16 @@ cp .env.example .env
 # 3. Run migrations
 cargo sqlx migrate run
 
-# 4. Start server
+# 4. Create system admin (CLI only)
+cargo run -- create-sysadmin FirstName LastName admin@domain.com password
+
+# 5. Start server
 cargo run
 ```
 
 Open `http://localhost:3000/swagger-ui` to explore the API! 🚀
+
+See [docs/SETUP_GUIDE.md](./docs/SETUP_GUIDE.md) for complete setup instructions.
 
 ## API Documentation
 
@@ -58,22 +63,28 @@ http://localhost:3000/api-docs/openapi.json
    - Click "Execute"
 5. For protected endpoints, click "Authorize" button and enter your JWT token
 
+## Role-Based Access Control
+
+The system implements a hierarchical role structure:
+
+- **System Admin** (CLI-created) - Full system access, creates schools and school admins
+- **School Admin** - Manages their assigned school, creates teachers and students
+- **Teacher** - School staff with elevated permissions
+- **Student** - Default role with basic access
+
+See [docs/USER_ROLES.md](./docs/USER_ROLES.md) for detailed role documentation.
+
 ## Authentication
 
-See [AUTHENTICATION.md](./AUTHENTICATION.md) for detailed documentation on authentication endpoints and usage.
+See [docs/AUTHENTICATION.md](./docs/AUTHENTICATION.md) for detailed documentation.
 
 ### Quick Example
 
 ```bash
-# Register
-curl -X POST http://localhost:3000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"first_name":"John","last_name":"Doe","email":"john@example.com","password":"password123"}'
-
-# Login
+# Login (no public registration)
 curl -X POST http://localhost:3000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"john@example.com","password":"password123"}'
+  -d '{"email":"admin@domain.com","password":"password123"}'
 
 # Access protected route
 curl http://localhost:3000/api/users/profile \
@@ -115,10 +126,11 @@ my_axum_api/
 
 ## 📚 Documentation
 
-- **[QUICKSTART.md](./QUICKSTART.md)** - Get started in 5 minutes
-- **[AUTHENTICATION.md](./AUTHENTICATION.md)** - Authentication guide and API reference
-- **[SWAGGER.md](./SWAGGER.md)** - Swagger UI usage and customization
-- **[IMPLEMENTATION_SUMMARY.md](./IMPLEMENTATION_SUMMARY.md)** - Technical implementation details
+- **[docs/SETUP_GUIDE.md](./docs/SETUP_GUIDE.md)** - Complete setup walkthrough
+- **[docs/QUICK_REFERENCE.md](./docs/QUICK_REFERENCE.md)** - Quick command reference
+- **[docs/USER_ROLES.md](./docs/USER_ROLES.md)** - Role system and permissions
+- **[docs/AUTHENTICATION.md](./docs/AUTHENTICATION.md)** - Authentication guide
+- **[docs/SYSTEM_ADMIN_IMPLEMENTATION.md](./docs/SYSTEM_ADMIN_IMPLEMENTATION.md)** - Technical details
 
 ## 🤝 Contributing
 

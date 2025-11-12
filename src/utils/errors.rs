@@ -78,6 +78,10 @@ impl AppError {
         Self::new(StatusCode::UNAUTHORIZED, anyhow!(message))
     }
 
+    pub fn forbidden(message: String) -> Self {
+        Self::new(StatusCode::FORBIDDEN, anyhow!(message))
+    }
+
     pub fn internal_error(message: String) -> Self {
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!(message))
     }

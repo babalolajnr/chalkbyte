@@ -4,22 +4,27 @@ use utoipa::{Modify, OpenApi};
 use crate::modules::auth::controller::ErrorResponse;
 use crate::modules::auth::model::{LoginRequest, LoginResponse, RegisterRequestDto};
 use crate::modules::users::controller::ProfileResponse;
-use crate::modules::users::model::{CreateUserDto, User};
+use crate::modules::users::model::{CreateUserDto, User, School, CreateSchoolDto, UserRole};
 
 #[derive(OpenApi)]
 #[openapi(
     paths(
-        crate::modules::auth::controller::register_user,
         crate::modules::auth::controller::login_user,
         crate::modules::users::controller::create_user,
         crate::modules::users::controller::get_users,
         crate::modules::users::controller::get_profile,
+        crate::modules::schools::controller::create_school,
+        crate::modules::schools::controller::get_all_schools,
+        crate::modules::schools::controller::get_school,
+        crate::modules::schools::controller::delete_school,
     ),
     components(
         schemas(
             User,
+            UserRole,
             CreateUserDto,
-            RegisterRequestDto,
+            School,
+            CreateSchoolDto,
             LoginRequest,
             LoginResponse,
             ProfileResponse,
@@ -29,7 +34,8 @@ use crate::modules::users::model::{CreateUserDto, User};
     modifiers(&SecurityAddon),
     tags(
         (name = "Authentication", description = "User authentication endpoints"),
-        (name = "Users", description = "User management endpoints")
+        (name = "Users", description = "User management endpoints"),
+        (name = "Schools", description = "School management endpoints")
     ),
     info(
         title = "Chalkbyte API",
