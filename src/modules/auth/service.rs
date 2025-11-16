@@ -1,14 +1,19 @@
+use chrono::{Duration, Utc};
 use sqlx::PgPool;
 use tracing::instrument;
 use uuid::Uuid;
 
+use crate::config::email::EmailConfig;
 use crate::config::jwt::JwtConfig;
 use crate::modules::users::model::User;
+use crate::utils::email::EmailService;
 use crate::utils::errors::AppError;
 use crate::utils::jwt::create_access_token;
 use crate::utils::password::{hash_password, verify_password};
 
-use super::model::{LoginRequest, LoginResponse, RegisterRequestDto};
+use super::model::{
+    ForgotPasswordRequest, LoginRequest, LoginResponse, RegisterRequestDto, ResetPasswordRequest,
+};
 
 pub struct AuthService;
 
@@ -19,8 +24,8 @@ impl AuthService {
         let role = dto.role.unwrap_or_default();
 
         let user = sqlx::query_as::<_, User>(
-            "INSERT INTO users (first_name, last_name, email, password, role, school_id) 
-             VALUES ($1, $2, $3, $4, $5, NULL) 
+            "INSERT INTO users (first_name, last_name, email, password, role, school_id)
+             VALUES ($1, $2, $3, $4, $5, NULL)
              ON CONFLICT (email) DO NOTHING
              RETURNING id, first_name, last_name, email, role, school_id",
         )
@@ -71,8 +76,12 @@ impl AuthService {
             ));
         }
 
-        let access_token =
-            create_access_token(user_with_password.id, &user_with_password.email, &user_with_password.role, jwt_config)?;
+        let access_token = create_access_token(
+            user_with_password.id,
+            &user_with_password.email,
+            &user_with_password.role,
+            jwt_config,
+        )?;
 
         let user = User {
             id: user_with_password.id,
@@ -84,5 +93,125 @@ impl AuthService {
         };
 
         Ok(LoginResponse { access_token, user })
+    }
+
+    #[instrument]
+    pub async fn forgot_password(
+        db: &PgPool,
+        dto: ForgotPasswordRequest,
+        email_config: &EmailConfig,
+    ) -> Result<(), AppError> {
+        // Find user by email
+        let user = sqlx::query_as::<_, User>(
+            "SELECT id, first_name, last_name, email, role, school_id FROM users WHERE email = $1",
+        )
+        .bind(&dto.email)
+        .fetch_optional(db)
+        .await?;
+
+        // Always return success to prevent email enumeration
+        if user.is_none() {
+            return Ok(());
+        }
+
+        let user = user.unwrap();
+
+        // Generate reset token (using UUID for simplicity and security)
+        let reset_token = Uuid::new_v4().to_string();
+        let expires_at = Utc::now() + Duration::hours(1);
+
+        // Delete any existing unused tokens for this user
+        sqlx::query("DELETE FROM password_reset_tokens WHERE user_id = $1 AND used = FALSE")
+            .bind(user.id)
+            .execute(db)
+            .await?;
+
+        // Store reset token in database
+        sqlx::query(
+            "INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)",
+        )
+        .bind(user.id)
+        .bind(&reset_token)
+        .bind(expires_at)
+        .execute(db)
+        .await?;
+
+        // Send email
+        let email_service = EmailService::new(email_config.clone());
+        email_service
+            .send_password_reset_email(&user.email, &user.first_name, &reset_token)
+            .await?;
+
+        Ok(())
+    }
+
+    #[instrument]
+    pub async fn reset_password(
+        db: &PgPool,
+        dto: ResetPasswordRequest,
+        email_config: &EmailConfig,
+    ) -> Result<(), AppError> {
+        // Find and validate token
+        #[derive(sqlx::FromRow)]
+        struct ResetToken {
+            id: Uuid,
+            user_id: Uuid,
+            expires_at: chrono::DateTime<Utc>,
+            used: bool,
+        }
+
+        let token_record = sqlx::query_as::<_, ResetToken>(
+            "SELECT id, user_id, expires_at, used FROM password_reset_tokens WHERE token = $1",
+        )
+        .bind(&dto.token)
+        .fetch_optional(db)
+        .await?
+        .ok_or_else(|| AppError::bad_request(anyhow::anyhow!("Invalid or expired reset token")))?;
+
+        // Check if token is already used
+        if token_record.used {
+            return Err(AppError::bad_request(anyhow::anyhow!(
+                "Reset token has already been used"
+            )));
+        }
+
+        // Check if token is expired
+        if token_record.expires_at < Utc::now() {
+            return Err(AppError::bad_request(anyhow::anyhow!(
+                "Reset token has expired"
+            )));
+        }
+
+        // Get user details
+        let user = sqlx::query_as::<_, User>(
+            "SELECT id, first_name, last_name, email, role, school_id FROM users WHERE id = $1",
+        )
+        .bind(token_record.user_id)
+        .fetch_one(db)
+        .await?;
+
+        // Hash new password
+        let hashed_password = hash_password(&dto.new_password)?;
+
+        // Update password
+        sqlx::query("UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2")
+            .bind(&hashed_password)
+            .bind(token_record.user_id)
+            .execute(db)
+            .await?;
+
+        // Mark token as used
+        sqlx::query("UPDATE password_reset_tokens SET used = TRUE WHERE id = $1")
+            .bind(token_record.id)
+            .execute(db)
+            .await?;
+
+        // Send confirmation email
+        let email_service = EmailService::new(email_config.clone());
+        email_service
+            .send_password_reset_confirmation(&user.email, &user.first_name)
+            .await?;
+
+        Ok(())
     }
 }

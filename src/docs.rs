@@ -2,7 +2,9 @@ use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa::{Modify, OpenApi};
 
 use crate::modules::auth::controller::ErrorResponse;
-use crate::modules::auth::model::{LoginRequest, LoginResponse};
+use crate::modules::auth::model::{
+    ForgotPasswordRequest, LoginRequest, LoginResponse, MessageResponse, ResetPasswordRequest,
+};
 use crate::modules::students::model::{CreateStudentDto, Student, UpdateStudentDto};
 use crate::modules::users::controller::ProfileResponse;
 use crate::modules::users::model::{CreateSchoolDto, CreateUserDto, School, User, UserRole};
@@ -11,6 +13,8 @@ use crate::modules::users::model::{CreateSchoolDto, CreateUserDto, School, User,
 #[openapi(
     paths(
         crate::modules::auth::controller::login_user,
+        crate::modules::auth::controller::forgot_password,
+        crate::modules::auth::controller::reset_password,
         crate::modules::users::controller::create_user,
         crate::modules::users::controller::get_users,
         crate::modules::users::controller::get_profile,
@@ -33,6 +37,9 @@ use crate::modules::users::model::{CreateSchoolDto, CreateUserDto, School, User,
             CreateSchoolDto,
             LoginRequest,
             LoginResponse,
+            ForgotPasswordRequest,
+            ResetPasswordRequest,
+            MessageResponse,
             ProfileResponse,
             ErrorResponse,
             Student,

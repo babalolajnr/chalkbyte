@@ -1,13 +1,16 @@
 use crate::db::AppState;
 use crate::utils::errors::AppError;
 use crate::validator::ValidatedJson;
+use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::Json;
 use tracing::instrument;
 use utoipa::ToSchema;
 
-use super::model::{LoginRequest, LoginResponse, RegisterRequestDto};
+use super::model::{
+    ForgotPasswordRequest, LoginRequest, LoginResponse, MessageResponse, RegisterRequestDto,
+    ResetPasswordRequest,
+};
 use super::service::AuthService;
 use crate::modules::users::model::User;
 
@@ -57,4 +60,52 @@ pub async fn login_user(
 ) -> Result<Json<LoginResponse>, AppError> {
     let response = AuthService::login_user(&state.db, dto, &state.jwt_config).await?;
     Ok(Json(response))
+}
+
+/// Request password reset email
+#[utoipa::path(
+    post,
+    path = "/api/auth/forgot-password",
+    request_body = ForgotPasswordRequest,
+    responses(
+        (status = 200, description = "Password reset email sent if account exists", body = MessageResponse),
+        (status = 400, description = "Bad request - validation error", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Authentication"
+)]
+#[instrument]
+pub async fn forgot_password(
+    State(state): State<AppState>,
+    ValidatedJson(dto): ValidatedJson<ForgotPasswordRequest>,
+) -> Result<Json<MessageResponse>, AppError> {
+    AuthService::forgot_password(&state.db, dto, &state.email_config).await?;
+    Ok(Json(MessageResponse {
+        message: "If an account exists with that email, a password reset link has been sent."
+            .to_string(),
+    }))
+}
+
+/// Reset password using token
+#[utoipa::path(
+    post,
+    path = "/api/auth/reset-password",
+    request_body = ResetPasswordRequest,
+    responses(
+        (status = 200, description = "Password reset successful", body = MessageResponse),
+        (status = 400, description = "Bad request - invalid or expired token", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Authentication"
+)]
+#[instrument]
+pub async fn reset_password(
+    State(state): State<AppState>,
+    ValidatedJson(dto): ValidatedJson<ResetPasswordRequest>,
+) -> Result<Json<MessageResponse>, AppError> {
+    AuthService::reset_password(&state.db, dto, &state.email_config).await?;
+    Ok(Json(MessageResponse {
+        message: "Password has been reset successfully. You can now log in with your new password."
+            .to_string(),
+    }))
 }

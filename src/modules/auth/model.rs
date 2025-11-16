@@ -57,3 +57,27 @@ pub struct RegisterRequestDto {
     #[serde(default)]
     pub role: Option<crate::modules::users::model::UserRole>,
 }
+
+// Forgot password request
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct ForgotPasswordRequest {
+    #[validate(email)]
+    #[schema(example = "user@example.com")]
+    pub email: String,
+}
+
+// Reset password request
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct ResetPasswordRequest {
+    #[validate(length(min = 1))]
+    pub token: String,
+    #[validate(length(min = 8))]
+    #[schema(example = "newPassword123")]
+    pub new_password: String,
+}
+
+// Generic success message response
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MessageResponse {
+    pub message: String,
+}
