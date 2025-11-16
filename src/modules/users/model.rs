@@ -19,7 +19,7 @@ impl Default for UserRole {
     }
 }
 
-#[derive(Serialize, FromRow, Debug, ToSchema)]
+#[derive(Serialize, Deserialize, FromRow, Debug, ToSchema)]
 pub struct User {
     pub id: Uuid,
     pub first_name: String,
@@ -50,4 +50,10 @@ pub struct School {
 pub struct CreateSchoolDto {
     pub name: String,
     pub address: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow, ToSchema)]
+pub struct UserWithSchool {
+    pub user: User,
+    pub school: Option<School>,
 }
