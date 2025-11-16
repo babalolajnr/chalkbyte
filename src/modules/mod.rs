@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod schools;
+pub mod students;
 pub mod users;
 
 pub use self::auth::model::LoginRequest;

@@ -2,9 +2,10 @@ use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa::{Modify, OpenApi};
 
 use crate::modules::auth::controller::ErrorResponse;
-use crate::modules::auth::model::{LoginRequest, LoginResponse, RegisterRequestDto};
+use crate::modules::auth::model::{LoginRequest, LoginResponse};
+use crate::modules::students::model::{CreateStudentDto, Student, UpdateStudentDto};
 use crate::modules::users::controller::ProfileResponse;
-use crate::modules::users::model::{CreateUserDto, User, School, CreateSchoolDto, UserRole};
+use crate::modules::users::model::{CreateSchoolDto, CreateUserDto, School, User, UserRole};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -17,6 +18,11 @@ use crate::modules::users::model::{CreateUserDto, User, School, CreateSchoolDto,
         crate::modules::schools::controller::get_all_schools,
         crate::modules::schools::controller::get_school,
         crate::modules::schools::controller::delete_school,
+        crate::modules::students::controller::create_student,
+        crate::modules::students::controller::get_students,
+        crate::modules::students::controller::get_student,
+        crate::modules::students::controller::update_student,
+        crate::modules::students::controller::delete_student,
     ),
     components(
         schemas(
@@ -29,13 +35,17 @@ use crate::modules::users::model::{CreateUserDto, User, School, CreateSchoolDto,
             LoginResponse,
             ProfileResponse,
             ErrorResponse,
+            Student,
+            CreateStudentDto,
+            UpdateStudentDto,
         )
     ),
     modifiers(&SecurityAddon),
     tags(
         (name = "Authentication", description = "User authentication endpoints"),
         (name = "Users", description = "User management endpoints"),
-        (name = "Schools", description = "School management endpoints")
+        (name = "Schools", description = "School management endpoints"),
+        (name = "Students", description = "Student management endpoints")
     ),
     info(
         title = "Chalkbyte API",

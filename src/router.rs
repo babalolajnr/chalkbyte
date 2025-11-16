@@ -5,6 +5,7 @@ use crate::docs::ApiDoc;
 use crate::middleware::role::{require_admin, require_system_admin};
 use crate::modules::auth::router::init_auth_router;
 use crate::modules::schools::router::init_schools_router;
+use crate::modules::students::router::init_students_router;
 use crate::modules::users::router::init_users_router;
 use axum::body::Bytes;
 use axum::extract::MatchedPath;
@@ -36,6 +37,11 @@ pub fn init_router(state: AppState) -> Router {
                         state.clone(),
                         require_system_admin,
                     )),
+                )
+                .nest(
+                    "/students",
+                    init_students_router()
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
                 ),
         )
         .with_state(state)
