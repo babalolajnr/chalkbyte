@@ -4,6 +4,7 @@ use crate::db::AppState;
 use crate::docs::ApiDoc;
 use crate::middleware::role::{require_admin, require_system_admin};
 use crate::modules::auth::router::init_auth_router;
+use crate::modules::mfa::router::init_mfa_router;
 use crate::modules::schools::router::init_schools_router;
 use crate::modules::students::router::init_students_router;
 use crate::modules::users::router::init_users_router;
@@ -31,6 +32,7 @@ pub fn init_router(state: AppState) -> Router {
                         .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
                 )
                 .nest("/auth", init_auth_router())
+                .nest("/mfa", init_mfa_router())
                 .nest(
                     "/schools",
                     init_schools_router().route_layer(middleware::from_fn_with_state(

@@ -4,12 +4,13 @@ use crate::validator::ValidatedJson;
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use tracing::instrument;
 use utoipa::ToSchema;
 
 use super::model::{
-    ForgotPasswordRequest, LoginRequest, LoginResponse, MessageResponse, RegisterRequestDto,
-    ResetPasswordRequest,
+    ForgotPasswordRequest, LoginRequest, LoginResponse, MessageResponse, MfaRecoveryLoginRequest,
+    MfaRequiredResponse, MfaVerifyLoginRequest, RegisterRequestDto, ResetPasswordRequest,
 };
 use super::service::AuthService;
 use crate::modules::users::model::User;
@@ -40,13 +41,14 @@ pub async fn register_user(
     Ok((StatusCode::CREATED, Json(user)))
 }
 
-/// Login and receive JWT token
+/// Login and receive JWT token or MFA challenge
 #[utoipa::path(
     post,
     path = "/api/auth/login",
     request_body = LoginRequest,
     responses(
         (status = 200, description = "Login successful", body = LoginResponse),
+        (status = 200, description = "MFA required", body = MfaRequiredResponse),
         (status = 401, description = "Invalid credentials", body = ErrorResponse),
         (status = 400, description = "Bad request - validation error", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
@@ -57,8 +59,55 @@ pub async fn register_user(
 pub async fn login_user(
     State(state): State<AppState>,
     ValidatedJson(dto): ValidatedJson<LoginRequest>,
+) -> Result<axum::response::Response, AppError> {
+    match AuthService::login_user(&state.db, dto, &state.jwt_config).await? {
+        Ok(login_response) => Ok(Json(login_response).into_response()),
+        Err(mfa_required) => Ok(Json(mfa_required).into_response()),
+    }
+}
+
+/// Verify MFA code and complete login
+#[utoipa::path(
+    post,
+    path = "/api/auth/mfa/verify",
+    request_body = MfaVerifyLoginRequest,
+    responses(
+        (status = 200, description = "MFA verification successful", body = LoginResponse),
+        (status = 401, description = "Invalid MFA code or temp token", body = ErrorResponse),
+        (status = 400, description = "Bad request - validation error", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Authentication"
+)]
+#[instrument]
+pub async fn verify_mfa_login(
+    State(state): State<AppState>,
+    ValidatedJson(dto): ValidatedJson<MfaVerifyLoginRequest>,
 ) -> Result<Json<LoginResponse>, AppError> {
-    let response = AuthService::login_user(&state.db, dto, &state.jwt_config).await?;
+    let response = AuthService::verify_mfa_login(&state.db, dto, &state.jwt_config).await?;
+    Ok(Json(response))
+}
+
+/// Use recovery code to complete login
+#[utoipa::path(
+    post,
+    path = "/api/auth/mfa/recovery",
+    request_body = MfaRecoveryLoginRequest,
+    responses(
+        (status = 200, description = "Recovery code verification successful", body = LoginResponse),
+        (status = 401, description = "Invalid recovery code or temp token", body = ErrorResponse),
+        (status = 400, description = "Bad request - validation error", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Authentication"
+)]
+#[instrument]
+pub async fn verify_mfa_recovery_login(
+    State(state): State<AppState>,
+    ValidatedJson(dto): ValidatedJson<MfaRecoveryLoginRequest>,
+) -> Result<Json<LoginResponse>, AppError> {
+    let response =
+        AuthService::verify_mfa_recovery_login(&state.db, dto, &state.jwt_config).await?;
     Ok(Json(response))
 }
 

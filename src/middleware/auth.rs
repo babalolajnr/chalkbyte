@@ -8,7 +8,7 @@ use crate::modules::auth::model::Claims;
 use crate::utils::errors::AppError;
 use crate::utils::jwt::verify_token;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AuthUser(pub Claims);
 
 impl FromRequestParts<AppState> for AuthUser {

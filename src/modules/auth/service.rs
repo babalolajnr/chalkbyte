@@ -8,11 +8,12 @@ use crate::config::jwt::JwtConfig;
 use crate::modules::users::model::User;
 use crate::utils::email::EmailService;
 use crate::utils::errors::AppError;
-use crate::utils::jwt::create_access_token;
+use crate::utils::jwt::{create_access_token, create_mfa_temp_token, verify_mfa_temp_token};
 use crate::utils::password::{hash_password, verify_password};
 
 use super::model::{
-    ForgotPasswordRequest, LoginRequest, LoginResponse, RegisterRequestDto, ResetPasswordRequest,
+    ForgotPasswordRequest, LoginRequest, LoginResponse, MfaRecoveryLoginRequest,
+    MfaRequiredResponse, MfaVerifyLoginRequest, RegisterRequestDto, ResetPasswordRequest,
 };
 
 pub struct AuthService;
@@ -46,7 +47,7 @@ impl AuthService {
         db: &PgPool,
         dto: LoginRequest,
         jwt_config: &JwtConfig,
-    ) -> Result<LoginResponse, AppError> {
+    ) -> Result<Result<LoginResponse, MfaRequiredResponse>, AppError> {
         use crate::modules::users::model::UserRole;
 
         #[derive(sqlx::FromRow)]
@@ -58,10 +59,11 @@ impl AuthService {
             password: String,
             role: UserRole,
             school_id: Option<Uuid>,
+            mfa_enabled: bool,
         }
 
         let user_with_password = sqlx::query_as::<_, UserWithPassword>(
-            "SELECT id, first_name, last_name, email, password, role, school_id FROM users WHERE email = $1",
+            "SELECT id, first_name, last_name, email, password, role, school_id, mfa_enabled FROM users WHERE email = $1",
         )
         .bind(&dto.email)
         .fetch_optional(db)
@@ -76,6 +78,23 @@ impl AuthService {
             ));
         }
 
+        // Check if MFA is enabled
+        if user_with_password.mfa_enabled {
+            // Generate temporary token for MFA verification
+            let temp_token = create_mfa_temp_token(
+                user_with_password.id,
+                &user_with_password.email,
+                &user_with_password.role,
+                jwt_config,
+            )?;
+
+            return Ok(Err(MfaRequiredResponse {
+                mfa_required: true,
+                temp_token,
+            }));
+        }
+
+        // No MFA, proceed with normal login
         let access_token = create_access_token(
             user_with_password.id,
             &user_with_password.email,
@@ -91,6 +110,79 @@ impl AuthService {
             role: user_with_password.role,
             school_id: user_with_password.school_id,
         };
+
+        Ok(Ok(LoginResponse { access_token, user }))
+    }
+
+    #[instrument]
+    pub async fn verify_mfa_login(
+        db: &PgPool,
+        dto: MfaVerifyLoginRequest,
+        jwt_config: &JwtConfig,
+    ) -> Result<LoginResponse, AppError> {
+        use crate::modules::mfa::service::MfaService;
+
+        // Verify temp token
+        let temp_claims = verify_mfa_temp_token(&dto.temp_token, jwt_config)?;
+
+        let user_id = Uuid::parse_str(&temp_claims.sub)
+            .map_err(|_| AppError::unauthorized("Invalid token".to_string()))?;
+
+        // Verify TOTP code
+        let is_valid = MfaService::verify_totp_login(db, user_id, &dto.code).await?;
+
+        if !is_valid {
+            return Err(AppError::unauthorized("Invalid MFA code".to_string()));
+        }
+
+        // Get user details
+        let user = sqlx::query_as::<_, User>(
+            "SELECT id, first_name, last_name, email, role, school_id FROM users WHERE id = $1",
+        )
+        .bind(user_id)
+        .fetch_one(db)
+        .await?;
+
+        // Generate final access token
+        let access_token = create_access_token(user_id, &user.email, &user.role, jwt_config)?;
+
+        Ok(LoginResponse { access_token, user })
+    }
+
+    #[instrument]
+    pub async fn verify_mfa_recovery_login(
+        db: &PgPool,
+        dto: MfaRecoveryLoginRequest,
+        jwt_config: &JwtConfig,
+    ) -> Result<LoginResponse, AppError> {
+        use crate::modules::mfa::service::MfaService;
+
+        // Verify temp token
+        let temp_claims = verify_mfa_temp_token(&dto.temp_token, jwt_config)?;
+
+        let user_id = Uuid::parse_str(&temp_claims.sub)
+            .map_err(|_| AppError::unauthorized("Invalid token".to_string()))?;
+
+        // Verify recovery code
+        let is_valid =
+            MfaService::verify_recovery_code_login(db, user_id, &dto.recovery_code).await?;
+
+        if !is_valid {
+            return Err(AppError::unauthorized(
+                "Invalid or already used recovery code".to_string(),
+            ));
+        }
+
+        // Get user details
+        let user = sqlx::query_as::<_, User>(
+            "SELECT id, first_name, last_name, email, role, school_id FROM users WHERE id = $1",
+        )
+        .bind(user_id)
+        .fetch_one(db)
+        .await?;
+
+        // Generate final access token
+        let access_token = create_access_token(user_id, &user.email, &user.role, jwt_config)?;
 
         Ok(LoginResponse { access_token, user })
     }

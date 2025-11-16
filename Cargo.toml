@@ -41,6 +41,10 @@ utoipa = { version = "5.4", features = ["axum_extras", "uuid", "chrono"] }
 utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 utoipa-scalar = { version = "0.3", features = ["axum"] }
 lettre = { version = "0.11", features = ["tokio1-native-tls", "builder", "smtp-transport"] }
+totp-rs = { version = "5.6", features = ["qr", "otpauth"] }
+data-encoding = "2.6"
+rand = "0.8"
+rayon = "1.11.0"
 
 
 [dev-dependencies]

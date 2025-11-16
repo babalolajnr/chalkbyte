@@ -5,7 +5,7 @@ use validator::Validate;
 use crate::modules::users::model::User;
 
 // JWT Claims structure
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Claims {
     pub sub: String, // user_id
     pub email: String,
@@ -19,6 +19,17 @@ pub struct Claims {
 pub struct ResetTokenClaims {
     pub user_id: String,
     pub email: String,
+    pub exp: usize,
+    pub iat: usize,
+}
+
+// MFA temporary token claims
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MfaTempClaims {
+    pub sub: String,
+    pub email: String,
+    pub role: String,
+    pub mfa_pending: bool,
     pub exp: usize,
     pub iat: usize,
 }
@@ -38,6 +49,33 @@ pub struct LoginRequest {
 pub struct LoginResponse {
     pub access_token: String,
     pub user: User,
+}
+
+// MFA required response (temp token for MFA verification)
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MfaRequiredResponse {
+    pub mfa_required: bool,
+    pub temp_token: String,
+}
+
+// MFA verification request
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct MfaVerifyLoginRequest {
+    #[validate(length(min = 1))]
+    pub temp_token: String,
+    #[validate(length(equal = 6))]
+    #[schema(example = "123456")]
+    pub code: String,
+}
+
+// MFA recovery code login request
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct MfaRecoveryLoginRequest {
+    #[validate(length(min = 1))]
+    pub temp_token: String,
+    #[validate(length(equal = 8))]
+    #[schema(example = "ABCD1234")]
+    pub recovery_code: String,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]

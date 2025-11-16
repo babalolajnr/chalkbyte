@@ -33,6 +33,19 @@ Welcome to the Chalkbyte documentation. This directory contains all the technica
   - Protected routes
   - Token expiration
 
+- **[MFA_QUICK_START.md](./MFA_QUICK_START.md)** - Multi-Factor Authentication Quick Start
+  - 3-step MFA setup
+  - Login with MFA
+  - Recovery codes
+  - Management commands
+
+- **[MFA_GUIDE.md](./MFA_GUIDE.md)** - Complete MFA Documentation
+  - TOTP authenticator apps
+  - QR code enrollment
+  - Recovery code system
+  - API endpoints
+  - Security considerations
+
 ### For Administrators
 
 - **[QUICKSTART_SYSTEM_ADMIN.md](./QUICKSTART_SYSTEM_ADMIN.md)** - Quick start for system admins
@@ -82,6 +95,7 @@ Teachers + Students
 - ✅ School isolation for admins
 - ✅ Role-based authorization
 - ✅ JWT authentication
+- ✅ Multi-Factor Authentication (MFA) support
 
 ## 📖 Interactive API Documentation
 
@@ -89,6 +103,11 @@ When the server is running, you can access interactive API documentation at:
 
 - **Swagger UI**: http://localhost:3000/swagger-ui
 - **Scalar UI**: http://localhost:3000/scalar
+
+## 🔐 MFA Frontend Example
+
+For a complete MFA enrollment UI example, open:
+- **HTML Example**: `docs/mfa_frontend_example.html`
 
 ## 🆘 Getting Help
 
