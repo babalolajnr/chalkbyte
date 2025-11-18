@@ -8,12 +8,16 @@ use crate::config::jwt::JwtConfig;
 use crate::modules::users::model::User;
 use crate::utils::email::EmailService;
 use crate::utils::errors::AppError;
-use crate::utils::jwt::{create_access_token, create_mfa_temp_token, verify_mfa_temp_token};
+use crate::utils::jwt::{
+    create_access_token, create_mfa_temp_token, create_refresh_token, verify_mfa_temp_token,
+    verify_refresh_token,
+};
 use crate::utils::password::{hash_password, verify_password};
 
 use super::model::{
     ForgotPasswordRequest, LoginRequest, LoginResponse, MfaRecoveryLoginRequest,
-    MfaRequiredResponse, MfaVerifyLoginRequest, RegisterRequestDto, ResetPasswordRequest,
+    MfaRequiredResponse, MfaVerifyLoginRequest, RefreshTokenRequest, RegisterRequestDto,
+    ResetPasswordRequest,
 };
 
 pub struct AuthService;
@@ -102,6 +106,22 @@ impl AuthService {
             jwt_config,
         )?;
 
+        let refresh_token = create_refresh_token(
+            user_with_password.id,
+            &user_with_password.email,
+            &user_with_password.role,
+            jwt_config,
+        )?;
+
+        // Store refresh token in database
+        let expires_at = Utc::now() + Duration::seconds(jwt_config.refresh_token_expiry);
+        sqlx::query("INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)")
+            .bind(user_with_password.id)
+            .bind(&refresh_token)
+            .bind(expires_at)
+            .execute(db)
+            .await?;
+
         let user = User {
             id: user_with_password.id,
             first_name: user_with_password.first_name,
@@ -111,7 +131,11 @@ impl AuthService {
             school_id: user_with_password.school_id,
         };
 
-        Ok(Ok(LoginResponse { access_token, user }))
+        Ok(Ok(LoginResponse {
+            access_token,
+            refresh_token,
+            user,
+        }))
     }
 
     #[instrument]
@@ -146,7 +170,22 @@ impl AuthService {
         // Generate final access token
         let access_token = create_access_token(user_id, &user.email, &user.role, jwt_config)?;
 
-        Ok(LoginResponse { access_token, user })
+        let refresh_token = create_refresh_token(user_id, &user.email, &user.role, jwt_config)?;
+
+        // Store refresh token in database
+        let expires_at = Utc::now() + Duration::seconds(jwt_config.refresh_token_expiry);
+        sqlx::query("INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)")
+            .bind(user_id)
+            .bind(&refresh_token)
+            .bind(expires_at)
+            .execute(db)
+            .await?;
+
+        Ok(LoginResponse {
+            access_token,
+            refresh_token,
+            user,
+        })
     }
 
     #[instrument]
@@ -184,7 +223,22 @@ impl AuthService {
         // Generate final access token
         let access_token = create_access_token(user_id, &user.email, &user.role, jwt_config)?;
 
-        Ok(LoginResponse { access_token, user })
+        let refresh_token = create_refresh_token(user_id, &user.email, &user.role, jwt_config)?;
+
+        // Store refresh token in database
+        let expires_at = Utc::now() + Duration::seconds(jwt_config.refresh_token_expiry);
+        sqlx::query("INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)")
+            .bind(user_id)
+            .bind(&refresh_token)
+            .bind(expires_at)
+            .execute(db)
+            .await?;
+
+        Ok(LoginResponse {
+            access_token,
+            refresh_token,
+            user,
+        })
     }
 
     #[instrument]
@@ -303,6 +357,115 @@ impl AuthService {
         email_service
             .send_password_reset_confirmation(&user.email, &user.first_name)
             .await?;
+
+        Ok(())
+    }
+
+    #[instrument]
+    pub async fn refresh_access_token(
+        db: &PgPool,
+        dto: RefreshTokenRequest,
+        jwt_config: &JwtConfig,
+    ) -> Result<LoginResponse, AppError> {
+        // Verify refresh token JWT signature and expiry
+        let claims = verify_refresh_token(&dto.refresh_token, jwt_config)?;
+
+        let user_id = Uuid::parse_str(&claims.sub)
+            .map_err(|_| AppError::unauthorized("Invalid token".to_string()))?;
+
+        // Check if refresh token exists in database and is not revoked
+        #[derive(sqlx::FromRow)]
+        struct RefreshTokenRecord {
+            revoked: bool,
+            expires_at: chrono::DateTime<Utc>,
+        }
+
+        let token_record = sqlx::query_as::<_, RefreshTokenRecord>(
+            "SELECT revoked, expires_at FROM refresh_tokens WHERE token = $1 AND user_id = $2",
+        )
+        .bind(&dto.refresh_token)
+        .bind(user_id)
+        .fetch_optional(db)
+        .await?
+        .ok_or_else(|| AppError::unauthorized("Invalid refresh token".to_string()))?;
+
+        if token_record.revoked {
+            return Err(AppError::unauthorized(
+                "Refresh token has been revoked".to_string(),
+            ));
+        }
+
+        if token_record.expires_at < Utc::now() {
+            return Err(AppError::unauthorized(
+                "Refresh token has expired".to_string(),
+            ));
+        }
+
+        // Get user details
+        let user = sqlx::query_as::<_, User>(
+            "SELECT id, first_name, last_name, email, role, school_id FROM users WHERE id = $1",
+        )
+        .bind(user_id)
+        .fetch_one(db)
+        .await?;
+
+        // Generate new access token
+        let access_token = create_access_token(user_id, &user.email, &user.role, jwt_config)?;
+
+        // Generate new refresh token (refresh token rotation)
+        let new_refresh_token = create_refresh_token(user_id, &user.email, &user.role, jwt_config)?;
+
+        // Revoke old refresh token
+        sqlx::query(
+            "UPDATE refresh_tokens SET revoked = TRUE, updated_at = NOW() WHERE token = $1",
+        )
+        .bind(&dto.refresh_token)
+        .execute(db)
+        .await?;
+
+        // Store new refresh token
+        let expires_at = Utc::now() + Duration::seconds(jwt_config.refresh_token_expiry);
+        sqlx::query("INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)")
+            .bind(user_id)
+            .bind(&new_refresh_token)
+            .bind(expires_at)
+            .execute(db)
+            .await?;
+
+        Ok(LoginResponse {
+            access_token,
+            refresh_token: new_refresh_token,
+            user,
+        })
+    }
+
+    #[instrument]
+    pub async fn revoke_refresh_token(
+        db: &PgPool,
+        user_id: Uuid,
+        refresh_token: &str,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            "UPDATE refresh_tokens SET revoked = TRUE, updated_at = NOW()
+             WHERE token = $1 AND user_id = $2 AND revoked = FALSE",
+        )
+        .bind(refresh_token)
+        .bind(user_id)
+        .execute(db)
+        .await?;
+
+        Ok(())
+    }
+
+    #[instrument]
+    pub async fn revoke_all_refresh_tokens(db: &PgPool, user_id: Uuid) -> Result<(), AppError> {
+        sqlx::query(
+            "UPDATE refresh_tokens SET revoked = TRUE, updated_at = NOW()
+             WHERE user_id = $1 AND revoked = FALSE",
+        )
+        .bind(user_id)
+        .execute(db)
+        .await?;
 
         Ok(())
     }

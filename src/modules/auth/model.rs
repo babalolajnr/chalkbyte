@@ -34,6 +34,16 @@ pub struct MfaTempClaims {
     pub iat: usize,
 }
 
+// Refresh token claims
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RefreshTokenClaims {
+    pub sub: String,
+    pub email: String,
+    pub role: String,
+    pub exp: usize,
+    pub iat: usize,
+}
+
 // Login request structure
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct LoginRequest {
@@ -48,6 +58,7 @@ pub struct LoginRequest {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LoginResponse {
     pub access_token: String,
+    pub refresh_token: String,
     pub user: User,
 }
 
@@ -76,6 +87,13 @@ pub struct MfaRecoveryLoginRequest {
     #[validate(length(equal = 8))]
     #[schema(example = "ABCD1234")]
     pub recovery_code: String,
+}
+
+// Refresh token request
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct RefreshTokenRequest {
+    #[validate(length(min = 1))]
+    pub refresh_token: String,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]

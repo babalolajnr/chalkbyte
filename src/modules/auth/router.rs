@@ -2,7 +2,8 @@ use crate::state::AppState;
 use axum::{Router, routing::post};
 
 use super::controller::{
-    forgot_password, login_user, reset_password, verify_mfa_login, verify_mfa_recovery_login,
+    forgot_password, login_user, logout, refresh_token, reset_password, verify_mfa_login,
+    verify_mfa_recovery_login,
 };
 
 pub fn init_auth_router() -> Router<AppState> {
@@ -12,4 +13,6 @@ pub fn init_auth_router() -> Router<AppState> {
         .route("/mfa/recovery", post(verify_mfa_recovery_login))
         .route("/forgot-password", post(forgot_password))
         .route("/reset-password", post(reset_password))
+        .route("/refresh", post(refresh_token))
+        .route("/logout", post(logout))
 }

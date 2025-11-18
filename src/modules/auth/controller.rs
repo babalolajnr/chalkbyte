@@ -3,17 +3,18 @@ use crate::utils::errors::AppError;
 use crate::validator::ValidatedJson;
 use axum::Json;
 use axum::extract::State;
-use axum::http::StatusCode;
+
 use axum::response::IntoResponse;
 use tracing::instrument;
 use utoipa::ToSchema;
 
 use super::model::{
     ForgotPasswordRequest, LoginRequest, LoginResponse, MessageResponse, MfaRecoveryLoginRequest,
-    MfaRequiredResponse, MfaVerifyLoginRequest, RegisterRequestDto, ResetPasswordRequest,
+    MfaRequiredResponse, MfaVerifyLoginRequest, RefreshTokenRequest, ResetPasswordRequest,
 };
 use super::service::AuthService;
-use crate::modules::users::model::User;
+use crate::middleware::auth::AuthUser;
+use uuid::Uuid;
 
 #[derive(ToSchema)]
 pub struct ErrorResponse {
@@ -156,5 +157,53 @@ pub async fn reset_password(
     Ok(Json(MessageResponse {
         message: "Password has been reset successfully. You can now log in with your new password."
             .to_string(),
+    }))
+}
+
+/// Refresh access token using refresh token
+#[utoipa::path(
+    post,
+    path = "/api/auth/refresh",
+    request_body = RefreshTokenRequest,
+    responses(
+        (status = 200, description = "Token refreshed successfully", body = LoginResponse),
+        (status = 401, description = "Invalid or expired refresh token", body = ErrorResponse),
+        (status = 400, description = "Bad request - validation error", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Authentication"
+)]
+#[instrument]
+pub async fn refresh_token(
+    State(state): State<AppState>,
+    ValidatedJson(dto): ValidatedJson<RefreshTokenRequest>,
+) -> Result<Json<LoginResponse>, AppError> {
+    let response = AuthService::refresh_access_token(&state.db, dto, &state.jwt_config).await?;
+    Ok(Json(response))
+}
+
+/// Logout and revoke all refresh tokens
+#[utoipa::path(
+    post,
+    path = "/api/auth/logout",
+    responses(
+        (status = 200, description = "Logged out successfully", body = MessageResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Authentication",
+    security(("bearer_auth" = []))
+)]
+#[instrument]
+pub async fn logout(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+) -> Result<Json<MessageResponse>, AppError> {
+    let user_id = Uuid::parse_str(&auth_user.0.sub)
+        .map_err(|_| AppError::unauthorized("Invalid token".to_string()))?;
+
+    AuthService::revoke_all_refresh_tokens(&state.db, user_id).await?;
+    Ok(Json(MessageResponse {
+        message: "Logged out successfully. All refresh tokens have been revoked.".to_string(),
     }))
 }

@@ -4,7 +4,7 @@ use utoipa::{Modify, OpenApi};
 use crate::modules::auth::controller::ErrorResponse;
 use crate::modules::auth::model::{
     ForgotPasswordRequest, LoginRequest, LoginResponse, MessageResponse, MfaRecoveryLoginRequest,
-    MfaRequiredResponse, MfaVerifyLoginRequest, ResetPasswordRequest,
+    MfaRequiredResponse, MfaVerifyLoginRequest, RefreshTokenRequest, ResetPasswordRequest,
 };
 use crate::modules::mfa::model::{
     DisableMfaRequest, EnableMfaResponse, MfaStatusResponse, RegenerateMfaRecoveryCodesResponse,
@@ -26,6 +26,8 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
         crate::modules::auth::controller::verify_mfa_recovery_login,
         crate::modules::auth::controller::forgot_password,
         crate::modules::auth::controller::reset_password,
+        crate::modules::auth::controller::refresh_token,
+        crate::modules::auth::controller::logout,
         crate::modules::mfa::controller::get_mfa_status,
         crate::modules::mfa::controller::enable_mfa,
         crate::modules::mfa::controller::verify_mfa,
@@ -58,6 +60,7 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
             MfaRecoveryLoginRequest,
             ForgotPasswordRequest,
             ResetPasswordRequest,
+            RefreshTokenRequest,
             MessageResponse,
             MfaStatusResponse,
             EnableMfaResponse,
