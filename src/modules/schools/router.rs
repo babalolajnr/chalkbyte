@@ -3,7 +3,7 @@ use axum::{
     routing::{get, post},
 };
 
-use crate::db::AppState;
+use crate::state::AppState;
 
 use super::controller::{create_school, delete_school, get_all_schools, get_school};
 

@@ -1,7 +1,7 @@
 use anyhow::{Error, anyhow};
 use axum::{
     Json,
-    extract::rejection::FormRejection,
+    extract::rejection::{FormRejection, QueryRejection},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -71,6 +71,13 @@ impl AppError {
         Self::new(
             StatusCode::BAD_REQUEST,
             anyhow!("Form parsing error: {}", err),
+        )
+    }
+
+    pub fn query_rejection(err: QueryRejection) -> Self {
+        Self::new(
+            StatusCode::BAD_REQUEST,
+            anyhow!("Query parameter error: {}", err),
         )
     }
 

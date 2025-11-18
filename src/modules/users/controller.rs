@@ -1,8 +1,8 @@
-use crate::db::AppState;
 use crate::middleware::auth::AuthUser;
 use crate::modules::auth::controller::ErrorResponse;
 use crate::modules::users::model::{CreateUserDto, User, UserWithSchool};
 use crate::modules::users::service::UserService;
+use crate::state::AppState;
 use crate::utils::errors::AppError;
 use axum::{Json, extract::State};
 use serde::Serialize;

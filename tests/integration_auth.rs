@@ -2,8 +2,8 @@ mod common;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use chalkbyte::db::init_app_state;
 use chalkbyte::router::init_router;
+use chalkbyte::state::init_app_state;
 use common::{cleanup_test_data, create_test_user, generate_unique_email, get_test_pool};
 use http_body_util::BodyExt;
 use serde_json::json;

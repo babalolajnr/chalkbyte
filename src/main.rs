@@ -1,15 +1,15 @@
-use crate::db::init_app_state;
 use crate::router::init_router;
+use crate::state::init_app_state;
 use dotenvy::dotenv;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 mod config;
-mod db;
 mod docs;
 mod middleware;
 mod modules;
 mod router;
+mod state;
 mod utils;
 mod validator;
 

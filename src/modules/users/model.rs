@@ -57,3 +57,17 @@ pub struct UserWithSchool {
     pub user: User,
     pub school: Option<School>,
 }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SchoolFilterParams {
+    pub name: Option<String>,
+    pub address: Option<String>,
+    #[serde(flatten)]
+    pub pagination: crate::utils::pagination::PaginationParams,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PaginatedSchoolsResponse {
+    pub data: Vec<School>,
+    pub meta: crate::utils::pagination::PaginationMeta,
+}

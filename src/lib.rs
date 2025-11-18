@@ -1,9 +1,9 @@
 pub mod cli;
 pub mod config;
-pub mod db;
 pub mod docs;
 pub mod middleware;
 pub mod modules;
 pub mod router;
+pub mod state;
 pub mod utils;
 pub mod validator;

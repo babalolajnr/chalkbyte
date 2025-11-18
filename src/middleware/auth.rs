@@ -3,10 +3,9 @@ use axum::{
     http::{header, request::Parts},
 };
 
-use crate::db::AppState;
-use crate::modules::auth::model::Claims;
 use crate::utils::errors::AppError;
 use crate::utils::jwt::verify_token;
+use crate::{modules::auth::model::Claims, state::AppState};
 
 #[derive(Debug, Clone)]
 pub struct AuthUser(pub Claims);

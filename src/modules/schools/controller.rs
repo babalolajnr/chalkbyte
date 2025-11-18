@@ -1,9 +1,13 @@
-use axum::{extract::State, Json, extract::Path};
+use axum::{
+    Json, extract::Path, extract::Query, extract::State, extract::rejection::QueryRejection,
+};
 use uuid::Uuid;
 
-use crate::db::AppState;
 use crate::middleware::auth::AuthUser;
-use crate::modules::users::model::{CreateSchoolDto, School};
+use crate::modules::users::model::{
+    CreateSchoolDto, PaginatedSchoolsResponse, School, SchoolFilterParams,
+};
+use crate::state::AppState;
 use crate::utils::errors::AppError;
 
 use super::service::SchoolService;
@@ -26,7 +30,9 @@ pub async fn create_school(
     Json(dto): Json<CreateSchoolDto>,
 ) -> Result<Json<School>, AppError> {
     if auth_user.0.role != "system_admin" {
-        return Err(AppError::forbidden("Only system admins can create schools".to_string()));
+        return Err(AppError::forbidden(
+            "Only system admins can create schools".to_string(),
+        ));
     }
 
     let school = SchoolService::create_school(&state.db, dto).await?;
@@ -36,8 +42,14 @@ pub async fn create_school(
 #[utoipa::path(
     get,
     path = "/api/schools",
+    params(
+        ("name" = Option<String>, Query, description = "Filter by school name (partial match)"),
+        ("address" = Option<String>, Query, description = "Filter by address (partial match)"),
+        ("limit" = Option<i64>, Query, description = "Limit number of results"),
+        ("offset" = Option<i64>, Query, description = "Offset for pagination")
+    ),
     responses(
-        (status = 200, description = "List of all schools", body = Vec<School>),
+        (status = 200, description = "Paginated list of schools", body = PaginatedSchoolsResponse),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden - System admin only")
     ),
@@ -47,12 +59,17 @@ pub async fn create_school(
 pub async fn get_all_schools(
     State(state): State<AppState>,
     auth_user: AuthUser,
-) -> Result<Json<Vec<School>>, AppError> {
+    filters: Result<Query<SchoolFilterParams>, QueryRejection>,
+) -> Result<Json<PaginatedSchoolsResponse>, AppError> {
+    let Query(filters) = filters
+        .map_err(|e| AppError::bad_request(anyhow::anyhow!("Invalid query parameters: {}", e)))?;
     if auth_user.0.role != "system_admin" {
-        return Err(AppError::forbidden("Only system admins can view all schools".to_string()));
+        return Err(AppError::forbidden(
+            "Only system admins can view all schools".to_string(),
+        ));
     }
 
-    let schools = SchoolService::get_all_schools(&state.db).await?;
+    let schools = SchoolService::get_all_schools(&state.db, filters).await?;
     Ok(Json(schools))
 }
 
@@ -100,7 +117,9 @@ pub async fn delete_school(
     Path(id): Path<Uuid>,
 ) -> Result<(), AppError> {
     if auth_user.0.role != "system_admin" {
-        return Err(AppError::forbidden("Only system admins can delete schools".to_string()));
+        return Err(AppError::forbidden(
+            "Only system admins can delete schools".to_string(),
+        ));
     }
 
     SchoolService::delete_school(&state.db, id).await?;

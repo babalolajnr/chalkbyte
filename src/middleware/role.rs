@@ -14,9 +14,9 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
-use crate::db::AppState;
 use crate::middleware::auth::AuthUser;
 use crate::modules::users::model::UserRole;
+use crate::state::AppState;
 use crate::utils::errors::AppError;
 
 /// Middleware function that checks if the authenticated user has one of the required roles.

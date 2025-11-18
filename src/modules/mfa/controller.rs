@@ -1,11 +1,10 @@
-use crate::db::AppState;
 use crate::middleware::auth::AuthUser;
+use crate::state::AppState;
 use crate::utils::errors::AppError;
 use crate::validator::ValidatedJson;
 use axum::Json;
 use axum::extract::State;
 use tracing::instrument;
-use utoipa::ToSchema;
 
 use super::model::{
     DisableMfaRequest, EnableMfaResponse, MessageResponse, MfaStatusResponse,

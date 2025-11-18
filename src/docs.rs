@@ -12,7 +12,11 @@ use crate::modules::mfa::model::{
 };
 use crate::modules::students::model::{CreateStudentDto, Student, UpdateStudentDto};
 use crate::modules::users::controller::ProfileResponse;
-use crate::modules::users::model::{CreateSchoolDto, CreateUserDto, School, User, UserRole};
+use crate::modules::users::model::{
+    CreateSchoolDto, CreateUserDto, PaginatedSchoolsResponse, School, SchoolFilterParams, User,
+    UserRole,
+};
+use crate::utils::pagination::{PaginationMeta, PaginationParams};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -65,6 +69,10 @@ use crate::modules::users::model::{CreateSchoolDto, CreateUserDto, School, User,
             Student,
             CreateStudentDto,
             UpdateStudentDto,
+            PaginationMeta,
+            PaginationParams,
+            SchoolFilterParams,
+            PaginatedSchoolsResponse,
         )
     ),
     modifiers(&SecurityAddon),

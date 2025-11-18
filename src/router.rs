@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use crate::db::AppState;
 use crate::docs::ApiDoc;
 use crate::middleware::role::{require_admin, require_system_admin};
 use crate::modules::auth::router::init_auth_router;
@@ -8,12 +7,13 @@ use crate::modules::mfa::router::init_mfa_router;
 use crate::modules::schools::router::init_schools_router;
 use crate::modules::students::router::init_students_router;
 use crate::modules::users::router::init_users_router;
+use crate::state::AppState;
 use axum::body::Bytes;
 use axum::extract::MatchedPath;
-use axum::http::Request;
+use axum::http::{HeaderValue, Method, Request};
 use axum::response::Response;
 use axum::{Router, http::HeaderMap, middleware};
-use tower_http::{classify::ServerErrorsFailureClass, trace::TraceLayer};
+use tower_http::{classify::ServerErrorsFailureClass, cors::CorsLayer, trace::TraceLayer};
 use tracing::{Span, error, info, info_span, warn};
 use utoipa::OpenApi;
 use utoipa_scalar::{Scalar, Servable as _};
@@ -46,7 +46,32 @@ pub fn init_router(state: AppState) -> Router {
                         .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
                 ),
         )
-        .with_state(state)
+        .with_state(state.clone())
+        .layer({
+            let allowed_origins: Vec<HeaderValue> = state
+                .cors_config
+                .allowed_origins
+                .iter()
+                .filter_map(|origin| origin.parse().ok())
+                .collect();
+
+            CorsLayer::new()
+                .allow_origin(allowed_origins)
+                .allow_methods([
+                    Method::GET,
+                    Method::POST,
+                    Method::PUT,
+                    Method::PATCH,
+                    Method::DELETE,
+                    Method::OPTIONS,
+                ])
+                .allow_headers([
+                    axum::http::header::AUTHORIZATION,
+                    axum::http::header::CONTENT_TYPE,
+                    axum::http::header::ACCEPT,
+                ])
+                .allow_credentials(true)
+        })
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &Request<_>| {

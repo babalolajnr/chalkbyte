@@ -1,4 +1,4 @@
-use crate::db::AppState;
+use crate::state::AppState;
 use axum::{Router, routing::post};
 
 use super::controller::{

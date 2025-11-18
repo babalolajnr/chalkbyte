@@ -1,9 +1,9 @@
-use crate::db::AppState;
 use crate::middleware::auth::AuthUser;
 use crate::modules::auth::controller::ErrorResponse;
 use crate::modules::students::model::{CreateStudentDto, Student, UpdateStudentDto};
 use crate::modules::students::service::StudentService;
 use crate::modules::users::service::UserService;
+use crate::state::AppState;
 use crate::utils::errors::AppError;
 use axum::{
     Json,
