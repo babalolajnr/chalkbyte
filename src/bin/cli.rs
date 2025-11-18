@@ -1,4 +1,5 @@
 use chalkbyte::cli::create_system_admin;
+use chalkbyte::cli::seeder::{UsersPerSchool, clear_seeded_data, seed_database};
 use clap::{Parser, Subcommand};
 use dialoguer::{Input, Password};
 use dotenvy::dotenv;
@@ -31,6 +32,26 @@ enum Commands {
         #[arg(short = 'p', long)]
         password: Option<String>,
     },
+    /// Seed the database with fake schools and users
+    Seed {
+        /// Number of schools to create
+        #[arg(short = 's', long, default_value = "5")]
+        schools: usize,
+
+        /// Number of admins per school
+        #[arg(long, default_value = "2")]
+        admins: usize,
+
+        /// Number of teachers per school
+        #[arg(long, default_value = "5")]
+        teachers: usize,
+
+        /// Number of students per school
+        #[arg(long, default_value = "20")]
+        students: usize,
+    },
+    /// Clear all seeded data (keeps system admins)
+    ClearSeed,
 }
 
 #[tokio::main]
@@ -55,6 +76,13 @@ async fn main() {
             email,
             password,
         } => handle_create_sysadmin(&pool, first_name, last_name, email, password).await,
+        Commands::Seed {
+            schools,
+            admins,
+            teachers,
+            students,
+        } => handle_seed(&pool, schools, admins, teachers, students).await,
+        Commands::ClearSeed => handle_clear_seed(&pool).await,
     }
 }
 
@@ -103,6 +131,38 @@ async fn handle_create_sysadmin(
         }
         Err(e) => {
             eprintln!("\n❌ Error creating system admin: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
+async fn handle_seed(
+    pool: &sqlx::postgres::PgPool,
+    schools: usize,
+    admins: usize,
+    teachers: usize,
+    students: usize,
+) {
+    let users_per_school = UsersPerSchool {
+        admins,
+        teachers,
+        students,
+    };
+
+    match seed_database(pool, schools, users_per_school).await {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("\n❌ Error seeding database: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
+async fn handle_clear_seed(pool: &sqlx::postgres::PgPool) {
+    match clear_seeded_data(pool).await {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("\n❌ Error clearing seeded data: {}", e);
             std::process::exit(1);
         }
     }

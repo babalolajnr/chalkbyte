@@ -67,6 +67,8 @@ http://localhost:3000/api-docs/openapi.json
 
 The project includes a separate CLI binary for administrative tasks with support for both interactive and non-interactive modes:
 
+### Create System Admin
+
 ```bash
 # Show CLI help
 cargo run --bin chalkbyte-cli -- --help
@@ -92,7 +94,41 @@ just cli                                                    # Show help
 just create-sysadmin John Doe john@example.com secure123   # Create admin
 ```
 
-The CLI binary is separate from the main server application for better separation of concerns and reduced binary size (77MB vs 114MB).
+### Database Seeders
+
+Populate your database with fake data for development and testing:
+
+```bash
+# Seed with default values (5 schools, 2 admins, 5 teachers, 20 students per school)
+cargo run --bin chalkbyte-cli -- seed
+
+# Custom seed
+cargo run --bin chalkbyte-cli -- seed -s 10 --admins 3 --teachers 8 --students 30
+
+# Minimal seed for quick testing
+cargo run --bin chalkbyte-cli -- seed -s 2 --admins 1 --teachers 2 --students 5
+
+# Clear all seeded data (keeps system admins)
+cargo run --bin chalkbyte-cli -- clear-seed
+
+# Using justfile shortcuts
+just seed                    # Default seed
+just seed-minimal            # Quick testing
+just seed-custom 50 3 10 25  # Custom values
+just clear-seed              # Cleanup
+```
+
+**Default password for seeded users: `password123`**
+
+**Performance:** Highly optimized with Rayon parallelization and batch inserts
+- 12,000 users in ~1.4s
+- 24,000 users in ~2.5s
+- Parallel data generation across all CPU cores
+- Batch inserts (500 schools, 1000 users per batch)
+
+See [docs/SEEDERS.md](./docs/SEEDERS.md) for detailed seeder documentation.
+
+The CLI binary is separate from the main server application for better separation of concerns and reduced binary size.
 
 ## Role-Based Access Control
 

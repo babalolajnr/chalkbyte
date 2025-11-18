@@ -22,6 +22,22 @@ create-sysadmin-interactive:
 create-sysadmin first_name last_name email password:
     cargo run --bin chalkbyte-cli -- create-sysadmin --first-name {{first_name}} --last-name {{last_name}} --email {{email}} --password {{password}}
 
+# Seed database with fake data (default: 5 schools, 2 admins, 5 teachers, 20 students per school)
+seed:
+    cargo run --bin chalkbyte-cli -- seed
+
+# Seed database with custom values
+seed-custom schools admins teachers students:
+    cargo run --bin chalkbyte-cli -- seed -s {{schools}} --admins {{admins}} --teachers {{teachers}} --students {{students}}
+
+# Seed database with minimal data for quick testing
+seed-minimal:
+    cargo run --bin chalkbyte-cli -- seed -s 2 --admins 1 --teachers 2 --students 5
+
+# Clear all seeded data (keeps system admins)
+clear-seed:
+    cargo run --bin chalkbyte-cli -- clear-seed
+
 # Build all binaries
 build:
     cargo build --bins
