@@ -20,9 +20,14 @@ Each log entry includes:
 timestamp level fields message
 ```
 
-Example:
+Examples:
 ```
 2025-11-19T10:15:32.123456Z INFO request_id=a1b2c3d4 method=GET path=/api/users status=200 latency_ms=45 Request completed
+```
+
+For errors:
+```
+2025-11-19T10:15:32.123456Z ERROR Internal server error occurred status=500 error="database query failed" error_chain=[...] file="src/modules/users/service.rs" line=42 column=18
 ```
 
 ## Configuration
@@ -71,6 +76,13 @@ request_id=<uuid> method=<HTTP_METHOD> path=<MATCHED_PATH> status=<STATUS_CODE> 
 ```
 
 ### Server Error (5xx)
+
+Detailed error log with location:
+```
+status=<STATUS_CODE> error=<ERROR_MSG> error_chain=[...] file=<FILE_PATH> line=<LINE_NUM> column=<COL_NUM> backtrace_available=<STATUS> "Internal server error occurred"
+```
+
+Request summary:
 ```
 request_id=<uuid> method=<HTTP_METHOD> path=<MATCHED_PATH> status=<STATUS_CODE> latency_ms=<DURATION> "Server error"
 ```
@@ -97,11 +109,17 @@ Server errors return a generic message to avoid leaking sensitive information:
 }
 ```
 
-The detailed error is logged server-side with full context:
+The detailed error is logged server-side with full context and location:
 
 ```
-ERROR status=500 error="database connection failed" error_chain=[...] Internal server error occurred
+ERROR status=500 error="database connection failed" error_chain=[...] file="src/modules/users/service.rs" line=42 column=18 backtrace_available=Captured Internal server error occurred
 ```
+
+This includes:
+- Exact file path where the error occurred
+- Line and column numbers
+- Full error chain showing context
+- Backtrace availability status
 
 ## Service-Level Logging
 
@@ -200,6 +218,33 @@ println!("User created");
 info!("User created");
 ```
 
+## Error Location Tracking
+
+All 500 errors automatically include the exact location where they occurred:
+
+```
+ERROR Internal server error occurred status=500 error="column not found" file="src/modules/schools/service.rs" line=155 column=25
+```
+
+This helps you:
+- Jump directly to the problematic code
+- Identify which function/query caused the error
+- Track error patterns by location
+- Debug production issues faster
+
+### How It Works
+
+The `#[track_caller]` attribute captures the caller location:
+
+```rust
+#[track_caller]
+pub fn internal_error(message: String) -> Self {
+    Self::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!(message))
+}
+```
+
+No manual tracking needed - it's automatic for all AppError constructors.
+
 ## Correlation
 
 Each request is assigned a unique `request_id` (UUID) that appears in all logs related to that request. Use this to trace the flow of a single request through the system.
@@ -220,6 +265,9 @@ For production environments:
 3. Set up alerts for ERROR level logs
 4. Monitor latency metrics from request logs
 5. Regularly review server error logs for patterns
+6. Group errors by file path and line number
+7. Set up alerts for new error locations
+8. Track error frequency per source location
 
 ## Troubleshooting
 
@@ -252,3 +300,29 @@ debug!(body = ?dto, "Request body received");
 ```
 
 Remember to remove or gate these behind debug builds to avoid logging sensitive data in production.
+
+## Backtrace Support
+
+Backtraces are automatically enabled for better debugging. The system captures:
+
+```bash
+# Automatically set by the application
+RUST_BACKTRACE=1
+```
+
+When a backtrace is captured, you'll see:
+
+```
+ERROR Error backtrace backtrace="
+   0: chalkbyte::modules::users::service::UserService::create
+      at src/modules/users/service.rs:42
+   1: chalkbyte::modules::users::controller::create_user
+      at src/modules/users/controller.rs:89
+   ..."
+```
+
+For full backtraces with all frames:
+
+```bash
+RUST_BACKTRACE=full cargo run
+```

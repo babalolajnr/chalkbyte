@@ -85,7 +85,11 @@ trace!(bytes = data.len(), "Data received");
 }
 ```
 
-Server logs contain full error details.
+Server logs contain full error details with exact file location:
+
+```
+ERROR Internal server error occurred status=500 error="..." error_chain=[...] file="src/modules/users/service.rs" line=42 column=18
+```
 
 ## Common Patterns
 
@@ -167,10 +171,29 @@ cargo run 2>&1 | grep "request_id=abc123"
 
 ## Example Log Output
 
+### Successful Request
 ```
 2025-11-19T10:15:32Z  INFO request_id=abc123 method=POST path=/api/users Incoming request
 2025-11-19T10:15:32Z  INFO request_id=abc123 method=POST path=/api/users status=201 latency_ms=45 Request completed
 ```
+
+### Server Error with Location
+```
+2025-11-19T10:30:45Z  INFO request_id=xyz789 method=GET path=/api/schools/123/students Incoming request
+2025-11-19T10:30:45Z ERROR Internal server error occurred status=500 error="column not found: role" error_chain=[ColumnNotFound("role")] file="src/modules/schools/service.rs" line=155 column=25 backtrace_available=Captured
+2025-11-19T10:30:45Z ERROR Server error request_id=xyz789 method=GET path=/api/schools/123/students status=500 latency_ms=18
+```
+
+## Error Location Tracking
+
+All 500 errors include:
+- **file**: Source file path
+- **line**: Line number
+- **column**: Column number
+- **error_chain**: Full error context
+- **backtrace_available**: Backtrace capture status
+
+Use this to jump directly to the problem code.
 
 ## Best Practices
 
