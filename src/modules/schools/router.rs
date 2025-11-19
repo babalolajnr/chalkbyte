@@ -5,10 +5,16 @@ use axum::{
 
 use crate::state::AppState;
 
-use super::controller::{create_school, delete_school, get_all_schools, get_school};
+use super::controller::{
+    create_school, delete_school, get_all_schools, get_school, get_school_admins,
+    get_school_full_info, get_school_students,
+};
 
 pub fn init_schools_router() -> Router<AppState> {
     Router::new()
         .route("/", post(create_school).get(get_all_schools))
         .route("/{id}", get(get_school).delete(delete_school))
+        .route("/{id}/students", get(get_school_students))
+        .route("/{id}/admins", get(get_school_admins))
+        .route("/{id}/full-info", get(get_school_full_info))
 }

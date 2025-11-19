@@ -13,8 +13,8 @@ use crate::modules::mfa::model::{
 use crate::modules::students::model::{CreateStudentDto, Student, UpdateStudentDto};
 use crate::modules::users::controller::ProfileResponse;
 use crate::modules::users::model::{
-    CreateSchoolDto, CreateUserDto, PaginatedSchoolsResponse, School, SchoolFilterParams, User,
-    UserRole,
+    CreateSchoolDto, CreateUserDto, PaginatedSchoolsResponse, PaginatedUsersResponse, School,
+    SchoolFilterParams, SchoolFullInfo, User, UserFilterParams, UserRole,
 };
 use crate::utils::pagination::{PaginationMeta, PaginationParams};
 
@@ -40,6 +40,9 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
         crate::modules::schools::controller::get_all_schools,
         crate::modules::schools::controller::get_school,
         crate::modules::schools::controller::delete_school,
+        crate::modules::schools::controller::get_school_students,
+        crate::modules::schools::controller::get_school_admins,
+        crate::modules::schools::controller::get_school_full_info,
         crate::modules::students::controller::create_student,
         crate::modules::students::controller::get_students,
         crate::modules::students::controller::get_student,
@@ -76,6 +79,9 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
             PaginationParams,
             SchoolFilterParams,
             PaginatedSchoolsResponse,
+            UserFilterParams,
+            PaginatedUsersResponse,
+            SchoolFullInfo,
         )
     ),
     modifiers(&SecurityAddon),

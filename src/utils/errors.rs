@@ -6,6 +6,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde_json::json;
+use tracing::error;
 use validator::ValidationErrors;
 
 #[derive(Debug)]
@@ -96,8 +97,20 @@ impl AppError {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
+        let error_message = if self.status.is_server_error() {
+            error!(
+                status = %self.status.as_u16(),
+                error = %self.error,
+                error_chain = ?self.error.chain().collect::<Vec<_>>(),
+                "Internal server error occurred"
+            );
+            "Internal server error".to_string()
+        } else {
+            self.error.to_string()
+        };
+
         let body = Json(json!({
-            "error": self.error.to_string()
+            "error": error_message
         }));
 
         (self.status, body).into_response()

@@ -71,3 +71,28 @@ pub struct PaginatedSchoolsResponse {
     pub data: Vec<School>,
     pub meta: crate::utils::pagination::PaginationMeta,
 }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UserFilterParams {
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub email: Option<String>,
+    #[serde(flatten)]
+    pub pagination: crate::utils::pagination::PaginationParams,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PaginatedUsersResponse {
+    pub data: Vec<User>,
+    pub meta: crate::utils::pagination::PaginationMeta,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SchoolFullInfo {
+    pub id: Uuid,
+    pub name: String,
+    pub address: Option<String>,
+    pub total_students: i64,
+    pub total_teachers: i64,
+    pub total_admins: i64,
+}

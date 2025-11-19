@@ -1,11 +1,10 @@
 use crate::router::init_router;
 use crate::state::init_app_state;
 use dotenvy::dotenv;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
 
 mod config;
 mod docs;
+mod logging;
 mod middleware;
 mod modules;
 mod router;
@@ -17,20 +16,7 @@ mod validator;
 async fn main() {
     dotenv().ok();
 
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                // axum logs rejections from built-in extractors with the `axum::rejection`
-                // target, at `TRACE` level. `axum::rejection=trace` enables showing those events
-                format!(
-                    "{}=debug,tower_http=debug,axum::rejection=trace",
-                    env!("CARGO_CRATE_NAME")
-                )
-                .into()
-            }),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    logging::init_tracing();
 
     let state = init_app_state().await;
     let app = init_router(state);
