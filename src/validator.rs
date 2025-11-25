@@ -92,9 +92,27 @@ where
     type Rejection = AppError;
 
     async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
-        let Json(value) = Json::<T>::from_request(req, state)
-            .await
-            .map_err(|e| AppError::bad_request(anyhow!("Failed to parse JSON: {}", e)))?;
+        let Json(value) = Json::<T>::from_request(req, state).await.map_err(|e| {
+            let error_msg = e.to_string();
+            if error_msg.contains("missing field") {
+                if let Some(start) = error_msg.find("missing field `") {
+                    if let Some(field_start) = error_msg[start..].find('`') {
+                        if let Some(field_end) = error_msg[start + field_start + 1..].find('`') {
+                            let field_name = &error_msg
+                                [start + field_start + 1..start + field_start + 1 + field_end];
+                            return AppError::bad_request(anyhow!(
+                                "Missing required field: {}",
+                                field_name
+                            ));
+                        }
+                    }
+                }
+                return AppError::bad_request(anyhow!("Missing required field in request body"));
+            } else if error_msg.contains("invalid type") {
+                return AppError::bad_request(anyhow!("Invalid field type in request body"));
+            }
+            AppError::bad_request(anyhow!("Invalid request body: {}", error_msg))
+        })?;
 
         value
             .validate()
@@ -126,9 +144,30 @@ where
 
         let value = if content_type.starts_with("application/json") {
             // Parse as JSON
-            let Json(value) = Json::<T>::from_request(req, state)
-                .await
-                .map_err(|e| AppError::bad_request(anyhow!("Failed to parse JSON: {}", e)))?;
+            let Json(value) = Json::<T>::from_request(req, state).await.map_err(|e| {
+                let error_msg = e.to_string();
+                if error_msg.contains("missing field") {
+                    if let Some(start) = error_msg.find("missing field `") {
+                        if let Some(field_start) = error_msg[start..].find('`') {
+                            if let Some(field_end) = error_msg[start + field_start + 1..].find('`')
+                            {
+                                let field_name = &error_msg
+                                    [start + field_start + 1..start + field_start + 1 + field_end];
+                                return AppError::bad_request(anyhow!(
+                                    "Missing required field: {}",
+                                    field_name
+                                ));
+                            }
+                        }
+                    }
+                    return AppError::bad_request(anyhow!(
+                        "Missing required field in request body"
+                    ));
+                } else if error_msg.contains("invalid type") {
+                    return AppError::bad_request(anyhow!("Invalid field type in request body"));
+                }
+                AppError::bad_request(anyhow!("Invalid request body: {}", error_msg))
+            })?;
             value
         } else if content_type.starts_with("application/x-www-form-urlencoded")
             || content_type.starts_with("multipart/form-data")
@@ -141,7 +180,28 @@ where
         } else {
             // Default to JSON if content type is not specified or unrecognized
             let Json(value) = Json::<T>::from_request(req, state).await.map_err(|e| {
-                AppError::bad_request(anyhow!("Failed to parse JSON (default): {}", e))
+                let error_msg = e.to_string();
+                if error_msg.contains("missing field") {
+                    if let Some(start) = error_msg.find("missing field `") {
+                        if let Some(field_start) = error_msg[start..].find('`') {
+                            if let Some(field_end) = error_msg[start + field_start + 1..].find('`')
+                            {
+                                let field_name = &error_msg
+                                    [start + field_start + 1..start + field_start + 1 + field_end];
+                                return AppError::bad_request(anyhow!(
+                                    "Missing required field: {}",
+                                    field_name
+                                ));
+                            }
+                        }
+                    }
+                    return AppError::bad_request(anyhow!(
+                        "Missing required field in request body"
+                    ));
+                } else if error_msg.contains("invalid type") {
+                    return AppError::bad_request(anyhow!("Invalid field type in request body"));
+                }
+                AppError::bad_request(anyhow!("Invalid request body: {}", error_msg))
             })?;
             value
         };

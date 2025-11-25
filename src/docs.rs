@@ -13,8 +13,9 @@ use crate::modules::mfa::model::{
 use crate::modules::students::model::{CreateStudentDto, Student, UpdateStudentDto};
 use crate::modules::users::controller::ProfileResponse;
 use crate::modules::users::model::{
-    CreateSchoolDto, CreateUserDto, PaginatedSchoolsResponse, PaginatedUsersResponse, School,
-    SchoolFilterParams, SchoolFullInfo, User, UserFilterParams, UserRole,
+    ChangePasswordDto, CreateSchoolDto, CreateUserDto, PaginatedSchoolsResponse,
+    PaginatedUsersResponse, School, SchoolFilterParams, SchoolFullInfo, UpdateProfileDto, User,
+    UserFilterParams, UserRole,
 };
 use crate::utils::pagination::{PaginationMeta, PaginationParams};
 
@@ -36,6 +37,8 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
         crate::modules::users::controller::create_user,
         crate::modules::users::controller::get_users,
         crate::modules::users::controller::get_profile,
+        crate::modules::users::controller::update_profile,
+        crate::modules::users::controller::change_password,
         crate::modules::schools::controller::create_school,
         crate::modules::schools::controller::get_all_schools,
         crate::modules::schools::controller::get_school,
@@ -54,6 +57,8 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
             User,
             UserRole,
             CreateUserDto,
+            UpdateProfileDto,
+            ChangePasswordDto,
             School,
             CreateSchoolDto,
             LoginRequest,

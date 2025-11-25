@@ -1,6 +1,13 @@
 use crate::{
-    modules::users::model::{CreateUserDto, School, User, UserRole, UserWithSchool},
-    utils::errors::AppError,
+    modules::users::model::{
+        ChangePasswordDto, CreateUserDto, PaginatedUsersResponse, School, UpdateProfileDto, User,
+        UserFilterParams, UserRole, UserWithSchool,
+    },
+    utils::{
+        errors::AppError,
+        pagination::PaginationMeta,
+        password::{hash_password, verify_password},
+    },
 };
 use anyhow::Context;
 use sqlx::PgPool;
@@ -32,38 +39,128 @@ impl UserService {
         Ok(user)
     }
 
-    pub async fn get_users(db: &PgPool) -> Result<Vec<User>, AppError> {
-        let users = sqlx::query_as!(
-            User,
-            r#"
-            SELECT id, first_name, last_name, email, role as "role: _", school_id
-            FROM users
-            "#
-        )
-        .fetch_all(db)
-        .await
-        .context("Failed to fetch users")
-        .map_err(AppError::database)?;
+    pub async fn get_users_paginated(
+        db: &PgPool,
+        filters: UserFilterParams,
+        school_id_filter: Option<Uuid>,
+    ) -> Result<PaginatedUsersResponse, AppError> {
+        let limit = filters.pagination.limit();
+        let offset = filters.pagination.offset();
 
-        Ok(users)
-    }
+        let mut conditions = vec![];
+        let mut param_count = 0;
 
-    pub async fn get_users_by_school(db: &PgPool, school_id: Uuid) -> Result<Vec<User>, AppError> {
-        let users = sqlx::query_as!(
-            User,
-            r#"
-            SELECT id, first_name, last_name, email, role as "role: _", school_id
-            FROM users
-            WHERE school_id = $1
-            "#,
-            school_id
-        )
-        .fetch_all(db)
-        .await
-        .context("Failed to fetch users by school")
-        .map_err(AppError::database)?;
+        let mut query = String::from(
+            r#"SELECT id, first_name, last_name, email, role as "role: UserRole", school_id FROM users WHERE 1=1"#,
+        );
 
-        Ok(users)
+        if let Some(ref first_name) = filters.first_name {
+            param_count += 1;
+            conditions.push((
+                param_count,
+                format!("first_name ILIKE ${}", param_count),
+                format!("%{}%", first_name),
+            ));
+        }
+
+        if let Some(ref last_name) = filters.last_name {
+            param_count += 1;
+            conditions.push((
+                param_count,
+                format!("last_name ILIKE ${}", param_count),
+                format!("%{}%", last_name),
+            ));
+        }
+
+        if let Some(ref email) = filters.email {
+            param_count += 1;
+            conditions.push((
+                param_count,
+                format!("email ILIKE ${}", param_count),
+                format!("%{}%", email),
+            ));
+        }
+
+        if let Some(ref role) = filters.role {
+            param_count += 1;
+            conditions.push((
+                param_count,
+                format!("role = ${}", param_count),
+                format!("{:?}", role).to_lowercase(),
+            ));
+        }
+
+        if let Some(sid) = filters.school_id {
+            param_count += 1;
+            conditions.push((
+                param_count,
+                format!("school_id = ${}", param_count),
+                sid.to_string(),
+            ));
+        }
+
+        if let Some(sid) = school_id_filter {
+            param_count += 1;
+            conditions.push((
+                param_count,
+                format!("school_id = ${}", param_count),
+                sid.to_string(),
+            ));
+        }
+
+        for (_, condition, _) in &conditions {
+            query.push_str(&format!(" AND {}", condition));
+        }
+
+        let count_query = query.replace(
+            r#"SELECT id, first_name, last_name, email, role as "role: UserRole", school_id FROM users"#,
+            "SELECT COUNT(*) as count FROM users",
+        );
+
+        query.push_str(&format!(
+            " ORDER BY created_at DESC LIMIT ${} OFFSET ${}",
+            param_count + 1,
+            param_count + 2
+        ));
+
+        let mut query_builder = sqlx::query_as::<_, User>(&query);
+        let mut count_query_builder = sqlx::query_scalar::<_, i64>(&count_query);
+
+        for (_, _, value) in &conditions {
+            if value.starts_with('%') {
+                query_builder = query_builder.bind(value);
+                count_query_builder = count_query_builder.bind(value);
+            } else if let Ok(uuid_val) = Uuid::parse_str(value) {
+                query_builder = query_builder.bind(uuid_val);
+                count_query_builder = count_query_builder.bind(uuid_val);
+            } else {
+                query_builder = query_builder.bind(value);
+                count_query_builder = count_query_builder.bind(value);
+            }
+        }
+
+        query_builder = query_builder.bind(limit).bind(offset);
+
+        let users = query_builder
+            .fetch_all(db)
+            .await
+            .context("Failed to fetch paginated users")
+            .map_err(AppError::database)?;
+
+        let total = count_query_builder
+            .fetch_one(db)
+            .await
+            .context("Failed to count users")
+            .map_err(AppError::database)?;
+
+        let meta = PaginationMeta {
+            total,
+            limit,
+            offset,
+            has_more: offset + limit < total,
+        };
+
+        Ok(PaginatedUsersResponse { data: users, meta })
     }
 
     pub async fn get_user(db: &PgPool, id: Uuid) -> Result<User, AppError> {
@@ -132,5 +229,68 @@ impl UserService {
         };
 
         Ok(UserWithSchool { user, school })
+    }
+
+    pub async fn update_profile(
+        db: &PgPool,
+        user_id: Uuid,
+        dto: UpdateProfileDto,
+    ) -> Result<User, AppError> {
+        let existing = Self::get_user(db, user_id).await?;
+
+        let first_name = dto.first_name.unwrap_or(existing.first_name);
+        let last_name = dto.last_name.unwrap_or(existing.last_name);
+
+        let user = sqlx::query_as!(
+            User,
+            r#"
+            UPDATE users
+            SET first_name = $1, last_name = $2, updated_at = NOW()
+            WHERE id = $3
+            RETURNING id, first_name, last_name, email, role as "role: _", school_id
+            "#,
+            first_name,
+            last_name,
+            user_id
+        )
+        .fetch_one(db)
+        .await
+        .context("Failed to update user profile")
+        .map_err(AppError::database)?;
+
+        Ok(user)
+    }
+
+    pub async fn change_password(
+        db: &PgPool,
+        user_id: Uuid,
+        dto: ChangePasswordDto,
+    ) -> Result<(), AppError> {
+        let password_hash =
+            sqlx::query_scalar::<_, String>("SELECT password FROM users WHERE id = $1")
+                .bind(user_id)
+                .fetch_optional(db)
+                .await
+                .context("Failed to fetch user password")
+                .map_err(AppError::database)?
+                .ok_or_else(|| AppError::not_found(anyhow::anyhow!("User not found")))?;
+
+        if !verify_password(&dto.current_password, &password_hash)? {
+            return Err(AppError::unauthorized(
+                "Current password is incorrect".to_string(),
+            ));
+        }
+
+        let new_password_hash = hash_password(&dto.new_password)?;
+
+        sqlx::query("UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2")
+            .bind(&new_password_hash)
+            .bind(user_id)
+            .execute(db)
+            .await
+            .context("Failed to update password")
+            .map_err(AppError::database)?;
+
+        Ok(())
     }
 }
