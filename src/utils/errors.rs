@@ -163,3 +163,163 @@ where
         AppError::internal(err)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::anyhow;
+
+    #[test]
+    fn test_app_error_new() {
+        let error = AppError::new(StatusCode::BAD_REQUEST, anyhow!("Test error"));
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert!(error.location.is_some());
+    }
+
+    #[test]
+    fn test_app_error_internal() {
+        let error = AppError::internal(anyhow!("Internal error"));
+        assert_eq!(error.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(error.location.is_some());
+    }
+
+    #[test]
+    fn test_app_error_not_found() {
+        let error = AppError::not_found(anyhow!("Not found"));
+        assert_eq!(error.status, StatusCode::NOT_FOUND);
+        assert!(error.location.is_some());
+    }
+
+    #[test]
+    fn test_app_error_unprocessable() {
+        let error = AppError::unprocessable(anyhow!("Unprocessable entity"));
+        assert_eq!(error.status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(error.location.is_some());
+    }
+
+    #[test]
+    fn test_app_error_bad_request() {
+        let error = AppError::bad_request(anyhow!("Bad request"));
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert!(error.location.is_some());
+    }
+
+    #[test]
+    fn test_app_error_database() {
+        let error = AppError::database(anyhow!("Database error"));
+        assert_eq!(error.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(error.location.is_some());
+    }
+
+    #[test]
+    fn test_app_error_unauthorized() {
+        let error = AppError::unauthorized("Unauthorized access".to_string());
+        assert_eq!(error.status, StatusCode::UNAUTHORIZED);
+        assert_eq!(error.error.to_string(), "Unauthorized access");
+        assert!(error.location.is_some());
+    }
+
+    #[test]
+    fn test_app_error_forbidden() {
+        let error = AppError::forbidden("Forbidden access".to_string());
+        assert_eq!(error.status, StatusCode::FORBIDDEN);
+        assert_eq!(error.error.to_string(), "Forbidden access");
+        assert!(error.location.is_some());
+    }
+
+    #[test]
+    fn test_app_error_internal_error() {
+        let error = AppError::internal_error("Internal server error".to_string());
+        assert_eq!(error.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(error.error.to_string(), "Internal server error");
+        assert!(error.location.is_some());
+    }
+
+    #[test]
+    fn test_app_error_from_anyhow() {
+        let anyhow_error = anyhow!("Test anyhow error");
+        let app_error: AppError = anyhow_error.into();
+        assert_eq!(app_error.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(app_error.location.is_some());
+    }
+
+    #[test]
+    fn test_app_error_from_string() {
+        let string_error = "String error".to_string();
+        let app_error: AppError = anyhow!(string_error).into();
+        assert_eq!(app_error.status, StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn test_app_error_messages_preserved() {
+        let custom_message = "Custom error message with special chars: !@#$%";
+        let error = AppError::bad_request(anyhow!(custom_message));
+        assert_eq!(error.error.to_string(), custom_message);
+    }
+
+    #[test]
+    fn test_app_error_different_status_codes() {
+        let statuses = vec![
+            (
+                StatusCode::BAD_REQUEST,
+                AppError::bad_request(anyhow!("bad")),
+            ),
+            (
+                StatusCode::NOT_FOUND,
+                AppError::not_found(anyhow!("not found")),
+            ),
+            (
+                StatusCode::FORBIDDEN,
+                AppError::forbidden("forbidden".to_string()),
+            ),
+            (
+                StatusCode::UNAUTHORIZED,
+                AppError::unauthorized("unauthorized".to_string()),
+            ),
+            (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                AppError::unprocessable(anyhow!("unprocessable")),
+            ),
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                AppError::internal(anyhow!("internal")),
+            ),
+        ];
+
+        for (expected_status, error) in statuses {
+            assert_eq!(error.status, expected_status);
+        }
+    }
+
+    #[test]
+    fn test_app_error_location_tracking() {
+        let error1 = AppError::bad_request(anyhow!("error1"));
+        let error2 = AppError::not_found(anyhow!("error2"));
+
+        assert!(error1.location.is_some());
+        assert!(error2.location.is_some());
+
+        let loc1 = error1.location.unwrap();
+        let loc2 = error2.location.unwrap();
+
+        assert_ne!(loc1.line(), loc2.line());
+    }
+
+    #[test]
+    fn test_app_error_chain() {
+        let base_error = anyhow!("Base error");
+        let wrapped_error = base_error.context("Wrapped context");
+        let app_error = AppError::internal(wrapped_error);
+
+        assert_eq!(app_error.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(app_error.error.to_string().contains("Wrapped context"));
+    }
+
+    #[test]
+    fn test_app_error_validation() {
+        use validator::ValidationErrors;
+        let mut errors = ValidationErrors::new();
+        let error = AppError::validation(errors);
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+    }
+}
