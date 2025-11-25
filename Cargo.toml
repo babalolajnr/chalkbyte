@@ -26,6 +26,7 @@ sqlx = { version = "0.8", features = [
   "uuid",
   "chrono",
   "migrate",
+  "macros",
 ] }
 uuid = { version = "1.18", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
@@ -51,7 +52,6 @@ fake = { version = "4", features = ["derive", "chrono", "uuid"] }
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["json"] }
 tokio-test = "0.4"
-serial_test = "3.2"
 tower = { version = "0.5", features = ["util"] }
 hyper = { version = "1.6", features = ["full"] }
 http-body-util = "0.1"

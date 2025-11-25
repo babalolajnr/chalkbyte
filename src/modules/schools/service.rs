@@ -82,7 +82,8 @@ impl SchoolService {
             meta: PaginationMeta {
                 total,
                 limit,
-                offset,
+                offset: Some(offset),
+                page: None,
                 has_more,
             },
         })
@@ -171,7 +172,8 @@ impl SchoolService {
             meta: PaginationMeta {
                 total,
                 limit,
-                offset,
+                offset: Some(offset),
+                page: None,
                 has_more,
             },
         })
@@ -234,7 +236,8 @@ impl SchoolService {
             meta: PaginationMeta {
                 total,
                 limit,
-                offset,
+                offset: Some(offset),
+                page: None,
                 has_more,
             },
         })

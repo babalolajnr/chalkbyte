@@ -47,6 +47,10 @@ pub async fn create_user(
 ) -> Result<Json<User>, AppError> {
     use crate::modules::users::model::UserRole;
 
+    // Validate DTO
+    dto.validate()
+        .map_err(|e| AppError::unprocessable(anyhow::anyhow!("Validation error: {}", e)))?;
+
     // Parse role from string to UserRole for validation
     let requester_role = match auth_user.0.role.as_str() {
         "system_admin" => UserRole::SystemAdmin,
@@ -170,7 +174,7 @@ pub async fn get_users(
     get,
     path = "/api/users/profile",
     responses(
-        (status = 200, description = "User profile", body = ProfileResponse),
+        (status = 200, description = "User profile", body = UserWithSchool),
         (status = 401, description = "Unauthorized - missing or invalid token", body = ErrorResponse),
     ),
     security(
@@ -182,7 +186,7 @@ pub async fn get_users(
 pub async fn get_profile(
     State(state): State<AppState>,
     auth_user: AuthUser,
-) -> Result<Json<ProfileResponse>, AppError> {
+) -> Result<Json<UserWithSchool>, AppError> {
     let user = UserService::get_user_with_school(
         &state.db,
         uuid::Uuid::parse_str(&auth_user.0.sub)
@@ -190,7 +194,7 @@ pub async fn get_profile(
     )
     .await?;
 
-    Ok(Json(ProfileResponse { info: user }))
+    Ok(Json(user))
 }
 
 /// Update current user profile (name only)
@@ -199,7 +203,7 @@ pub async fn get_profile(
     path = "/api/users/profile",
     request_body = UpdateProfileDto,
     responses(
-        (status = 200, description = "Profile updated successfully", body = User),
+        (status = 200, description = "Profile updated successfully", body = UserWithSchool),
         (status = 400, description = "Bad request - validation error", body = ErrorResponse),
         (status = 401, description = "Unauthorized - missing or invalid token", body = ErrorResponse),
     ),
@@ -213,14 +217,16 @@ pub async fn update_profile(
     State(state): State<AppState>,
     auth_user: AuthUser,
     Json(dto): Json<UpdateProfileDto>,
-) -> Result<Json<User>, AppError> {
+) -> Result<Json<UserWithSchool>, AppError> {
     dto.validate()
         .map_err(|e| AppError::bad_request(anyhow::anyhow!("Validation error: {}", e)))?;
 
     let user_id = uuid::Uuid::parse_str(&auth_user.0.sub)
         .map_err(|_| AppError::bad_request(anyhow::anyhow!("Invalid user ID")))?;
 
-    let user = UserService::update_profile(&state.db, user_id, dto).await?;
+    UserService::update_profile(&state.db, user_id, dto).await?;
+
+    let user = UserService::get_user_with_school(&state.db, user_id).await?;
 
     Ok(Json(user))
 }
@@ -247,7 +253,7 @@ pub async fn change_password(
     Json(dto): Json<ChangePasswordDto>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     dto.validate()
-        .map_err(|e| AppError::bad_request(anyhow::anyhow!("Validation error: {}", e)))?;
+        .map_err(|e| AppError::unprocessable(anyhow::anyhow!("Validation error: {}", e)))?;
 
     let user_id = uuid::Uuid::parse_str(&auth_user.0.sub)
         .map_err(|_| AppError::bad_request(anyhow::anyhow!("Invalid user ID")))?;

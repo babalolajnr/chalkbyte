@@ -17,7 +17,10 @@ where
 pub struct PaginationMeta {
     pub total: i64,
     pub limit: i64,
-    pub offset: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page: Option<i64>,
     pub has_more: bool,
 }
 
@@ -27,6 +30,8 @@ pub struct PaginationParams {
     pub limit: Option<i64>,
     #[serde(default, deserialize_with = "deserialize_optional_i64")]
     pub offset: Option<i64>,
+    #[serde(default, deserialize_with = "deserialize_optional_i64")]
+    pub page: Option<i64>,
 }
 
 impl Default for PaginationParams {
@@ -34,6 +39,7 @@ impl Default for PaginationParams {
         Self {
             limit: Some(10),
             offset: Some(0),
+            page: Some(1),
         }
     }
 }
@@ -44,7 +50,18 @@ impl PaginationParams {
     }
 
     pub fn offset(&self) -> i64 {
-        self.offset.unwrap_or(0).max(0)
+        // If page is provided, calculate offset from page
+        if let Some(page) = self.page {
+            let page = page.max(1);
+            let limit = self.limit();
+            (page - 1) * limit
+        } else {
+            self.offset.unwrap_or(0).max(0)
+        }
+    }
+
+    pub fn page(&self) -> Option<i64> {
+        self.page.map(|p| p.max(1))
     }
 }
 
@@ -76,6 +93,7 @@ mod tests {
         let params = PaginationParams {
             limit: Some(20),
             offset: Some(40),
+            page: None,
         };
         assert_eq!(params.limit(), 20);
         assert_eq!(params.offset(), 40);
@@ -86,6 +104,7 @@ mod tests {
         let params = PaginationParams {
             limit: Some(0),
             offset: Some(0),
+            page: None,
         };
         assert_eq!(params.limit(), 1);
     }
@@ -95,6 +114,7 @@ mod tests {
         let params = PaginationParams {
             limit: Some(150),
             offset: Some(0),
+            page: None,
         };
         assert_eq!(params.limit(), 100);
     }
@@ -104,6 +124,7 @@ mod tests {
         let params = PaginationParams {
             limit: Some(-10),
             offset: Some(0),
+            page: None,
         };
         assert_eq!(params.limit(), 1);
     }
@@ -113,6 +134,7 @@ mod tests {
         let params = PaginationParams {
             limit: Some(10),
             offset: Some(-5),
+            page: None,
         };
         assert_eq!(params.offset(), 0);
     }
@@ -122,6 +144,7 @@ mod tests {
         let params = PaginationParams {
             limit: None,
             offset: None,
+            page: None,
         };
         assert_eq!(params.limit(), 10);
         assert_eq!(params.offset(), 0);
@@ -132,6 +155,7 @@ mod tests {
         let params = PaginationParams {
             limit: Some(100),
             offset: Some(0),
+            page: None,
         };
         assert_eq!(params.limit(), 100);
     }
@@ -141,6 +165,7 @@ mod tests {
         let params = PaginationParams {
             limit: Some(1),
             offset: Some(0),
+            page: None,
         };
         assert_eq!(params.limit(), 1);
     }
@@ -150,6 +175,7 @@ mod tests {
         let params = PaginationParams {
             limit: Some(10),
             offset: Some(1000),
+            page: None,
         };
         assert_eq!(params.offset(), 1000);
     }
@@ -159,12 +185,13 @@ mod tests {
         let meta = PaginationMeta {
             total: 5,
             limit: 10,
-            offset: 0,
+            offset: Some(0),
+            page: Some(1),
             has_more: false,
         };
         assert_eq!(meta.total, 5);
         assert_eq!(meta.limit, 10);
-        assert_eq!(meta.offset, 0);
+        assert_eq!(meta.offset, Some(0));
         assert!(!meta.has_more);
     }
 
@@ -173,12 +200,13 @@ mod tests {
         let meta = PaginationMeta {
             total: 100,
             limit: 10,
-            offset: 20,
+            offset: Some(20),
+            page: Some(3),
             has_more: true,
         };
         assert_eq!(meta.total, 100);
         assert_eq!(meta.limit, 10);
-        assert_eq!(meta.offset, 20);
+        assert_eq!(meta.offset, Some(20));
         assert!(meta.has_more);
     }
 
@@ -187,7 +215,8 @@ mod tests {
         let meta = PaginationMeta {
             total: 50,
             limit: 10,
-            offset: 0,
+            offset: Some(0),
+            page: Some(1),
             has_more: true,
         };
         assert!(meta.has_more);
@@ -198,7 +227,8 @@ mod tests {
         let meta = PaginationMeta {
             total: 10,
             limit: 10,
-            offset: 0,
+            offset: Some(0),
+            page: Some(1),
             has_more: false,
         };
         assert!(!meta.has_more);
@@ -209,7 +239,8 @@ mod tests {
         let meta = PaginationMeta {
             total: 100,
             limit: 20,
-            offset: 40,
+            offset: Some(40),
+            page: Some(3),
             has_more: true,
         };
         let serialized = serde_json::to_string(&meta).unwrap();
@@ -274,6 +305,7 @@ mod tests {
             let params = PaginationParams {
                 limit: input,
                 offset: Some(0),
+                page: None,
             };
             assert_eq!(params.limit(), expected);
         }
@@ -293,6 +325,7 @@ mod tests {
             let params = PaginationParams {
                 limit: Some(10),
                 offset: input,
+                page: None,
             };
             assert_eq!(params.offset(), expected);
         }
@@ -303,7 +336,8 @@ mod tests {
         let meta = PaginationMeta {
             total: 0,
             limit: 10,
-            offset: 0,
+            offset: Some(0),
+            page: Some(1),
             has_more: false,
         };
         assert_eq!(meta.total, 0);
@@ -315,11 +349,12 @@ mod tests {
         let meta = PaginationMeta {
             total: 1000000,
             limit: 100,
-            offset: 5000,
+            offset: Some(5000),
+            page: Some(51),
             has_more: true,
         };
         assert_eq!(meta.total, 1000000);
         assert_eq!(meta.limit, 100);
-        assert_eq!(meta.offset, 5000);
+        assert_eq!(meta.offset, Some(5000));
     }
 }

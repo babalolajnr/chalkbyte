@@ -69,26 +69,6 @@ pub async fn create_test_school(tx: &mut Transaction<'_, Postgres>, name: &str) 
     }
 }
 
-pub async fn cleanup_test_data(pool: &PgPool) {
-    sqlx::query!("DELETE FROM users WHERE email LIKE '%@test.com'")
-        .execute(pool)
-        .await
-        .unwrap();
-
-    sqlx::query!("DELETE FROM schools WHERE name LIKE 'Test%'")
-        .execute(pool)
-        .await
-        .unwrap();
-}
-
-pub async fn get_test_pool() -> PgPool {
-    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
-
-    PgPool::connect(&database_url)
-        .await
-        .expect("Failed to connect to test database")
-}
-
 pub fn generate_unique_email() -> String {
     format!("test-{}@test.com", Uuid::new_v4())
 }

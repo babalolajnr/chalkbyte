@@ -2,24 +2,30 @@ mod common;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use chalkbyte::config::cors::CorsConfig;
+use chalkbyte::config::email::EmailConfig;
+use chalkbyte::config::jwt::JwtConfig;
 use chalkbyte::router::init_router;
-use chalkbyte::state::init_app_state;
-use common::{cleanup_test_data, create_test_user, generate_unique_email, get_test_pool};
+use chalkbyte::state::AppState;
+use common::{create_test_user, generate_unique_email};
 use http_body_util::BodyExt;
 use serde_json::json;
-use serial_test::serial;
+use sqlx::PgPool;
 use tower::ServiceExt;
 
-async fn setup_test_app() -> axum::Router {
+async fn setup_test_app(pool: PgPool) -> axum::Router {
     dotenvy::dotenv().ok();
-    let state = init_app_state().await;
+    let state = AppState {
+        db: pool,
+        jwt_config: JwtConfig::from_env(),
+        email_config: EmailConfig::from_env(),
+        cors_config: CorsConfig::from_env(),
+    };
     init_router(state)
 }
 
-#[tokio::test]
-#[serial]
-async fn test_login_success() {
-    let pool = get_test_pool().await;
+#[sqlx::test(migrations = "./migrations")]
+async fn test_login_success(pool: PgPool) {
     let mut tx = pool.begin().await.unwrap();
 
     let email = generate_unique_email();
@@ -28,7 +34,7 @@ async fn test_login_success() {
 
     tx.commit().await.unwrap();
 
-    let app = setup_test_app().await;
+    let app = setup_test_app(pool.clone()).await;
 
     let request = Request::builder()
         .method("POST")
@@ -53,14 +59,11 @@ async fn test_login_success() {
     assert!(body.get("access_token").is_some());
     assert!(body.get("user").is_some());
     assert_eq!(body["user"]["email"], email);
-
-    cleanup_test_data(&pool).await;
 }
 
-#[tokio::test]
-#[serial]
-async fn test_login_invalid_credentials() {
-    let app = setup_test_app().await;
+#[sqlx::test(migrations = "./migrations")]
+async fn test_login_invalid_credentials(pool: PgPool) {
+    let app = setup_test_app(pool.clone()).await;
 
     let request = Request::builder()
         .method("POST")
@@ -80,10 +83,9 @@ async fn test_login_invalid_credentials() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
-#[tokio::test]
-#[serial]
-async fn test_login_invalid_email_format() {
-    let app = setup_test_app().await;
+#[sqlx::test(migrations = "./migrations")]
+async fn test_login_invalid_email_format(pool: PgPool) {
+    let app = setup_test_app(pool.clone()).await;
 
     let request = Request::builder()
         .method("POST")
@@ -100,13 +102,12 @@ async fn test_login_invalid_email_format() {
 
     let response = app.oneshot(request).await.unwrap();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
-#[tokio::test]
-#[serial]
-async fn test_login_missing_password() {
-    let app = setup_test_app().await;
+#[sqlx::test(migrations = "./migrations")]
+async fn test_login_missing_password(pool: PgPool) {
+    let app = setup_test_app(pool.clone()).await;
 
     let request = Request::builder()
         .method("POST")
@@ -125,10 +126,8 @@ async fn test_login_missing_password() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
-#[tokio::test]
-#[serial]
-async fn test_login_wrong_password() {
-    let pool = get_test_pool().await;
+#[sqlx::test(migrations = "./migrations")]
+async fn test_login_wrong_password(pool: PgPool) {
     let mut tx = pool.begin().await.unwrap();
 
     let email = generate_unique_email();
@@ -137,7 +136,7 @@ async fn test_login_wrong_password() {
 
     tx.commit().await.unwrap();
 
-    let app = setup_test_app().await;
+    let app = setup_test_app(pool.clone()).await;
 
     let request = Request::builder()
         .method("POST")
@@ -155,14 +154,10 @@ async fn test_login_wrong_password() {
     let response = app.oneshot(request).await.unwrap();
 
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-
-    cleanup_test_data(&pool).await;
 }
 
-#[tokio::test]
-#[serial]
-async fn test_login_returns_correct_role() {
-    let pool = get_test_pool().await;
+#[sqlx::test(migrations = "./migrations")]
+async fn test_login_returns_correct_role(pool: PgPool) {
     let mut tx = pool.begin().await.unwrap();
 
     let email = generate_unique_email();
@@ -171,7 +166,7 @@ async fn test_login_returns_correct_role() {
 
     tx.commit().await.unwrap();
 
-    let app = setup_test_app().await;
+    let app = setup_test_app(pool.clone()).await;
 
     let request = Request::builder()
         .method("POST")
@@ -193,6 +188,4 @@ async fn test_login_returns_correct_role() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(body["user"]["role"], "admin");
-
-    cleanup_test_data(&pool).await;
 }

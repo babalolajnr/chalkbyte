@@ -1,19 +1,23 @@
 use crate::middleware::auth::AuthUser;
 use crate::modules::auth::controller::ErrorResponse;
-use crate::modules::students::model::{CreateStudentDto, Student, UpdateStudentDto};
+use crate::modules::students::model::{
+    CreateStudentDto, PaginatedStudentsResponse, PaginationMeta, QueryParams, Student,
+    UpdateStudentDto,
+};
 use crate::modules::students::service::StudentService;
 use crate::modules::users::service::UserService;
 use crate::state::AppState;
 use crate::utils::errors::AppError;
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
 };
+use serde_json::json;
 use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
-/// Returns the school ID for the given admin user.
+/// Returns the school ID for the given admin or teacher user.
 ///
 /// This function parses the user ID from the `auth_user`, fetches the user from the database,
 /// and returns the associated `school_id` if present. If the user is not assigned to a school,
@@ -27,7 +31,7 @@ use validator::Validate;
 /// # Errors
 ///
 /// Returns `AppError::bad_request` if the user ID is invalid.
-/// Returns `AppError::forbidden` if the admin is not assigned to a school.
+/// Returns `AppError::forbidden` if the user is not assigned to a school.
 /// Returns any error from `UserService::get_user`.
 async fn get_admin_school_id(db: &sqlx::PgPool, auth_user: &AuthUser) -> Result<Uuid, AppError> {
     let user_id = Uuid::parse_str(&auth_user.0.sub)
@@ -36,7 +40,7 @@ async fn get_admin_school_id(db: &sqlx::PgPool, auth_user: &AuthUser) -> Result<
     let user = UserService::get_user(db, user_id).await?;
 
     user.school_id
-        .ok_or_else(|| AppError::forbidden("Admin must be assigned to a school".to_string()))
+        .ok_or_else(|| AppError::forbidden("User must be assigned to a school".to_string()))
 }
 
 #[utoipa::path(
@@ -68,7 +72,7 @@ pub async fn create_student(
     }
 
     dto.validate()
-        .map_err(|e| AppError::bad_request(anyhow::anyhow!("Validation failed: {}", e)))?;
+        .map_err(|e| AppError::unprocessable(anyhow::anyhow!("Validation failed: {}", e)))?;
 
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
@@ -79,8 +83,11 @@ pub async fn create_student(
 #[utoipa::path(
     get,
     path = "/api/students",
+    params(
+        QueryParams
+    ),
     responses(
-        (status = 200, description = "List of students", body = Vec<Student>),
+        (status = 200, description = "List of students", body = PaginatedStudentsResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
         (status = 403, description = "Forbidden - School Admin only", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
@@ -94,7 +101,8 @@ pub async fn create_student(
 pub async fn get_students(
     State(state): State<AppState>,
     auth_user: AuthUser,
-) -> Result<Json<Vec<Student>>, AppError> {
+    Query(params): Query<QueryParams>,
+) -> Result<Json<PaginatedStudentsResponse>, AppError> {
     if auth_user.0.role != "admin" {
         return Err(AppError::forbidden(
             "Only school admins can list students".to_string(),
@@ -103,8 +111,26 @@ pub async fn get_students(
 
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
-    let students = StudentService::get_students_by_school(&state.db, school_id).await?;
-    Ok(Json(students))
+    let limit = params.limit();
+    let offset = params.offset();
+    let page = params.page();
+
+    let (students, total) =
+        StudentService::get_students_by_school(&state.db, school_id, limit, offset).await?;
+
+    let total_pages = (total as f64 / limit as f64).ceil() as i64;
+
+    let response = PaginatedStudentsResponse {
+        data: students,
+        meta: PaginationMeta {
+            page,
+            limit,
+            total,
+            total_pages,
+        },
+    };
+
+    Ok(Json(response))
 }
 
 #[utoipa::path(
@@ -177,7 +203,7 @@ pub async fn update_student(
     }
 
     dto.validate()
-        .map_err(|e| AppError::bad_request(anyhow::anyhow!("Validation failed: {}", e)))?;
+        .map_err(|e| AppError::unprocessable(anyhow::anyhow!("Validation failed: {}", e)))?;
 
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
@@ -192,7 +218,7 @@ pub async fn update_student(
         ("id" = Uuid, Path, description = "Student ID")
     ),
     responses(
-        (status = 204, description = "Student deleted successfully"),
+        (status = 200, description = "Student deleted successfully"),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
         (status = 403, description = "Forbidden - School Admin only", body = ErrorResponse),
         (status = 404, description = "Student not found", body = ErrorResponse),
@@ -208,7 +234,7 @@ pub async fn delete_student(
     State(state): State<AppState>,
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
-) -> Result<axum::http::StatusCode, AppError> {
+) -> Result<Json<serde_json::Value>, AppError> {
     if auth_user.0.role != "admin" {
         return Err(AppError::forbidden(
             "Only school admins can delete students".to_string(),
@@ -218,5 +244,5 @@ pub async fn delete_student(
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     StudentService::delete_student(&state.db, id, school_id).await?;
-    Ok(axum::http::StatusCode::NO_CONTENT)
+    Ok(Json(json!({"message": "Student deleted successfully"})))
 }

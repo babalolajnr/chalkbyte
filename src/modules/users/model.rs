@@ -30,11 +30,16 @@ pub struct User {
     pub school_id: Option<Uuid>,
 }
 
-#[derive(Deserialize, Debug, ToSchema)]
+#[derive(Deserialize, Debug, Validate, ToSchema)]
 pub struct CreateUserDto {
+    #[validate(length(min = 1))]
     pub first_name: String,
+    #[validate(length(min = 1))]
     pub last_name: String,
+    #[validate(email)]
     pub email: String,
+    #[validate(length(min = 8))]
+    pub password: String,
     #[serde(default)]
     pub role: Option<UserRole>,
     pub school_id: Option<Uuid>,
@@ -111,6 +116,7 @@ pub struct UpdateProfileDto {
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct ChangePasswordDto {
     #[validate(length(min = 1))]
+    #[serde(alias = "old_password")]
     pub current_password: String,
     #[validate(length(min = 8))]
     #[schema(example = "newPassword123")]
@@ -316,11 +322,12 @@ mod tests {
 
     #[test]
     fn test_create_user_dto_deserialize() {
-        let json = r#"{"first_name":"Jane","last_name":"Smith","email":"jane@test.com","role":"teacher","school_id":null}"#;
+        let json = r#"{"first_name":"Jane","last_name":"Smith","email":"jane@test.com","password":"password123","role":"teacher","school_id":null}"#;
         let dto: CreateUserDto = serde_json::from_str(json).unwrap();
         assert_eq!(dto.first_name, "Jane");
         assert_eq!(dto.last_name, "Smith");
         assert_eq!(dto.email, "jane@test.com");
+        assert_eq!(dto.password, "password123");
         assert_eq!(dto.role, Some(UserRole::Teacher));
     }
 

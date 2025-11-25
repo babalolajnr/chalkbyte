@@ -10,7 +10,7 @@ use crate::{
     },
 };
 use anyhow::Context;
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 pub struct UserService;
@@ -18,23 +18,34 @@ pub struct UserService;
 impl UserService {
     pub async fn create_user(db: &PgPool, dto: CreateUserDto) -> Result<User, AppError> {
         let role = dto.role.unwrap_or_default();
+        let password_hash = hash_password(&dto.password)?;
+
         let user = sqlx::query_as!(
             User,
             r#"
-            INSERT INTO users (first_name, last_name, email, role, school_id)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO users (first_name, last_name, email, password, role, school_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING id, first_name, last_name, email, role as "role: _", school_id
             "#,
             dto.first_name,
             dto.last_name,
             dto.email,
+            password_hash,
             role as _,
             dto.school_id
         )
         .fetch_one(db)
         .await
-        .context("Failed to insert user")
-        .map_err(AppError::database)?;
+        .map_err(|e| {
+            if let sqlx::Error::Database(db_err) = &e {
+                if db_err.is_unique_violation() {
+                    return AppError::unprocessable(anyhow::anyhow!(
+                        "User with this email already exists"
+                    ));
+                }
+            }
+            AppError::database(anyhow::Error::new(e).context("Failed to insert user"))
+        })?;
 
         Ok(user)
     }
@@ -46,12 +57,13 @@ impl UserService {
     ) -> Result<PaginatedUsersResponse, AppError> {
         let limit = filters.pagination.limit();
         let offset = filters.pagination.offset();
+        let page = filters.pagination.page();
 
         let mut conditions = vec![];
         let mut param_count = 0;
 
         let mut query = String::from(
-            r#"SELECT id, first_name, last_name, email, role as "role: UserRole", school_id FROM users WHERE 1=1"#,
+            r#"SELECT id, first_name, last_name, email, role::text as role, school_id FROM users WHERE 1=1"#,
         );
 
         if let Some(ref first_name) = filters.first_name {
@@ -113,7 +125,7 @@ impl UserService {
         }
 
         let count_query = query.replace(
-            r#"SELECT id, first_name, last_name, email, role as "role: UserRole", school_id FROM users"#,
+            r#"SELECT id, first_name, last_name, email, role::text as role, school_id FROM users"#,
             "SELECT COUNT(*) as count FROM users",
         );
 
@@ -123,7 +135,7 @@ impl UserService {
             param_count + 2
         ));
 
-        let mut query_builder = sqlx::query_as::<_, User>(&query);
+        let mut query_builder = sqlx::query(&query);
         let mut count_query_builder = sqlx::query_scalar::<_, i64>(&count_query);
 
         for (_, _, value) in &conditions {
@@ -141,11 +153,54 @@ impl UserService {
 
         query_builder = query_builder.bind(limit).bind(offset);
 
-        let users = query_builder
+        let rows = query_builder
             .fetch_all(db)
             .await
             .context("Failed to fetch paginated users")
             .map_err(AppError::database)?;
+
+        let users: Result<Vec<User>, AppError> = rows
+            .iter()
+            .map(|row| {
+                let role_str: String = row.try_get("role").map_err(|e| {
+                    AppError::database(anyhow::Error::new(e).context("Failed to get role"))
+                })?;
+                let role = match role_str.as_str() {
+                    "system_admin" => UserRole::SystemAdmin,
+                    "admin" => UserRole::Admin,
+                    "teacher" => UserRole::Teacher,
+                    "student" => UserRole::Student,
+                    _ => {
+                        return Err(AppError::database(anyhow::anyhow!(
+                            "Invalid role: {}",
+                            role_str
+                        )));
+                    }
+                };
+                Ok(User {
+                    id: row.try_get("id").map_err(|e| {
+                        AppError::database(anyhow::Error::new(e).context("Failed to get id"))
+                    })?,
+                    first_name: row.try_get("first_name").map_err(|e| {
+                        AppError::database(
+                            anyhow::Error::new(e).context("Failed to get first_name"),
+                        )
+                    })?,
+                    last_name: row.try_get("last_name").map_err(|e| {
+                        AppError::database(anyhow::Error::new(e).context("Failed to get last_name"))
+                    })?,
+                    email: row.try_get("email").map_err(|e| {
+                        AppError::database(anyhow::Error::new(e).context("Failed to get email"))
+                    })?,
+                    role,
+                    school_id: row.try_get("school_id").map_err(|e| {
+                        AppError::database(anyhow::Error::new(e).context("Failed to get school_id"))
+                    })?,
+                })
+            })
+            .collect();
+
+        let users = users?;
 
         let total = count_query_builder
             .fetch_one(db)
@@ -156,7 +211,8 @@ impl UserService {
         let meta = PaginationMeta {
             total,
             limit,
-            offset,
+            offset: if page.is_none() { Some(offset) } else { None },
+            page,
             has_more: offset + limit < total,
         };
 
@@ -276,9 +332,9 @@ impl UserService {
                 .ok_or_else(|| AppError::not_found(anyhow::anyhow!("User not found")))?;
 
         if !verify_password(&dto.current_password, &password_hash)? {
-            return Err(AppError::unauthorized(
-                "Current password is incorrect".to_string(),
-            ));
+            return Err(AppError::unprocessable(anyhow::anyhow!(
+                "Current password is incorrect"
+            )));
         }
 
         let new_password_hash = hash_password(&dto.new_password)?;
