@@ -14,15 +14,6 @@ pub struct Claims {
     pub iat: usize,
 }
 
-// Password reset token structure
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ResetTokenClaims {
-    pub user_id: String,
-    pub email: String,
-    pub exp: usize,
-    pub iat: usize,
-}
-
 // MFA temporary token claims
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MfaTempClaims {
@@ -94,24 +85,6 @@ pub struct MfaRecoveryLoginRequest {
 pub struct RefreshTokenRequest {
     #[validate(length(min = 1))]
     pub refresh_token: String,
-}
-
-#[derive(Debug, Deserialize, Validate, ToSchema)]
-pub struct RegisterRequestDto {
-    #[validate(length(min = 1))]
-    #[schema(example = "John")]
-    pub first_name: String,
-    #[validate(length(min = 1))]
-    #[schema(example = "Doe")]
-    pub last_name: String,
-    #[validate(email)]
-    #[schema(example = "john@example.com")]
-    pub email: String,
-    #[validate(length(min = 8))]
-    #[schema(example = "password123")]
-    pub password: String,
-    #[serde(default)]
-    pub role: Option<crate::modules::users::model::UserRole>,
 }
 
 // Forgot password request

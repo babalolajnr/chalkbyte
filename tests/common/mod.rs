@@ -1,7 +1,9 @@
 use chalkbyte::utils::password::hash_password;
+#[allow(unused_imports)]
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
+#[allow(dead_code)]
 pub struct TestUser {
     pub id: Uuid,
     pub email: String,
@@ -10,6 +12,7 @@ pub struct TestUser {
     pub school_id: Option<Uuid>,
 }
 
+#[allow(dead_code)]
 pub struct TestSchool {
     pub id: Uuid,
     pub name: String,
@@ -49,6 +52,7 @@ pub async fn create_test_user(
     }
 }
 
+#[allow(dead_code)]
 pub async fn create_test_school(tx: &mut Transaction<'_, Postgres>, name: &str) -> TestSchool {
     let school = sqlx::query!(
         r#"
@@ -73,6 +77,7 @@ pub fn generate_unique_email() -> String {
     format!("test-{}@test.com", Uuid::new_v4())
 }
 
+#[allow(dead_code)]
 pub fn generate_unique_school_name() -> String {
     format!("Test School {}", Uuid::new_v4())
 }

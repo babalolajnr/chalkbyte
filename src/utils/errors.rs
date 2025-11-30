@@ -71,6 +71,7 @@ impl AppError {
     }
 
     #[track_caller]
+    #[allow(dead_code)]
     pub fn validation(err: ValidationErrors) -> Self {
         Self::new(
             StatusCode::BAD_REQUEST,
@@ -79,6 +80,7 @@ impl AppError {
     }
 
     #[track_caller]
+    #[allow(dead_code)]
     pub fn form_rejection(err: FormRejection) -> Self {
         Self::new(
             StatusCode::BAD_REQUEST,
@@ -87,6 +89,7 @@ impl AppError {
     }
 
     #[track_caller]
+    #[allow(dead_code)]
     pub fn query_rejection(err: QueryRejection) -> Self {
         Self::new(
             StatusCode::BAD_REQUEST,
@@ -318,7 +321,7 @@ mod tests {
     #[test]
     fn test_app_error_validation() {
         use validator::ValidationErrors;
-        let mut errors = ValidationErrors::new();
+        let errors = ValidationErrors::new();
         let error = AppError::validation(errors);
         assert_eq!(error.status, StatusCode::BAD_REQUEST);
     }

@@ -4,7 +4,7 @@ use crate::modules::users::controller::{
 use crate::state::AppState;
 use axum::{
     Router,
-    routing::{get, post, put},
+    routing::{get, post},
 };
 
 pub fn init_users_router() -> Router<AppState> {

@@ -520,7 +520,7 @@ async fn test_get_students_with_pagination(pool: PgPool) {
     let password = "testpass123";
     create_test_user(&mut tx, &admin_email, password, "admin", Some(school.id)).await;
 
-    for i in 0..5 {
+    for _i in 0..5 {
         let student_email = generate_unique_email();
         create_test_user(
             &mut tx,

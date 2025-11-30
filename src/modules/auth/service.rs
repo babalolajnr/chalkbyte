@@ -16,36 +16,12 @@ use crate::utils::password::{hash_password, verify_password};
 
 use super::model::{
     ForgotPasswordRequest, LoginRequest, LoginResponse, MfaRecoveryLoginRequest,
-    MfaRequiredResponse, MfaVerifyLoginRequest, RefreshTokenRequest, RegisterRequestDto,
-    ResetPasswordRequest,
+    MfaRequiredResponse, MfaVerifyLoginRequest, RefreshTokenRequest, ResetPasswordRequest,
 };
 
 pub struct AuthService;
 
 impl AuthService {
-    #[instrument]
-    pub async fn register_user(db: &PgPool, dto: RegisterRequestDto) -> Result<User, AppError> {
-        let hashed_password = hash_password(&dto.password)?;
-        let role = dto.role.unwrap_or_default();
-
-        let user = sqlx::query_as::<_, User>(
-            "INSERT INTO users (first_name, last_name, email, password, role, school_id)
-             VALUES ($1, $2, $3, $4, $5, NULL)
-             ON CONFLICT (email) DO NOTHING
-             RETURNING id, first_name, last_name, email, role, school_id",
-        )
-        .bind(&dto.first_name)
-        .bind(&dto.last_name)
-        .bind(&dto.email)
-        .bind(&hashed_password)
-        .bind(&role)
-        .fetch_optional(db)
-        .await?
-        .ok_or_else(|| AppError::bad_request(anyhow::anyhow!("Email already exists")))?;
-
-        Ok(user)
-    }
-
     #[instrument]
     pub async fn login_user(
         db: &PgPool,
@@ -437,24 +413,6 @@ impl AuthService {
             refresh_token: new_refresh_token,
             user,
         })
-    }
-
-    #[instrument]
-    pub async fn revoke_refresh_token(
-        db: &PgPool,
-        user_id: Uuid,
-        refresh_token: &str,
-    ) -> Result<(), AppError> {
-        sqlx::query(
-            "UPDATE refresh_tokens SET revoked = TRUE, updated_at = NOW()
-             WHERE token = $1 AND user_id = $2 AND revoked = FALSE",
-        )
-        .bind(refresh_token)
-        .bind(user_id)
-        .execute(db)
-        .await?;
-
-        Ok(())
     }
 
     #[instrument]

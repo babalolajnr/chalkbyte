@@ -18,6 +18,7 @@ use uuid::Uuid;
 
 #[derive(ToSchema)]
 pub struct ErrorResponse {
+    #[allow(dead_code)]
     pub error: String,
 }
 
