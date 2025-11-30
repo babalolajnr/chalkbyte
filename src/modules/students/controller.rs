@@ -5,8 +5,8 @@ use crate::modules::students::model::{
     UpdateStudentDto,
 };
 use crate::modules::students::service::StudentService;
-use crate::modules::users::service::UserService;
 use crate::state::AppState;
+use crate::utils::auth_helpers::get_admin_school_id;
 use crate::utils::errors::AppError;
 use axum::{
     Json,
@@ -16,32 +16,6 @@ use serde_json::json;
 use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
-
-/// Returns the school ID for the given admin or teacher user.
-///
-/// This function parses the user ID from the `auth_user`, fetches the user from the database,
-/// and returns the associated `school_id` if present. If the user is not assigned to a school,
-/// it returns a forbidden error.
-///
-/// # Arguments
-///
-/// * `db` - Reference to the PostgreSQL connection pool.
-/// * `auth_user` - Reference to the authenticated user.
-///
-/// # Errors
-///
-/// Returns `AppError::bad_request` if the user ID is invalid.
-/// Returns `AppError::forbidden` if the user is not assigned to a school.
-/// Returns any error from `UserService::get_user`.
-async fn get_admin_school_id(db: &sqlx::PgPool, auth_user: &AuthUser) -> Result<Uuid, AppError> {
-    let user_id = Uuid::parse_str(&auth_user.0.sub)
-        .map_err(|_| AppError::bad_request(anyhow::anyhow!("Invalid user ID")))?;
-
-    let user = UserService::get_user(db, user_id).await?;
-
-    user.school_id
-        .ok_or_else(|| AppError::forbidden("User must be assigned to a school".to_string()))
-}
 
 #[utoipa::path(
     post,

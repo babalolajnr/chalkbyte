@@ -6,6 +6,10 @@ use crate::modules::auth::model::{
     ForgotPasswordRequest, LoginRequest, LoginResponse, MessageResponse, MfaRecoveryLoginRequest,
     MfaRequiredResponse, MfaVerifyLoginRequest, RefreshTokenRequest, ResetPasswordRequest,
 };
+use crate::modules::levels::model::{
+    AssignStudentsToLevelDto, BulkAssignResponse, CreateLevelDto, Level, LevelFilterParams,
+    LevelWithStats, MoveStudentToLevelDto, PaginatedLevelsResponse, UpdateLevelDto,
+};
 use crate::modules::mfa::model::{
     DisableMfaRequest, EnableMfaResponse, MfaStatusResponse, RegenerateMfaRecoveryCodesResponse,
     VerifyMfaRequest,
@@ -51,6 +55,15 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
         crate::modules::students::controller::get_student,
         crate::modules::students::controller::update_student,
         crate::modules::students::controller::delete_student,
+        crate::modules::levels::controller::create_level,
+        crate::modules::levels::controller::get_levels,
+        crate::modules::levels::controller::get_level_by_id,
+        crate::modules::levels::controller::update_level,
+        crate::modules::levels::controller::delete_level,
+        crate::modules::levels::controller::assign_students_to_level,
+        crate::modules::levels::controller::get_students_in_level,
+        crate::modules::levels::controller::move_student_to_level,
+        crate::modules::levels::controller::remove_student_from_level,
     ),
     components(
         schemas(
@@ -87,6 +100,15 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
             UserFilterParams,
             PaginatedUsersResponse,
             SchoolFullInfo,
+            Level,
+            LevelWithStats,
+            CreateLevelDto,
+            UpdateLevelDto,
+            AssignStudentsToLevelDto,
+            MoveStudentToLevelDto,
+            BulkAssignResponse,
+            LevelFilterParams,
+            PaginatedLevelsResponse,
         )
     ),
     modifiers(&SecurityAddon),
@@ -95,7 +117,8 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
         (name = "MFA", description = "Multi-factor authentication management"),
         (name = "Users", description = "User management endpoints"),
         (name = "Schools", description = "School management endpoints"),
-        (name = "Students", description = "Student management endpoints")
+        (name = "Students", description = "Student management endpoints"),
+        (name = "Levels", description = "Level/Grade management endpoints")
     ),
     info(
         title = "Chalkbyte API",
