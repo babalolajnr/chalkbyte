@@ -81,3 +81,81 @@ pub fn generate_unique_email() -> String {
 pub fn generate_unique_school_name() -> String {
     format!("Test School {}", Uuid::new_v4())
 }
+
+#[allow(dead_code)]
+pub struct TestLevel {
+    pub id: Uuid,
+    pub name: String,
+    pub school_id: Uuid,
+}
+
+#[allow(dead_code)]
+pub struct TestBranch {
+    pub id: Uuid,
+    pub name: String,
+    pub level_id: Uuid,
+}
+
+#[allow(dead_code)]
+pub async fn create_test_level(
+    tx: &mut Transaction<'_, Postgres>,
+    name: &str,
+    school_id: Uuid,
+) -> TestLevel {
+    let level = sqlx::query!(
+        r#"
+        INSERT INTO levels (name, description, school_id)
+        VALUES ($1, $2, $3)
+        RETURNING id, name, school_id
+        "#,
+        name,
+        Some("Test level description"),
+        school_id
+    )
+    .fetch_one(&mut **tx)
+    .await
+    .unwrap();
+
+    TestLevel {
+        id: level.id,
+        name: level.name,
+        school_id: level.school_id,
+    }
+}
+
+#[allow(dead_code)]
+pub async fn create_test_branch(
+    tx: &mut Transaction<'_, Postgres>,
+    name: &str,
+    level_id: Uuid,
+) -> TestBranch {
+    let branch = sqlx::query!(
+        r#"
+        INSERT INTO branches (name, description, level_id)
+        VALUES ($1, $2, $3)
+        RETURNING id, name, level_id
+        "#,
+        name,
+        Some("Test branch description"),
+        level_id
+    )
+    .fetch_one(&mut **tx)
+    .await
+    .unwrap();
+
+    TestBranch {
+        id: branch.id,
+        name: branch.name,
+        level_id: branch.level_id,
+    }
+}
+
+#[allow(dead_code)]
+pub fn generate_unique_level_name() -> String {
+    format!("Level {}", Uuid::new_v4())
+}
+
+#[allow(dead_code)]
+pub fn generate_unique_branch_name() -> String {
+    format!("Branch {}", Uuid::new_v4())
+}

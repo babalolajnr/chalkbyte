@@ -6,6 +6,10 @@ use crate::modules::auth::model::{
     ForgotPasswordRequest, LoginRequest, LoginResponse, MessageResponse, MfaRecoveryLoginRequest,
     MfaRequiredResponse, MfaVerifyLoginRequest, RefreshTokenRequest, ResetPasswordRequest,
 };
+use crate::modules::branches::model::{
+    AssignStudentsToBranchDto, Branch, BranchFilterParams, BranchWithStats, CreateBranchDto,
+    MoveStudentToBranchDto, PaginatedBranchesResponse, UpdateBranchDto,
+};
 use crate::modules::levels::model::{
     AssignStudentsToLevelDto, BulkAssignResponse, CreateLevelDto, Level, LevelFilterParams,
     LevelWithStats, MoveStudentToLevelDto, PaginatedLevelsResponse, UpdateLevelDto,
@@ -64,6 +68,15 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
         crate::modules::levels::controller::get_students_in_level,
         crate::modules::levels::controller::move_student_to_level,
         crate::modules::levels::controller::remove_student_from_level,
+        crate::modules::branches::controller::create_branch,
+        crate::modules::branches::controller::get_branches,
+        crate::modules::branches::controller::get_branch_by_id,
+        crate::modules::branches::controller::update_branch,
+        crate::modules::branches::controller::delete_branch,
+        crate::modules::branches::controller::assign_students_to_branch,
+        crate::modules::branches::controller::get_students_in_branch,
+        crate::modules::branches::controller::move_student_to_branch,
+        crate::modules::branches::controller::remove_student_from_branch,
     ),
     components(
         schemas(
@@ -109,6 +122,14 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
             BulkAssignResponse,
             LevelFilterParams,
             PaginatedLevelsResponse,
+            Branch,
+            BranchWithStats,
+            CreateBranchDto,
+            UpdateBranchDto,
+            AssignStudentsToBranchDto,
+            MoveStudentToBranchDto,
+            BranchFilterParams,
+            PaginatedBranchesResponse,
         )
     ),
     modifiers(&SecurityAddon),
@@ -118,7 +139,8 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
         (name = "Users", description = "User management endpoints"),
         (name = "Schools", description = "School management endpoints"),
         (name = "Students", description = "Student management endpoints"),
-        (name = "Levels", description = "Level/Grade management endpoints")
+        (name = "Levels", description = "Level/Grade management endpoints"),
+        (name = "Branches", description = "Branch management endpoints")
     ),
     info(
         title = "Chalkbyte API",

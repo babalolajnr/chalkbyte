@@ -25,7 +25,7 @@ impl UserService {
             r#"
             INSERT INTO users (first_name, last_name, email, password, role, school_id)
             VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, first_name, last_name, email, role as "role: _", school_id
+            RETURNING id, first_name, last_name, email, role as "role: _", school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at
             "#,
             dto.first_name,
             dto.last_name,
@@ -63,7 +63,7 @@ impl UserService {
         let mut param_count = 0;
 
         let mut query = String::from(
-            r#"SELECT id, first_name, last_name, email, role::text as role, school_id FROM users WHERE 1=1"#,
+            r#"SELECT id, first_name, last_name, email, role::text as role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE 1=1"#,
         );
 
         if let Some(ref first_name) = filters.first_name {
@@ -196,6 +196,32 @@ impl UserService {
                     school_id: row.try_get("school_id").map_err(|e| {
                         AppError::database(anyhow::Error::new(e).context("Failed to get school_id"))
                     })?,
+                    level_id: row.try_get("level_id").map_err(|e| {
+                        AppError::database(anyhow::Error::new(e).context("Failed to get level_id"))
+                    })?,
+                    branch_id: row.try_get("branch_id").map_err(|e| {
+                        AppError::database(anyhow::Error::new(e).context("Failed to get branch_id"))
+                    })?,
+                    date_of_birth: row.try_get("date_of_birth").map_err(|e| {
+                        AppError::database(
+                            anyhow::Error::new(e).context("Failed to get date_of_birth"),
+                        )
+                    })?,
+                    grade_level: row.try_get("grade_level").map_err(|e| {
+                        AppError::database(
+                            anyhow::Error::new(e).context("Failed to get grade_level"),
+                        )
+                    })?,
+                    created_at: row.try_get("created_at").map_err(|e| {
+                        AppError::database(
+                            anyhow::Error::new(e).context("Failed to get created_at"),
+                        )
+                    })?,
+                    updated_at: row.try_get("updated_at").map_err(|e| {
+                        AppError::database(
+                            anyhow::Error::new(e).context("Failed to get updated_at"),
+                        )
+                    })?,
                 })
             })
             .collect();
@@ -223,7 +249,7 @@ impl UserService {
         let user = sqlx::query_as!(
             User,
             r#"
-            SELECT id, first_name, last_name, email, role as "role: _", school_id
+            SELECT id, first_name, last_name, email, role as "role: _", school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at
             FROM users
             WHERE id = $1
             "#,
@@ -248,6 +274,12 @@ impl UserService {
                     users.email,
                     users.role as "role: UserRole",
                     users.school_id,
+                    users.level_id,
+                    users.branch_id,
+                    users.date_of_birth,
+                    users.grade_level,
+                    users.created_at,
+                    users.updated_at,
                     s.id as "school_id_inner?",
                     s.name as "school_name?",
                     s.address as "school_address?"
@@ -270,6 +302,12 @@ impl UserService {
             email: result.email,
             role: result.role,
             school_id: result.school_id,
+            level_id: result.level_id,
+            branch_id: result.branch_id,
+            date_of_birth: result.date_of_birth,
+            grade_level: result.grade_level,
+            created_at: result.created_at,
+            updated_at: result.updated_at,
         };
 
         let school = if let (Some(school_id), Some(school_name)) =
@@ -303,7 +341,7 @@ impl UserService {
             UPDATE users
             SET first_name = $1, last_name = $2, updated_at = NOW()
             WHERE id = $3
-            RETURNING id, first_name, last_name, email, role as "role: _", school_id
+            RETURNING id, first_name, last_name, email, role as "role: _", school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at
             "#,
             first_name,
             last_name,

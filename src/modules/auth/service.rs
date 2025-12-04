@@ -39,11 +39,17 @@ impl AuthService {
             password: String,
             role: UserRole,
             school_id: Option<Uuid>,
+            level_id: Option<Uuid>,
+            branch_id: Option<Uuid>,
+            date_of_birth: Option<chrono::NaiveDate>,
+            grade_level: Option<String>,
+            created_at: chrono::DateTime<chrono::Utc>,
+            updated_at: chrono::DateTime<chrono::Utc>,
             mfa_enabled: bool,
         }
 
         let user_with_password = sqlx::query_as::<_, UserWithPassword>(
-            "SELECT id, first_name, last_name, email, password, role, school_id, mfa_enabled FROM users WHERE email = $1",
+            "SELECT id, first_name, last_name, email, password, role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at, mfa_enabled FROM users WHERE email = $1",
         )
         .bind(&dto.email)
         .fetch_optional(db)
@@ -105,6 +111,12 @@ impl AuthService {
             email: user_with_password.email,
             role: user_with_password.role,
             school_id: user_with_password.school_id,
+            level_id: user_with_password.level_id,
+            branch_id: user_with_password.branch_id,
+            date_of_birth: user_with_password.date_of_birth,
+            grade_level: user_with_password.grade_level,
+            created_at: user_with_password.created_at,
+            updated_at: user_with_password.updated_at,
         };
 
         Ok(Ok(LoginResponse {

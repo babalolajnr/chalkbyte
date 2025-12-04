@@ -1,357 +1,402 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/LucasPickering/slumber/refs/tags/v4.2.1/schemas/collection.json
-
 name: Chalkbyte API
-
 profiles:
   local:
     name: Local Development
     data:
       host: http://localhost:3000
-      access_token: ""
-      refresh_token: ""
-      temp_token: ""
-
-  production:
-    name: Production
-    data:
-      host: https://api.chalkbyte.com
-      access_token: ""
-      refresh_token: ""
-      temp_token: ""
-
-.auth_header:
-  Authorization: "Bearer {{ response('auth.login') | jsonpath('$.access_token') }}"
-
+      api_token: "{{ response('login_user') | jsonpath('$.access_token') }}"
 requests:
-  auth:
+  tag/Authentication:
     name: Authentication
     requests:
-      login:
-        name: Login
-        method: POST
-        url: "{{ host }}/api/auth/login"
-        body:
-          type: json
-          data:
-            email: babalolajnrgmail.com
-            password: Password@123
-
-      mfa_verify:
-        name: Verify MFA Code
-        method: POST
-        url: "{{ host }}/api/auth/mfa/verify"
-        body:
-          type: json
-          data:
-            temp_token: "{{ response('auth.login') | jsonpath('$.temp_token') }}"
-            code: "123456"
-
-      mfa_recovery:
-        name: Verify MFA Recovery Code
-        method: POST
-        url: "{{ host }}/api/auth/mfa/recovery"
-        body:
-          type: json
-          data:
-            temp_token: "{{ response('auth.login') | jsonpath('$.temp_token') }}"
-            recovery_code: "recovery-code-here"
-
       forgot_password:
-        name: Forgot Password
+        name: Request password reset email
         method: POST
         url: "{{ host }}/api/auth/forgot-password"
         body:
           type: json
           data:
             email: user@example.com
-
-      reset_password:
-        name: Reset Password
+      login_user:
+        name: Login and receive JWT token or MFA challenge
         method: POST
-        url: "{{ host }}/api/auth/reset-password"
+        url: "{{ host }}/api/auth/login"
         body:
           type: json
           data:
-            token: "reset-token-from-email"
-            new_password: "newpassword123"
-
-      refresh:
-        name: Refresh Token
+            email: "babalolajnr@gmail.com"
+            password: Password@123
+      logout:
+        name: Logout and revoke all refresh tokens
+        method: POST
+        url: "{{ host }}/api/auth/logout"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      verify_mfa_recovery_login:
+        name: Use recovery code to complete login
+        method: POST
+        url: "{{ host }}/api/auth/mfa/recovery"
+        body:
+          type: json
+          data:
+            recovery_code: ABCD1234
+            temp_token: "{{ response('login_user') | jsonpath('$.temp_token') }}"
+      verify_mfa_login:
+        name: Verify MFA code and complete login
+        method: POST
+        url: "{{ host }}/api/auth/mfa/verify"
+        body:
+          type: json
+          data:
+            code: "531061"
+            temp_token: "{{ response('login_user') | jsonpath('$.temp_token') }}"
+      refresh_token:
+        name: Refresh access token using refresh token
         method: POST
         url: "{{ host }}/api/auth/refresh"
         body:
           type: json
           data:
-            refresh_token: "{{ response('auth.login') | jsonpath('$.refresh_token') }}"
-
-      logout:
-        name: Logout
+            refresh_token: ""
+      reset_password:
+        name: Reset password using token
         method: POST
-        url: "{{ host }}/api/auth/logout"
-        headers:
-          $ref: "#/.auth_header"
-
-  users:
-    name: Users
-    requests:
-      create_user:
-        name: Create User
-        method: POST
-        url: "{{ host }}/api/users"
-        headers:
-          $ref: "#/.auth_header"
+        url: "{{ host }}/api/auth/reset-password"
         body:
           type: json
           data:
-            first_name: John
-            last_name: Doe
-            email: john.doe@example.com
+            new_password: newPassword123
+            token: ""
+  tag/Levels:
+    name: Levels
+    requests:
+      get_levels:
+        name: /api/levels
+        method: GET
+        url: "{{ host }}/api/levels"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+        query:
+          name: ""
+          pagination: ""
+      create_level:
+        name: /api/levels
+        method: POST
+        url: "{{ host }}/api/levels"
+        body:
+          type: json
+          data:
+            description: ""
+            name: ""
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      remove_student_from_level:
+        name: /api/levels/students/{student_id}
+        method: DELETE
+        url: "{{ host }}/api/levels/students/{{ student_id }}"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      move_student_to_level:
+        name: /api/levels/students/{student_id}/move
+        method: PATCH
+        url: "{{ host }}/api/levels/students/{{ student_id }}/move"
+        body:
+          type: json
+          data:
+            level_id: ""
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      delete_level:
+        name: /api/levels/{id}
+        method: DELETE
+        url: "{{ host }}/api/levels/{{ id }}"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      get_level_by_id:
+        name: /api/levels/{id}
+        method: GET
+        url: "{{ host }}/api/levels/{{ id }}"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      update_level:
+        name: /api/levels/{id}
+        method: PUT
+        url: "{{ host }}/api/levels/{{ id }}"
+        body:
+          type: json
+          data:
+            description: ""
+            name: ""
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      get_students_in_level:
+        name: /api/levels/{id}/students
+        method: GET
+        url: "{{ host }}/api/levels/{{ id }}/students"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      assign_students_to_level:
+        name: /api/levels/{id}/students
+        method: POST
+        url: "{{ host }}/api/levels/{{ id }}/students"
+        body:
+          type: json
+          data:
+            student_ids:
+              - ""
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+  tag/MFA:
+    name: MFA
+    requests:
+      disable_mfa:
+        name: Disable MFA with password confirmation
+        method: POST
+        url: "{{ host }}/api/mfa/disable"
+        body:
+          type: json
+          data:
             password: password123
-            role: student
-            school_id: null
-
-      list_users:
-        name: List Users
-        method: GET
-        url: "{{ host }}/api/users"
-        headers:
-          $ref: "#/.auth_header"
-        query:
-          limit: "10"
-          offset: "0"
-
-      list_users_filtered:
-        name: List Users (Filtered)
-        method: GET
-        url: "{{ host }}/api/users"
-        headers:
-          $ref: "#/.auth_header"
-        query:
-          first_name: John
-          role: student
-          limit: "20"
-          offset: "0"
-
-      get_profile:
-        name: Get My Profile
-        method: GET
-        url: "{{ host }}/api/users/profile"
-        headers:
-          $ref: "#/.auth_header"
-
-      update_profile:
-        name: Update My Profile
-        method: PUT
-        url: "{{ host }}/api/users/profile"
-        headers:
-          $ref: "#/.auth_header"
-        body:
-          type: json
-          data:
-            first_name: Jane
-            last_name: Smith
-
-      change_password:
-        name: Change Password
-        method: POST
-        url: "{{ host }}/api/users/profile/change-password"
-        headers:
-          $ref: "#/.auth_header"
-        body:
-          type: json
-          data:
-            current_password: oldpassword123
-            new_password: newpassword456
-
-  schools:
-    name: Schools
-    requests:
-      create_school:
-        name: Create School
-        method: POST
-        url: "{{ host }}/api/schools"
-        headers:
-          $ref: "#/.auth_header"
-        body:
-          type: json
-          data:
-            name: Springfield Elementary
-            address: 742 Evergreen Terrace, Springfield
-
-      list_schools:
-        name: List All Schools
-        method: GET
-        url: "{{ host }}/api/schools"
-        headers:
-          $ref: "#/.auth_header"
-        query:
-          limit: "10"
-          offset: "0"
-
-      list_schools_filtered:
-        name: List Schools (Filtered)
-        method: GET
-        url: "{{ host }}/api/schools"
-        headers:
-          $ref: "#/.auth_header"
-        query:
-          name: Elementary
-          address: Springfield
-          limit: "20"
-          offset: "0"
-
-      get_school:
-        name: Get School by ID
-        method: GET
-        url: "{{ host }}/api/schools/{{ prompt(message='Enter school ID') }}"
-        headers:
-          $ref: "#/.auth_header"
-
-      delete_school:
-        name: Delete School
-        method: DELETE
-        url: "{{ host }}/api/schools/{{ prompt(message='Enter school ID') }}"
-        headers:
-          $ref: "#/.auth_header"
-
-      get_school_students:
-        name: Get School Students
-        method: GET
-        url: "{{ host }}/api/schools/{{ prompt(message='Enter school ID') }}/students"
-        headers:
-          $ref: "#/.auth_header"
-        query:
-          limit: "10"
-          offset: "0"
-
-      get_school_students_filtered:
-        name: Get School Students (Filtered)
-        method: GET
-        url: "{{ host }}/api/schools/{{ prompt(message='Enter school ID') }}/students"
-        headers:
-          $ref: "#/.auth_header"
-        query:
-          first_name: John
-          email: example.com
-          limit: "20"
-          offset: "0"
-
-      get_school_admins:
-        name: Get School Admins
-        method: GET
-        url: "{{ host }}/api/schools/{{ prompt(message='Enter school ID') }}/admins"
-        headers:
-          $ref: "#/.auth_header"
-        query:
-          limit: "10"
-          offset: "0"
-
-      get_school_full_info:
-        name: Get School Full Info
-        method: GET
-        url: "{{ host }}/api/schools/{{ prompt(message='Enter school ID') }}/full-info"
-        headers:
-          $ref: "#/.auth_header"
-
-  students:
-    name: Students
-    requests:
-      create_student:
-        name: Create Student
-        method: POST
-        url: "{{ host }}/api/students"
-        headers:
-          $ref: "#/.auth_header"
-        body:
-          type: json
-          data:
-            first_name: Alice
-            last_name: Johnson
-            email: alice.johnson@example.com
-            date_of_birth: "2010-05-15"
-            grade_level: "5"
-
-      list_students:
-        name: List Students
-        method: GET
-        url: "{{ host }}/api/students"
-        headers:
-          $ref: "#/.auth_header"
-        query:
-          page: "1"
-          limit: "10"
-
-      get_student:
-        name: Get Student by ID
-        method: GET
-        url: "{{ host }}/api/students/{{ prompt(message='Enter student ID') }}"
-        headers:
-          $ref: "#/.auth_header"
-
-      update_student:
-        name: Update Student
-        method: PUT
-        url: "{{ host }}/api/students/{{ prompt(message='Enter student ID') }}"
-        headers:
-          $ref: "#/.auth_header"
-        body:
-          type: json
-          data:
-            first_name: Alice
-            last_name: Johnson-Smith
-            email: alice.jsmith@example.com
-            date_of_birth: "2010-05-15"
-            grade_level: "6"
-
-      delete_student:
-        name: Delete Student
-        method: DELETE
-        url: "{{ host }}/api/students/{{ prompt(message='Enter student ID') }}"
-        headers:
-          $ref: "#/.auth_header"
-
-  mfa:
-    name: MFA Management
-    requests:
-      get_mfa_status:
-        name: Get MFA Status
-        method: GET
-        url: "{{ host }}/api/mfa/status"
-        headers:
-          $ref: "#/.auth_header"
-
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
       enable_mfa:
-        name: Enable MFA
+        name: Enable MFA and get QR code
         method: POST
         url: "{{ host }}/api/mfa/enable"
-        headers:
-          $ref: "#/.auth_header"
-
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      regenerate_recovery_codes:
+        name: Regenerate recovery codes
+        method: POST
+        url: "{{ host }}/api/mfa/recovery-codes/regenerate"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      get_mfa_status:
+        name: Get MFA enrollment status
+        method: GET
+        url: "{{ host }}/api/mfa/status"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
       verify_mfa:
-        name: Verify MFA Setup
+        name: Verify MFA setup with TOTP code
         method: POST
         url: "{{ host }}/api/mfa/verify"
-        headers:
-          $ref: "#/.auth_header"
         body:
           type: json
           data:
             code: "123456"
-
-      disable_mfa:
-        name: Disable MFA
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+  tag/Schools:
+    name: Schools
+    requests:
+      get_all_schools:
+        name: /api/schools
+        method: GET
+        url: "{{ host }}/api/schools"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+        query:
+          name: ""
+          address: ""
+          limit: ""
+          offset: ""
+      create_school:
+        name: /api/schools
         method: POST
-        url: "{{ host }}/api/mfa/disable"
-        headers:
-          $ref: "#/.auth_header"
+        url: "{{ host }}/api/schools"
         body:
           type: json
           data:
-            password: password123
-
-      regenerate_recovery_codes:
-        name: Regenerate Recovery Codes
+            address: ""
+            name: ""
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      delete_school:
+        name: /api/schools/{id}
+        method: DELETE
+        url: "{{ host }}/api/schools/{{ id }}"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      get_school:
+        name: /api/schools/{id}
+        method: GET
+        url: "{{ host }}/api/schools/{{ id }}"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      get_school_admins:
+        name: /api/schools/{id}/admins
+        method: GET
+        url: "{{ host }}/api/schools/{{ id }}/admins"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+        query:
+          first_name: ""
+          last_name: ""
+          email: ""
+          limit: ""
+          offset: ""
+      get_school_full_info:
+        name: /api/schools/{id}/full-info
+        method: GET
+        url: "{{ host }}/api/schools/{{ id }}/full-info"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      get_school_students:
+        name: /api/schools/{id}/students
+        method: GET
+        url: "{{ host }}/api/schools/{{ id }}/students"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+        query:
+          first_name: ""
+          last_name: ""
+          email: ""
+          limit: ""
+          offset: ""
+  tag/Students:
+    name: Students
+    requests:
+      get_students:
+        name: /api/students
+        method: GET
+        url: "{{ host }}/api/students"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+        query:
+          page: ""
+          limit: ""
+      create_student:
+        name: /api/students
         method: POST
-        url: "{{ host }}/api/mfa/recovery-codes/regenerate"
-        headers:
-          $ref: "#/.auth_header"
+        url: "{{ host }}/api/students"
+        body:
+          type: json
+          data:
+            date_of_birth: ""
+            email: ""
+            first_name: ""
+            grade_level: ""
+            last_name: ""
+            password: ""
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      delete_student:
+        name: /api/students/{id}
+        method: DELETE
+        url: "{{ host }}/api/students/{{ id }}"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      get_student:
+        name: /api/students/{id}
+        method: GET
+        url: "{{ host }}/api/students/{{ id }}"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      update_student:
+        name: /api/students/{id}
+        method: PUT
+        url: "{{ host }}/api/students/{{ id }}"
+        body:
+          type: json
+          data:
+            date_of_birth: ""
+            email: ""
+            first_name: ""
+            grade_level: ""
+            last_name: ""
+            password: ""
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+  tag/Users:
+    name: Users
+    requests:
+      get_users:
+        name: Get all users with pagination and filtering (system admins see all, school admins see their school)
+        method: GET
+        url: "{{ host }}/api/users"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+        query:
+          first_name: ""
+          last_name: ""
+          email: ""
+          role: ""
+          school_id: ""
+          limit: ""
+          offset: ""
+      create_user:
+        name: Create a new user (requires admin or system_admin role)
+        method: POST
+        url: "{{ host }}/api/users"
+        body:
+          type: json
+          data:
+            email: ""
+            first_name: ""
+            last_name: ""
+            password: ""
+            role: null
+            school_id: ""
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      get_profile:
+        name: Get current user profile from JWT token
+        method: GET
+        url: "{{ host }}/api/users/profile"
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      update_profile:
+        name: Update current user profile (name only)
+        method: PUT
+        url: "{{ host }}/api/users/profile"
+        body:
+          type: json
+          data:
+            first_name: ""
+            last_name: ""
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"
+      change_password:
+        name: Change current user password
+        method: POST
+        url: "{{ host }}/api/users/profile/change-password"
+        body:
+          type: json
+          data:
+            current_password: ""
+            new_password: newPassword123
+        authentication:
+          type: bearer
+          token: "{{ api_token }}"

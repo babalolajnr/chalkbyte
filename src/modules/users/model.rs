@@ -28,6 +28,12 @@ pub struct User {
     pub email: String,
     pub role: UserRole,
     pub school_id: Option<Uuid>,
+    pub level_id: Option<Uuid>,
+    pub branch_id: Option<Uuid>,
+    pub date_of_birth: Option<chrono::NaiveDate>,
+    pub grade_level: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Deserialize, Debug, Validate, ToSchema)]
@@ -299,6 +305,12 @@ mod tests {
             email: "john@example.com".to_string(),
             role: UserRole::Student,
             school_id: None,
+            level_id: None,
+            branch_id: None,
+            date_of_birth: None,
+            grade_level: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
         };
 
         let serialized = serde_json::to_string(&user).unwrap();
