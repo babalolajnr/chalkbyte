@@ -6,7 +6,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde_json::json;
-use std::backtrace::Backtrace;
 use tracing::error;
 use validator::ValidationErrors;
 
@@ -116,32 +115,20 @@ impl AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let error_message = if self.status.is_server_error() {
-            let backtrace = Backtrace::capture();
-            let backtrace_status = backtrace.status();
-
             if let Some(location) = self.location {
                 error!(
                     status = %self.status.as_u16(),
                     error = %self.error,
-                    error_chain = ?self.error.chain().collect::<Vec<_>>(),
                     file = %location.file(),
                     line = %location.line(),
-                    column = %location.column(),
-                    backtrace_available = ?backtrace_status,
-                    "Internal server error occurred"
+                    "Internal server error"
                 );
             } else {
                 error!(
                     status = %self.status.as_u16(),
                     error = %self.error,
-                    error_chain = ?self.error.chain().collect::<Vec<_>>(),
-                    backtrace_available = ?backtrace_status,
-                    "Internal server error occurred"
+                    "Internal server error"
                 );
-            }
-
-            if backtrace_status == std::backtrace::BacktraceStatus::Captured {
-                error!(backtrace = %backtrace, "Error backtrace");
             }
 
             "Internal server error".to_string()

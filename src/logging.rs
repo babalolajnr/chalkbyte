@@ -76,28 +76,42 @@ pub async fn logging_middleware(req: Request, next: Next) -> Response {
 }
 
 pub fn init_tracing() {
-    use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+    use std::fs;
+    use tracing_appender::rolling::{RollingFileAppender, Rotation};
+    use tracing_subscriber::{
+        EnvFilter, Layer, fmt, layer::SubscriberExt, util::SubscriberInitExt,
+    };
 
-    if std::env::var("RUST_BACKTRACE").is_err() {
-        unsafe {
-            std::env::set_var("RUST_BACKTRACE", "1");
-        }
-    }
+    let log_dir = "storage/logs";
+    fs::create_dir_all(log_dir).expect("Failed to create logs directory");
 
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+    let console_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         EnvFilter::new(format!("{}=info,tower_http=warn", env!("CARGO_CRATE_NAME")))
     });
 
+    let console_layer = fmt::layer()
+        .with_target(false)
+        .with_thread_ids(false)
+        .with_thread_names(false)
+        .with_file(true)
+        .with_line_number(true)
+        .compact()
+        .with_filter(console_filter);
+
+    let file_appender = RollingFileAppender::new(Rotation::DAILY, log_dir, "chalkbyte.log");
+
+    let file_layer = fmt::layer()
+        .with_writer(file_appender)
+        .with_target(false)
+        .with_thread_ids(false)
+        .with_thread_names(false)
+        .with_file(true)
+        .with_line_number(true)
+        .with_ansi(false)
+        .with_filter(EnvFilter::new("error"));
+
     tracing_subscriber::registry()
-        .with(env_filter)
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_target(false)
-                .with_thread_ids(false)
-                .with_thread_names(false)
-                .with_file(true)
-                .with_line_number(true)
-                .compact(),
-        )
+        .with(console_layer)
+        .with(file_layer)
         .init();
 }
