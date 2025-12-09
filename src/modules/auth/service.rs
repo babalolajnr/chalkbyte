@@ -149,7 +149,7 @@ impl AuthService {
 
         // Get user details
         let user = sqlx::query_as::<_, User>(
-            "SELECT id, first_name, last_name, email, role, school_id FROM users WHERE id = $1",
+            "SELECT id, first_name, last_name, email, role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE id = $1",
         )
         .bind(user_id)
         .fetch_one(db)
@@ -202,7 +202,7 @@ impl AuthService {
 
         // Get user details
         let user = sqlx::query_as::<_, User>(
-            "SELECT id, first_name, last_name, email, role, school_id FROM users WHERE id = $1",
+            "SELECT id, first_name, last_name, email, role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE id = $1",
         )
         .bind(user_id)
         .fetch_one(db)
@@ -237,7 +237,7 @@ impl AuthService {
     ) -> Result<(), AppError> {
         // Find user by email
         let user = sqlx::query_as::<_, User>(
-            "SELECT id, first_name, last_name, email, role, school_id FROM users WHERE email = $1",
+            "SELECT id, first_name, last_name, email, role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE email = $1",
         )
         .bind(&dto.email)
         .fetch_optional(db)
@@ -318,7 +318,7 @@ impl AuthService {
 
         // Get user details
         let user = sqlx::query_as::<_, User>(
-            "SELECT id, first_name, last_name, email, role, school_id FROM users WHERE id = $1",
+            "SELECT id, first_name, last_name, email, role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE id = $1",
         )
         .bind(token_record.user_id)
         .fetch_one(db)
@@ -391,7 +391,7 @@ impl AuthService {
 
         // Get user details
         let user = sqlx::query_as::<_, User>(
-            "SELECT id, first_name, last_name, email, role, school_id FROM users WHERE id = $1",
+            "SELECT id, first_name, last_name, email, role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE id = $1",
         )
         .bind(user_id)
         .fetch_one(db)
@@ -438,5 +438,204 @@ impl AuthService {
         .await?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::jwt::JwtConfig;
+    use crate::modules::users::model::UserRole;
+    use chrono::Utc;
+    use sqlx::PgPool;
+
+    async fn create_test_user(db: &PgPool, email: &str, password: &str, mfa_enabled: bool) -> Uuid {
+        let user_id = Uuid::new_v4();
+        let hashed_password = hash_password(password).unwrap();
+
+        sqlx::query(
+            "INSERT INTO users (id, first_name, last_name, email, password, role, mfa_enabled, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())"
+        )
+        .bind(user_id)
+        .bind("Test")
+        .bind("User")
+        .bind(email)
+        .bind(hashed_password)
+        .bind(UserRole::Student)
+        .bind(mfa_enabled)
+        .execute(db)
+        .await
+        .unwrap();
+
+        user_id
+    }
+
+    async fn cleanup_test_user(db: &PgPool, user_id: Uuid) {
+        sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
+            .bind(user_id)
+            .execute(db)
+            .await
+            .ok();
+
+        sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(user_id)
+            .execute(db)
+            .await
+            .ok();
+    }
+
+    #[sqlx::test]
+    async fn test_login_user_returns_all_user_fields(pool: PgPool) {
+        let email = format!("test_login_{}@example.com", Uuid::new_v4());
+        let password = "testpassword123";
+        let user_id = create_test_user(&pool, &email, password, false).await;
+
+        let jwt_config = JwtConfig {
+            secret: "test_secret_key_for_testing_purposes_only".to_string(),
+            access_token_expiry: 3600,
+            refresh_token_expiry: 86400,
+        };
+
+        let login_dto = LoginRequest {
+            email: email.clone(),
+            password: password.to_string(),
+        };
+
+        let result = AuthService::login_user(&pool, login_dto, &jwt_config).await;
+
+        assert!(result.is_ok());
+        let login_result = result.unwrap();
+
+        match login_result {
+            Ok(response) => {
+                assert_eq!(response.user.email, email);
+                assert_eq!(response.user.first_name, "Test");
+                assert_eq!(response.user.last_name, "User");
+                assert_eq!(response.user.role, UserRole::Student);
+                assert!(response.user.created_at <= Utc::now());
+                assert!(response.user.updated_at <= Utc::now());
+            }
+            Err(_) => panic!("Expected successful login without MFA"),
+        }
+
+        cleanup_test_user(&pool, user_id).await;
+    }
+
+    #[sqlx::test]
+    async fn test_verify_mfa_login_returns_all_user_fields(pool: PgPool) {
+        let email = format!("test_mfa_{}@example.com", Uuid::new_v4());
+        let password = "testpassword123";
+        let user_id = create_test_user(&pool, &email, password, false).await;
+
+        let user = sqlx::query_as::<_, User>(
+            "SELECT id, first_name, last_name, email, role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE id = $1"
+        )
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await;
+
+        assert!(
+            user.is_ok(),
+            "User query should return all fields without error: {:?}",
+            user.as_ref().err()
+        );
+        let user = user.unwrap();
+        assert_eq!(user.id, user_id);
+        assert_eq!(user.email, email);
+        assert!(user.created_at <= Utc::now());
+        assert!(user.updated_at <= Utc::now());
+
+        cleanup_test_user(&pool, user_id).await;
+    }
+
+    #[sqlx::test]
+    async fn test_forgot_password_returns_all_user_fields(pool: PgPool) {
+        let email = format!("test_forgot_{}@example.com", Uuid::new_v4());
+        let password = "testpassword123";
+        let user_id = create_test_user(&pool, &email, password, false).await;
+
+        let user = sqlx::query_as::<_, User>(
+            "SELECT id, first_name, last_name, email, role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE email = $1"
+        )
+        .bind(&email)
+        .fetch_optional(&pool)
+        .await;
+
+        assert!(
+            user.is_ok(),
+            "User query should return all fields without error"
+        );
+        let user = user.unwrap();
+        assert!(user.is_some());
+        let user = user.unwrap();
+        assert_eq!(user.email, email);
+        assert!(user.created_at <= Utc::now());
+        assert!(user.updated_at <= Utc::now());
+
+        cleanup_test_user(&pool, user_id).await;
+    }
+
+    #[sqlx::test]
+    async fn test_refresh_access_token_returns_all_user_fields(pool: PgPool) {
+        let email = format!("test_refresh_{}@example.com", Uuid::new_v4());
+        let password = "testpassword123";
+        let user_id = create_test_user(&pool, &email, password, false).await;
+
+        let user = sqlx::query_as::<_, User>(
+            "SELECT id, first_name, last_name, email, role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE id = $1"
+        )
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await;
+
+        assert!(
+            user.is_ok(),
+            "User query for refresh token flow should return all fields without error: {:?}",
+            user.as_ref().err()
+        );
+        let user = user.unwrap();
+        assert_eq!(user.email, email);
+        assert_eq!(user.id, user_id);
+        assert!(user.created_at <= Utc::now());
+        assert!(user.updated_at <= Utc::now());
+
+        cleanup_test_user(&pool, user_id).await;
+    }
+
+    #[sqlx::test]
+    async fn test_user_query_includes_all_required_fields(pool: PgPool) {
+        let email = format!("test_fields_{}@example.com", Uuid::new_v4());
+        let password = "testpassword123";
+        let user_id = create_test_user(&pool, &email, password, false).await;
+
+        let query_result = sqlx::query_as::<_, User>(
+            "SELECT id, first_name, last_name, email, role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE id = $1"
+        )
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await;
+
+        assert!(
+            query_result.is_ok(),
+            "Query with all User fields should succeed: {:?}",
+            query_result.err()
+        );
+
+        let user = query_result.unwrap();
+        assert_eq!(user.id, user_id);
+        assert_eq!(user.email, email);
+        assert_eq!(user.first_name, "Test");
+        assert_eq!(user.last_name, "User");
+        assert_eq!(user.role, UserRole::Student);
+        assert_eq!(user.school_id, None);
+        assert_eq!(user.level_id, None);
+        assert_eq!(user.branch_id, None);
+        assert_eq!(user.date_of_birth, None);
+        assert_eq!(user.grade_level, None);
+        assert!(user.created_at <= Utc::now());
+        assert!(user.updated_at <= Utc::now());
+
+        cleanup_test_user(&pool, user_id).await;
     }
 }

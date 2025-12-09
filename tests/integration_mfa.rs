@@ -295,3 +295,53 @@ async fn test_disable_mfa_validation_empty_password(pool: PgPool) {
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn test_mfa_login_verification_returns_all_user_fields(pool: PgPool) {
+    use chalkbyte::modules::users::model::User;
+
+    let mut tx = pool.begin().await.unwrap();
+
+    let email = generate_unique_email();
+    let password = "testpass123";
+    let test_user = create_test_user(&mut tx, &email, password, "student", None).await;
+    let user_id = test_user.id;
+
+    // Enable MFA for the user and set secret
+    sqlx::query("UPDATE users SET mfa_enabled = true, mfa_secret = $1 WHERE id = $2")
+        .bind("JBSWY3DPEHPK3PXP")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+
+    tx.commit().await.unwrap();
+
+    // Test that the SQL query used in verify_mfa_login returns all required User fields
+    // This is the exact query from src/modules/auth/service.rs line 151
+    let user_result = sqlx::query_as::<_, User>(
+        "SELECT id, first_name, last_name, email, role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE id = $1"
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await;
+
+    assert!(
+        user_result.is_ok(),
+        "User query for MFA verification should return all fields without 'level_id' error: {:?}",
+        user_result.as_ref().err()
+    );
+
+    let user = user_result.unwrap();
+    assert_eq!(user.email, email);
+    assert_eq!(user.id, user_id);
+    assert_eq!(user.first_name, "Test");
+    assert_eq!(user.last_name, "User");
+    assert!(user.school_id.is_none());
+    assert!(user.level_id.is_none());
+    assert!(user.branch_id.is_none());
+    assert!(user.date_of_birth.is_none());
+    assert!(user.grade_level.is_none());
+    assert!(user.created_at <= chrono::Utc::now());
+    assert!(user.updated_at <= chrono::Utc::now());
+}

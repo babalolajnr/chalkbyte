@@ -314,7 +314,7 @@ impl LevelService {
         }
 
         let students = sqlx::query_as::<_, crate::modules::users::model::User>(
-            r#"SELECT id, first_name, last_name, email, role, school_id
+            r#"SELECT id, first_name, last_name, email, role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at
                FROM users
                WHERE level_id = $1 AND school_id = $2 AND role = $3
                ORDER BY last_name, first_name"#,

@@ -153,7 +153,7 @@ impl SchoolService {
         let total = count_sql.fetch_one(db).await?;
 
         let mut data_query = String::from(
-            "SELECT id, first_name, last_name, email, role, school_id FROM users WHERE school_id = $1 AND role = 'student'",
+            "SELECT id, first_name, last_name, email, role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE school_id = $1 AND role = 'student'",
         );
         data_query.push_str(&where_clause);
         data_query.push_str(" ORDER BY created_at DESC");
