@@ -1,5 +1,6 @@
 use crate::docs::ApiDoc;
 use crate::logging::logging_middleware;
+use crate::metrics::metrics_middleware;
 use crate::middleware::role::{require_admin, require_system_admin};
 use crate::modules::auth::router::init_auth_router;
 use crate::modules::branches::router::{init_branches_router, init_level_branches_router};
@@ -23,16 +24,6 @@ use utoipa::OpenApi;
 use utoipa_scalar::{Scalar, Servable as _};
 use utoipa_swagger_ui::SwaggerUi;
 
-async fn metrics_handler() -> Response {
-    // Metrics endpoint - will be populated by Prometheus scraping
-    // OpenTelemetry metrics are exported via OTLP to the collector
-    Response::builder()
-        .status(StatusCode::OK)
-        .header("Content-Type", "text/plain; version=0.0.4")
-        .body("# Metrics endpoint - OpenTelemetry exports to collector at port 4317\n".into())
-        .unwrap()
-}
-
 async fn health_handler() -> impl IntoResponse {
     axum::Json(serde_json::json!({
         "status": "healthy",
@@ -45,7 +36,6 @@ pub fn init_router(state: AppState) -> Router {
     Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .merge(Scalar::with_url("/scalar", ApiDoc::openapi()))
-        .route("/metrics", axum::routing::get(metrics_handler))
         .route("/health", axum::routing::get(health_handler))
         .nest(
             "/api",
@@ -121,5 +111,6 @@ pub fn init_router(state: AppState) -> Router {
                         .include_headers(true),
                 ),
         )
+        .layer(middleware::from_fn(metrics_middleware))
         .layer(middleware::from_fn(logging_middleware))
 }

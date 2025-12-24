@@ -1,0 +1,100 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id,\n                first_name,\n                last_name,\n                email,\n                role as \"role: _\",\n                school_id,\n                level_id,\n                branch_id,\n                date_of_birth,\n                grade_level,\n                created_at,\n                updated_at\n            FROM users\n            WHERE branch_id = $1 AND role = 'student'\n            ORDER BY last_name, first_name\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "first_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "last_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "email",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "role: _",
+        "type_info": {
+          "Custom": {
+            "name": "user_role",
+            "kind": {
+              "Enum": [
+                "admin",
+                "teacher",
+                "student",
+                "system_admin"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "school_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 6,
+        "name": "level_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 7,
+        "name": "branch_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 8,
+        "name": "date_of_birth",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 9,
+        "name": "grade_level",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 10,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "7036a9d970c8be05be66bda71017ce0d875d4b25b3dbc5d24282d320ae3593e4"
+}

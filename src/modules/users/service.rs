@@ -1,4 +1,5 @@
 use crate::{
+    metrics,
     modules::users::model::{
         ChangePasswordDto, CreateUserDto, PaginatedUsersResponse, School, UpdateProfileDto, User,
         UserFilterParams, UserRole, UserWithSchool,
@@ -19,6 +20,8 @@ impl UserService {
     pub async fn create_user(db: &PgPool, dto: CreateUserDto) -> Result<User, AppError> {
         let role = dto.role.unwrap_or_default();
         let password_hash = hash_password(&dto.password)?;
+
+        metrics::track_user_created(&role.to_string());
 
         let user = sqlx::query_as!(
             User,

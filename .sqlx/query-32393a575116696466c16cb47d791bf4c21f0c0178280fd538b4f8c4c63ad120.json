@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE users\n            SET branch_id = NULL, updated_at = NOW()\n            WHERE id = $1 AND role = 'student' AND school_id = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "32393a575116696466c16cb47d791bf4c21f0c0178280fd538b4f8c4c63ad120"
+}

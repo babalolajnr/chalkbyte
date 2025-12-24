@@ -2,6 +2,7 @@ use sqlx::PgPool;
 use tracing::instrument;
 use uuid::Uuid;
 
+use crate::metrics;
 use crate::modules::users::model::{
     CreateSchoolDto, PaginatedSchoolsResponse, PaginatedUsersResponse, School, SchoolFilterParams,
     SchoolFullInfo, User, UserFilterParams,
@@ -14,6 +15,8 @@ pub struct SchoolService;
 impl SchoolService {
     #[instrument]
     pub async fn create_school(db: &PgPool, dto: CreateSchoolDto) -> Result<School, AppError> {
+        metrics::track_school_created();
+
         let school = sqlx::query_as::<_, School>(
             "INSERT INTO schools (name, address) VALUES ($1, $2)
              RETURNING id, name, address",

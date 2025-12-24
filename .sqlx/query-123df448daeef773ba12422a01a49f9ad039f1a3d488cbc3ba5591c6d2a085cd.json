@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT b.id\n            FROM branches b\n            INNER JOIN levels l ON l.id = b.level_id\n            WHERE b.id = $1 AND l.school_id = $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "123df448daeef773ba12422a01a49f9ad039f1a3d488cbc3ba5591c6d2a085cd"
+}

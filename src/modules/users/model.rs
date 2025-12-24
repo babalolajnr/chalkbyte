@@ -20,6 +20,17 @@ impl Default for UserRole {
     }
 }
 
+impl std::fmt::Display for UserRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UserRole::SystemAdmin => write!(f, "system_admin"),
+            UserRole::Admin => write!(f, "admin"),
+            UserRole::Teacher => write!(f, "teacher"),
+            UserRole::Student => write!(f, "student"),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, FromRow, Debug, ToSchema)]
 pub struct User {
     pub id: Uuid,

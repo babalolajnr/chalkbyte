@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM schools",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "c2170e0252e00bb0a35570c30e5ede5aa016ffe44f8f02d91371ff5550871c38"
+}

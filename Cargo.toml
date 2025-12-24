@@ -38,6 +38,8 @@ opentelemetry = { version = "0.22", features = ["trace", "metrics"] }
 opentelemetry_sdk = { version = "0.22", features = ["rt-tokio", "trace", "metrics"] }
 opentelemetry-otlp = { version = "0.15", features = ["trace", "metrics", "grpc-tonic"] }
 opentelemetry-semantic-conventions = "0.14"
+metrics = "0.23"
+metrics-exporter-prometheus = "0.15"
 anyhow = "1.0"
 dotenvy = "0.15"
 bcrypt = "0.17"

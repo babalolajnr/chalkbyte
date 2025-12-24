@@ -1,20 +1,22 @@
 services:
-  # chalkbyte:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     - DATABASE_URL=postgresql://chalkbyte:chalkbyte_password@postgres:5432/chalkbyte_db
-  #     - PORT=3000
-  #     - RUST_LOG=info
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   restart: unless-stopped
-  #   networks:
-  #     - chalkbyte-network
+  chalkbyte:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://chalkbyte:chalkbyte_password@postgres:5432/chalkbyte_db
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - chalkbyte-network
 
   postgres:
     image: postgres:17-alpine
@@ -23,7 +25,7 @@ services:
       - POSTGRES_PASSWORD=chalkbyte_password
       - POSTGRES_DB=chalkbyte_db
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -37,11 +39,12 @@ services:
 
   pgadmin:
     image: dpage/pgadmin4:latest
+    container_name: chalkbyte-api-pgadmin
     environment:
-      - PGADMIN_DEFAULT_EMAIL=admin@chalkbyte.com
-      - PGADMIN_DEFAULT_PASSWORD=admin123
+      PGADMIN_DEFAULT_EMAIL: admin@chalkbyte.com
+      PGADMIN_DEFAULT_PASSWORD: admin
     ports:
-      - "8080:80"
+      - "${PGADMIN_PORT:-8080}:80"
     depends_on:
       - postgres
     restart: no
@@ -50,9 +53,10 @@ services:
 
   mailpit:
     image: axllent/mailpit:latest
+    container_name: chalkbyte-api-mailpit
     ports:
-      - "1025:1025" # SMTP port
-      - "8025:8025" # Web UI port
+      - "${MAILPIT_SMTP_PORT:-1025}:1025" # SMTP
+      - "${MAILPIT_WEB_PORT:-8025}:8025" # Web UI
     environment:
       - MP_SMTP_AUTH_ACCEPT_ANY=1
       - MP_SMTP_AUTH_ALLOW_INSECURE=1
@@ -67,15 +71,15 @@ services:
     profiles: ["observability"]
     image: otel/opentelemetry-collector-contrib:0.91.0
     container_name: chalkbyte-otel-collector
-    command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
       - ./observability/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    command: ["--config=/etc/otel-collector-config.yaml"]
     ports:
-      - "4317:4317" # OTLP gRPC receiver
-      - "4318:4318" # OTLP HTTP receiver
-      - "8888:8888" # Prometheus metrics exposed by the collector
+      - "${OTEL_COLLECTOR_GRPC_PORT:-4317}:4317" # OTLP gRPC receiver
+      - "${OTEL_COLLECTOR_HTTP_PORT:-4318}:4318" # OTLP HTTP receiver
+      - "${OTEL_COLLECTOR_METRICS_PORT:-8888}:8888" # Prometheus metrics exposed by the collector
       - "8889:8889" # Prometheus exporter metrics
-      - "13133:13133" # health_check extension
+      - "${OTEL_COLLECTOR_ZPAGES_PORT:-13133}:13133" # health_check extension
     depends_on:
       - tempo
       - loki
@@ -94,10 +98,10 @@ services:
       - ./observability/tempo.yaml:/etc/tempo.yaml
       - tempo-data:/var/tempo
     ports:
-      - "3200:3200" # Tempo HTTP
+      - "${TEMPO_PORT:-3200}:3200" # Tempo HTTP
       - "4317" # OTLP gRPC
       - "4318" # OTLP HTTP
-      - "9411:9411" # Zipkin
+      - "${TEMPO_ZIPKIN_PORT:-9411}:9411" # Zipkin
     networks:
       - chalkbyte-network
     restart: unless-stopped
@@ -112,7 +116,7 @@ services:
       - ./observability/loki.yaml:/etc/loki/local-config.yaml
       - loki-data:/loki
     ports:
-      - "3100:3100"
+      - "${LOKI_PORT:-3100}:3100"
     networks:
       - chalkbyte-network
     restart: unless-stopped
@@ -137,6 +141,7 @@ services:
     profiles: ["observability"]
     image: prom/prometheus:latest
     container_name: chalkbyte-prometheus
+    entrypoint: ["/bin/sh", "/usr/local/bin/prometheus-entrypoint.sh"]
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
@@ -144,11 +149,14 @@ services:
       - "--web.console.templates=/usr/share/prometheus/consoles"
       - "--web.enable-lifecycle"
       - "--storage.tsdb.retention.time=30d"
+    environment:
+      - CHALKBYTE_PORT=${PORT:-3000}
     volumes:
-      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./observability/prometheus.yml.template:/etc/prometheus/prometheus.yml.template
+      - ./observability/prometheus-entrypoint.sh:/usr/local/bin/prometheus-entrypoint.sh
       - prometheus-data:/prometheus
     ports:
-      - "9090:9090"
+      - "${PROMETHEUS_PORT:-9090}:9090"
     networks:
       - chalkbyte-network
     restart: unless-stopped
@@ -162,14 +170,16 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin123
       - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_ROOT_URL=http://localhost:3001
+      - GF_SERVER_ROOT_URL=http://localhost:${GRAFANA_PORT:-3001}
       - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards
       - grafana-data:/var/lib/grafana
     ports:
-      - "3001:3000"
+      - "${GRAFANA_PORT:-3001}:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - prometheus
       - tempo
@@ -188,7 +198,7 @@ services:
     volumes:
       - /:/host:ro,rslave
     ports:
-      - "9100:9100"
+      - "${NODE_EXPORTER_PORT:-9100}:9100"
     networks:
       - chalkbyte-network
     restart: unless-stopped

@@ -5,6 +5,7 @@ use dotenvy::dotenv;
 mod config;
 mod docs;
 mod logging;
+mod metrics;
 mod middleware;
 mod modules;
 mod router;
@@ -18,8 +19,11 @@ async fn main() {
 
     logging::init_tracing();
 
+    // Initialize metrics
+    let metrics_handle = metrics::init_metrics();
+
     let state = init_app_state().await;
-    let app = init_router(state);
+    let app = init_router(state).merge(metrics::metrics_router(metrics_handle));
 
     // Get the port from the environment variable, default to 3000 if not set
     let port = std::env::var("PORT")

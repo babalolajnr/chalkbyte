@@ -47,15 +47,17 @@ Chalkbyte includes a comprehensive observability stack with Grafana, Loki, Tempo
 ### Quick Start
 
 ```bash
-# Start with observability enabled
+# Start with observability enabled (app runs in Docker)
+docker compose --profile observability --profile app up -d
+
+# Or run app on host with observability stack
 docker compose --profile observability up -d
-
-# Add to your .env file
-echo "OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317" >> .env
-echo "ENVIRONMENT=development" >> .env
-
-# Start the API
 cargo run
+```
+
+**Note**: The observability stack automatically reads the `PORT` setting from your `.env` file. If you change the port, restart the observability services:
+```bash
+docker compose --profile observability restart prometheus
 ```
 
 ### What's Included
@@ -72,7 +74,8 @@ cargo run
 - **Prometheus**: http://localhost:9090
 - **Tempo**: http://localhost:3200
 - **Loki**: http://localhost:3100
-- **API Health**: http://localhost:3000/health
+- **API Health**: http://localhost:${PORT}/health (default: 3000)
+- **API Metrics**: http://localhost:${PORT}/metrics
 - **OTLP Collector**: http://localhost:4317 (gRPC)
 
 ### Current Features
@@ -96,11 +99,54 @@ Run the test script to verify everything is working:
 The observability stack uses Docker Compose profiles for easy management:
 
 ```bash
-# Start without observability (default)
-docker compose up -d
+# Start only database (default - for local development)
+docker compose up -d postgres
 
-# Start with observability
+# Start with observability + database
 docker compose --profile observability up -d
+
+# Start everything in Docker (app + observability + database)
+docker compose --profile app --profile observability up -d
+```
+
+### Configuration
+
+All ports are configurable via environment variables in your `.env` file:
+
+**Application Ports:**
+- `PORT=3002` - Chalkbyte API port (default: 3000)
+
+**Observability Stack Ports (all optional, defaults shown):**
+- `GRAFANA_PORT=3001` - Grafana web UI
+- `PROMETHEUS_PORT=9090` - Prometheus web UI
+- `LOKI_PORT=3100` - Loki API
+- `TEMPO_PORT=3200` - Tempo API
+- `TEMPO_ZIPKIN_PORT=9411` - Tempo Zipkin endpoint
+- `NODE_EXPORTER_PORT=9100` - Node exporter metrics
+
+**Database & Tools Ports:**
+- `POSTGRES_PORT=5432` - PostgreSQL database
+- `PGADMIN_PORT=8080` - PgAdmin web UI
+- `MAILPIT_SMTP_PORT=1025` - Mailpit SMTP server
+- `MAILPIT_WEB_PORT=8025` - Mailpit web UI
+
+**OpenTelemetry Collector Ports:**
+- `OTEL_COLLECTOR_GRPC_PORT=4317` - OTLP gRPC receiver
+- `OTEL_COLLECTOR_HTTP_PORT=4318` - OTLP HTTP receiver
+- `OTEL_COLLECTOR_METRICS_PORT=8888` - Collector metrics
+- `OTEL_COLLECTOR_ZPAGES_PORT=13133` - Health check
+
+**Important Notes:**
+- Only the `PORT` variable affects Prometheus scraping - it monitors your app on this port
+- All other ports are for external host access only - internal container communication uses fixed ports
+- No manual configuration needed! Just set ports in `.env` and restart services:
+  ```bash
+  # After changing PORT in .env
+  docker compose --profile observability restart prometheus
+  
+  # After changing any other port
+  docker compose --profile observability up -d
+  ```
 
 # Stop everything
 docker compose --profile observability down

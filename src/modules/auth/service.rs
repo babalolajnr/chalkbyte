@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::config::email::EmailConfig;
 use crate::config::jwt::JwtConfig;
+use crate::metrics;
 use crate::modules::users::model::User;
 use crate::utils::email::EmailService;
 use crate::utils::errors::AppError;
@@ -59,6 +60,7 @@ impl AuthService {
         let is_valid = verify_password(&dto.password, &user_with_password.password)?;
 
         if !is_valid {
+            metrics::track_user_login_failure("invalid_password");
             return Err(AppError::unauthorized(
                 "Invalid email or password".to_string(),
             ));
@@ -74,6 +76,7 @@ impl AuthService {
                 jwt_config,
             )?;
 
+            metrics::track_jwt_issued();
             return Ok(Err(MfaRequiredResponse {
                 mfa_required: true,
                 temp_token,
@@ -94,6 +97,10 @@ impl AuthService {
             &user_with_password.role,
             jwt_config,
         )?;
+
+        // Track metrics
+        metrics::track_jwt_issued();
+        metrics::track_user_login_success(&user_with_password.role.to_string());
 
         // Store refresh token in database
         let expires_at = Utc::now() + Duration::seconds(jwt_config.refresh_token_expiry);
@@ -144,6 +151,7 @@ impl AuthService {
         let is_valid = MfaService::verify_totp_login(db, user_id, &dto.code).await?;
 
         if !is_valid {
+            metrics::track_user_login_failure("invalid_mfa_code");
             return Err(AppError::unauthorized("Invalid MFA code".to_string()));
         }
 

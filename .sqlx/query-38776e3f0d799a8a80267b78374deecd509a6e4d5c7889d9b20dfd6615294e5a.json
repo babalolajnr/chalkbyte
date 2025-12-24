@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM users WHERE role != 'system_admin' AND email LIKE '%@example.com'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "38776e3f0d799a8a80267b78374deecd509a6e4d5c7889d9b20dfd6615294e5a"
+}

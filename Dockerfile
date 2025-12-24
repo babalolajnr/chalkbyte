@@ -6,12 +6,14 @@ WORKDIR /app
 
 # Copy the Cargo.toml and Cargo.lock files
 COPY Cargo.toml Cargo.lock ./
+COPY .sqlx ./.sqlx
 
 # Create a dummy main.rs to cache dependencies
 RUN mkdir src && echo "fn main() {}" > src/main.rs
 
 # Build dependencies (this will be cached unless Cargo.toml changes)
-RUN cargo build --release
+ENV SQLX_OFFLINE=true
+RUN cargo build --release --bin chalkbyte
 RUN rm src/main.rs
 
 # Copy the source code
@@ -19,16 +21,16 @@ COPY src ./src
 COPY migrations ./migrations
 
 # Build the application
-RUN touch src/main.rs && cargo build --release
+RUN touch src/main.rs && cargo build --release --bin chalkbyte
 
 # Runtime stage
 FROM debian:bookworm-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
-  ca-certificates \
-  libssl3 \
-  && rm -rf /var/lib/apt/lists/*
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
 RUN useradd -m -u 1001 chalkbyte

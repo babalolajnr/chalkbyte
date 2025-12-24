@@ -2,6 +2,7 @@ pub mod cli;
 pub mod config;
 pub mod docs;
 pub mod logging;
+pub mod metrics;
 pub mod middleware;
 pub mod modules;
 pub mod router;

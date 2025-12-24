@@ -47,8 +47,12 @@ storage:
       max_workers: 100
       queue_depth: 10000
 
+query_frontend:
+  search:
+    max_duration: 0
+
 overrides:
   defaults:
     metrics_generator:
-      processors: [service-graphs, span-metrics]
+      processors: [service-graphs, span-metrics, local-blocks]
       generate_native_histograms: both

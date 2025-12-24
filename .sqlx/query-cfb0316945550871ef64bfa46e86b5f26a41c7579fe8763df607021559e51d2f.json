@@ -1,0 +1,61 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT\n                    b.id,\n                    b.name,\n                    b.description,\n                    b.level_id,\n                    b.created_at,\n                    b.updated_at,\n                    COUNT(u.id) as \"student_count!\"\n                FROM branches b\n                LEFT JOIN users u ON u.branch_id = b.id AND u.role = 'student'\n                WHERE b.level_id = $1 AND b.name ILIKE $2\n                GROUP BY b.id\n                ORDER BY b.created_at DESC\n                LIMIT $3 OFFSET $4\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "level_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "student_count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "cfb0316945550871ef64bfa46e86b5f26a41c7579fe8763df607021559e51d2f"
+}
