@@ -40,6 +40,74 @@ Open `http://localhost:3000/swagger-ui` to explore the API! 🚀
 
 See [docs/SETUP_GUIDE.md](./docs/SETUP_GUIDE.md) for complete setup instructions.
 
+## 📊 Observability & Monitoring
+
+Chalkbyte includes a comprehensive observability stack with Grafana, Loki, Tempo, and Prometheus - fully configured and ready to use.
+
+### Quick Start
+
+```bash
+# Start with observability enabled
+docker compose --profile observability up -d
+
+# Add to your .env file
+echo "OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317" >> .env
+echo "ENVIRONMENT=development" >> .env
+
+# Start the API
+cargo run
+```
+
+### What's Included
+
+- **📝 Distributed Tracing** (OpenTelemetry + Tempo): Full request tracing with OTLP export
+- **📊 Log Aggregation** (Loki + Promtail): Centralized, searchable logs with trace correlation
+- **📈 Metrics Collection** (Prometheus): System and application metrics
+- **📊 Unified Dashboard** (Grafana): Pre-configured dashboards for traces, logs, and metrics
+- **🔍 Trace-to-Log Correlation**: Click a trace to see all related logs
+
+### Access Points
+
+- **Grafana**: http://localhost:3001 (admin/admin123)
+- **Prometheus**: http://localhost:9090
+- **Tempo**: http://localhost:3200
+- **Loki**: http://localhost:3100
+- **API Health**: http://localhost:3000/health
+- **OTLP Collector**: http://localhost:4317 (gRPC)
+
+### Current Features
+
+- ✅ **Distributed Tracing**: Every HTTP request automatically traced end-to-end
+- ✅ **Structured Logging**: JSON logs with automatic trace ID correlation
+- ✅ **Performance Monitoring**: Request latency, error rates, and endpoint performance
+- ✅ **Log Correlation**: Click any trace to see all related logs
+- ✅ **System Metrics**: CPU, memory, disk, and network monitoring
+- ✅ **Pre-built Dashboards**: Ready-to-use Grafana dashboards
+
+### Testing the Setup
+
+Run the test script to verify everything is working:
+```bash
+./scripts/test-observability.sh
+```
+
+### Docker Compose Profiles
+
+The observability stack uses Docker Compose profiles for easy management:
+
+```bash
+# Start without observability (default)
+docker compose up -d
+
+# Start with observability
+docker compose --profile observability up -d
+
+# Stop everything
+docker compose --profile observability down
+```
+
+See [OBSERVABILITY_QUICK_START.md](./OBSERVABILITY_QUICK_START.md) for detailed setup guide and [docs/OBSERVABILITY.md](./docs/OBSERVABILITY.md) for complete documentation.
+
 ## API Documentation
 
 Interactive Swagger UI documentation is available at:
@@ -198,6 +266,9 @@ my_axum_api/
 - **[docs/QUICK_REFERENCE.md](./docs/QUICK_REFERENCE.md)** - Quick command reference
 - **[docs/USER_ROLES.md](./docs/USER_ROLES.md)** - Role system and permissions
 - **[docs/AUTHENTICATION.md](./docs/AUTHENTICATION.md)** - Authentication guide
+- **[docs/OBSERVABILITY_SETUP.md](./docs/OBSERVABILITY_SETUP.md)** - Observability quick start
+- **[docs/OBSERVABILITY.md](./docs/OBSERVABILITY.md)** - Complete observability guide
+- **[docs/OBSERVABILITY_INTEGRATION_STATUS.md](./docs/OBSERVABILITY_INTEGRATION_STATUS.md)** - Current status
 - **[docs/SYSTEM_ADMIN_IMPLEMENTATION.md](./docs/SYSTEM_ADMIN_IMPLEMENTATION.md)** - Technical details
 
 ## 🤝 Contributing

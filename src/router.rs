@@ -9,17 +9,44 @@ use crate::modules::schools::router::init_schools_router;
 use crate::modules::students::router::init_students_router;
 use crate::modules::users::router::init_users_router;
 use crate::state::AppState;
+
+use axum::http::StatusCode;
 use axum::http::{HeaderValue, Method};
+use axum::response::{IntoResponse, Response};
 use axum::{Router, middleware};
+
+use tower_http::LatencyUnit;
 use tower_http::cors::CorsLayer;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
+use tracing::Level;
 use utoipa::OpenApi;
 use utoipa_scalar::{Scalar, Servable as _};
 use utoipa_swagger_ui::SwaggerUi;
+
+async fn metrics_handler() -> Response {
+    // Metrics endpoint - will be populated by Prometheus scraping
+    // OpenTelemetry metrics are exported via OTLP to the collector
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "text/plain; version=0.0.4")
+        .body("# Metrics endpoint - OpenTelemetry exports to collector at port 4317\n".into())
+        .unwrap()
+}
+
+async fn health_handler() -> impl IntoResponse {
+    axum::Json(serde_json::json!({
+        "status": "healthy",
+        "service": "chalkbyte-api",
+        "version": env!("CARGO_PKG_VERSION")
+    }))
+}
 
 pub fn init_router(state: AppState) -> Router {
     Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .merge(Scalar::with_url("/scalar", ApiDoc::openapi()))
+        .route("/metrics", axum::routing::get(metrics_handler))
+        .route("/health", axum::routing::get(health_handler))
         .nest(
             "/api",
             Router::new()
@@ -80,5 +107,19 @@ pub fn init_router(state: AppState) -> Router {
                 ])
                 .allow_credentials(true)
         })
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(
+                    DefaultMakeSpan::new()
+                        .level(Level::INFO)
+                        .include_headers(true),
+                )
+                .on_response(
+                    DefaultOnResponse::new()
+                        .level(Level::INFO)
+                        .latency_unit(LatencyUnit::Millis)
+                        .include_headers(true),
+                ),
+        )
         .layer(middleware::from_fn(logging_middleware))
 }

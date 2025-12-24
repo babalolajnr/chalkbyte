@@ -1,3 +1,11 @@
 /target
 .env
 /storage/logs/*.log.*
+
+# Observability data
+/observability/data/
+**/tempo-data/
+**/loki-data/
+**/prometheus-data/
+**/grafana-data/
+storage/logs
