@@ -125,7 +125,7 @@ services:
     command: -config.file=/etc/promtail/config.yaml
     volumes:
       - ./observability/promtail.yaml:/etc/promtail/config.yaml
-      - ../storage/logs:/var/log/chalkbyte:ro
+      - ${PWD}/storage/logs:/var/log/chalkbyte:ro
     networks:
       - chalkbyte-network
     depends_on:

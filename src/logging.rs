@@ -129,12 +129,11 @@ fn init_tracer() -> Result<Tracer, TraceError> {
 }
 
 pub fn init_tracing() {
-    use std::fs;
-    use tracing_appender::rolling::{RollingFileAppender, Rotation};
+    use std::fs::OpenOptions;
     use tracing_subscriber::fmt;
 
     let log_dir = "storage/logs";
-    fs::create_dir_all(log_dir).expect("Failed to create logs directory");
+    std::fs::create_dir_all(log_dir).expect("Failed to create logs directory");
 
     // Console layer with filtering
     let console_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
@@ -153,27 +152,40 @@ pub fn init_tracing() {
         .compact()
         .with_filter(console_filter);
 
-    // File layer for errors
-    let file_appender = RollingFileAppender::new(Rotation::DAILY, log_dir, "chalkbyte.log");
+    // Plain text log file with non-blocking writer
+    let log_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(format!("{}/chalkbyte.log", log_dir))
+        .expect("Failed to open log file");
+
+    let (non_blocking_file, _guard1) = tracing_appender::non_blocking(log_file);
 
     let file_layer = fmt::layer()
-        .with_writer(file_appender)
-        .with_target(false)
+        .with_writer(non_blocking_file)
+        .with_target(true)
         .with_thread_ids(false)
         .with_thread_names(false)
         .with_file(true)
         .with_line_number(true)
         .with_ansi(false)
-        .with_filter(EnvFilter::new("error"));
+        .with_filter(EnvFilter::new("info"));
 
-    // JSON file layer for structured logs (can be ingested by Loki)
-    let json_appender = RollingFileAppender::new(Rotation::DAILY, log_dir, "chalkbyte.json");
+    // JSON log file for Loki/Grafana with non-blocking writer
+    let json_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(format!("{}/chalkbyte-json.log", log_dir))
+        .expect("Failed to open JSON log file");
+
+    let (non_blocking_json, _guard2) = tracing_appender::non_blocking(json_file);
 
     let json_layer = fmt::layer()
         .json()
-        .with_writer(json_appender)
+        .with_writer(non_blocking_json)
         .with_current_span(true)
         .with_span_list(true)
+        .with_target(true)
         .with_filter(EnvFilter::new("info"));
 
     // Try to initialize OpenTelemetry tracer
@@ -193,6 +205,10 @@ pub fn init_tracing() {
                 .init();
 
             info!("Tracing initialized with OpenTelemetry and file logging");
+
+            // Keep guards alive
+            std::mem::forget(_guard1);
+            std::mem::forget(_guard2);
         }
         Err(e) => {
             // If OpenTelemetry fails to initialize, continue without it
@@ -209,6 +225,10 @@ pub fn init_tracing() {
                 .init();
 
             warn!("Tracing initialized without OpenTelemetry (file logging only)");
+
+            // Keep guards alive
+            std::mem::forget(_guard1);
+            std::mem::forget(_guard2);
         }
     }
 }
@@ -216,8 +236,15 @@ pub fn init_tracing() {
 pub async fn shutdown_tracer() {
     info!("Shutting down OpenTelemetry tracer...");
 
-    // Shutdown the global tracer provider
-    global::shutdown_tracer_provider();
+    // Shutdown the global tracer provider with timeout
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::task::spawn_blocking(|| {
+            global::shutdown_tracer_provider();
+        }),
+    )
+    .await
+    .ok();
 
     info!("OpenTelemetry tracer shutdown complete");
 }
