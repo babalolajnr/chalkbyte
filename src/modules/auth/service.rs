@@ -55,7 +55,10 @@ impl AuthService {
         .bind(&dto.email)
         .fetch_optional(db)
         .await?
-        .ok_or_else(|| AppError::unauthorized("Invalid email or password".to_string()))?;
+        .ok_or_else(||{
+            metrics::track_user_login_failure("invalid_email");
+            AppError::unauthorized("Invalid email or password".to_string() )
+        })?;
 
         let is_valid = verify_password(&dto.password, &user_with_password.password)?;
 
