@@ -12,7 +12,7 @@ use axum::{
     extract::{Query, State},
 };
 use serde::Serialize;
-use tracing::instrument;
+use tracing::{debug, info, instrument, warn};
 use utoipa::ToSchema;
 use validator::Validate;
 
@@ -39,13 +39,20 @@ pub struct ProfileResponse {
     ),
     tag = "Users"
 )]
-#[instrument]
+#[instrument(skip(state, auth_user, dto), fields(
+    user.id = %auth_user.0.sub,
+    user.role = %auth_user.0.role,
+    new_user.email = %dto.email,
+    new_user.role = ?dto.role
+))]
 pub async fn create_user(
     State(state): State<AppState>,
     auth_user: AuthUser,
     Json(mut dto): Json<CreateUserDto>,
 ) -> Result<Json<User>, AppError> {
     use crate::modules::users::model::UserRole;
+
+    debug!(email = %dto.email, "Processing user creation request");
 
     // Validate DTO
     dto.validate()
@@ -62,6 +69,11 @@ pub async fn create_user(
 
     // Only system_admin and admin can create users
     if requester_role != UserRole::SystemAdmin && requester_role != UserRole::Admin {
+        warn!(
+            user.id = %auth_user.0.sub,
+            user.role = %auth_user.0.role,
+            "Unauthorized attempt to create user"
+        );
         return Err(AppError::forbidden(
             "Only admins can create users".to_string(),
         ));
@@ -87,6 +99,10 @@ pub async fn create_user(
         // School admins cannot create system_admin or admin for other schools
         if let Some(ref role) = dto.role {
             if role == &UserRole::SystemAdmin {
+                warn!(
+                    user.id = %auth_user.0.sub,
+                    "School admin attempted to create system admin"
+                );
                 return Err(AppError::forbidden(
                     "School admins cannot create system admins".to_string(),
                 ));
@@ -102,6 +118,14 @@ pub async fn create_user(
     }
 
     let user = UserService::create_user(&state.db, dto).await?;
+
+    info!(
+        created_user.id = %user.id,
+        created_user.email = %user.email,
+        created_user.role = ?user.role,
+        "User created successfully"
+    );
+
     Ok(Json(user))
 }
 
@@ -129,7 +153,10 @@ pub async fn create_user(
     ),
     tag = "Users"
 )]
-#[instrument]
+#[instrument(skip(state, auth_user, filters), fields(
+    user.id = %auth_user.0.sub,
+    user.role = %auth_user.0.role
+))]
 pub async fn get_users(
     State(state): State<AppState>,
     auth_user: AuthUser,
@@ -137,10 +164,17 @@ pub async fn get_users(
 ) -> Result<Json<PaginatedUsersResponse>, AppError> {
     use crate::modules::users::model::UserRole;
 
+    debug!(filters = ?filters, "Fetching users with filters");
+
     let requester_role = match auth_user.0.role.as_str() {
         "system_admin" => UserRole::SystemAdmin,
         "admin" => UserRole::Admin,
         _ => {
+            warn!(
+                user.id = %auth_user.0.sub,
+                user.role = %auth_user.0.role,
+                "Unauthorized role attempted to list users"
+            );
             return Err(AppError::forbidden(
                 "Only admins can list users".to_string(),
             ));
@@ -166,6 +200,12 @@ pub async fn get_users(
 
     let response = UserService::get_users_paginated(&state.db, filters, school_id_filter).await?;
 
+    debug!(
+        total = %response.meta.total,
+        returned = %response.data.len(),
+        "Users fetched successfully"
+    );
+
     Ok(Json(response))
 }
 
@@ -182,11 +222,13 @@ pub async fn get_users(
     ),
     tag = "Users"
 )]
-#[instrument]
+#[instrument(skip(state, auth_user), fields(user.id = %auth_user.0.sub))]
 pub async fn get_profile(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<Json<UserWithSchool>, AppError> {
+    debug!("Fetching user profile");
+
     let user = UserService::get_user_with_school(
         &state.db,
         uuid::Uuid::parse_str(&auth_user.0.sub)
@@ -212,12 +254,18 @@ pub async fn get_profile(
     ),
     tag = "Users"
 )]
-#[instrument]
+#[instrument(skip(state, auth_user, dto), fields(
+    user.id = %auth_user.0.sub,
+    update.first_name = ?dto.first_name,
+    update.last_name = ?dto.last_name
+))]
 pub async fn update_profile(
     State(state): State<AppState>,
     auth_user: AuthUser,
     Json(dto): Json<UpdateProfileDto>,
 ) -> Result<Json<UserWithSchool>, AppError> {
+    debug!("Processing profile update request");
+
     dto.validate()
         .map_err(|e| AppError::bad_request(anyhow::anyhow!("Validation error: {}", e)))?;
 
@@ -227,6 +275,8 @@ pub async fn update_profile(
     UserService::update_profile(&state.db, user_id, dto).await?;
 
     let user = UserService::get_user_with_school(&state.db, user_id).await?;
+
+    info!(user.id = %user_id, "Profile updated successfully");
 
     Ok(Json(user))
 }
@@ -246,12 +296,14 @@ pub async fn update_profile(
     ),
     tag = "Users"
 )]
-#[instrument]
+#[instrument(skip(state, auth_user, dto), fields(user.id = %auth_user.0.sub))]
 pub async fn change_password(
     State(state): State<AppState>,
     auth_user: AuthUser,
     Json(dto): Json<ChangePasswordDto>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    debug!("Processing password change request");
+
     dto.validate()
         .map_err(|e| AppError::unprocessable(anyhow::anyhow!("Validation error: {}", e)))?;
 
@@ -259,6 +311,8 @@ pub async fn change_password(
         .map_err(|_| AppError::bad_request(anyhow::anyhow!("Invalid user ID")))?;
 
     UserService::change_password(&state.db, user_id, dto).await?;
+
+    info!(user.id = %user_id, "Password changed successfully");
 
     Ok(Json(serde_json::json!({
         "message": "Password changed successfully"

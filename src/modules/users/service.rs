@@ -12,13 +12,18 @@ use crate::{
 };
 use anyhow::Context;
 use sqlx::{PgPool, Row};
+use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
 pub struct UserService;
 
 impl UserService {
+    #[instrument(skip(db, dto), fields(user.email = %dto.email, user.role = ?dto.role))]
     pub async fn create_user(db: &PgPool, dto: CreateUserDto) -> Result<User, AppError> {
         let role = dto.role.unwrap_or_default();
+
+        debug!(email = %dto.email, role = ?role, "Creating new user");
+
         let password_hash = hash_password(&dto.password)?;
 
         metrics::track_user_created(&role.to_string());
@@ -42,17 +47,21 @@ impl UserService {
         .map_err(|e| {
             if let sqlx::Error::Database(db_err) = &e {
                 if db_err.is_unique_violation() {
+                    warn!(email = %dto.email, "Attempted to create user with existing email");
                     return AppError::unprocessable(anyhow::anyhow!(
                         "User with this email already exists"
                     ));
                 }
             }
+            error!(error = %e, "Failed to create user");
             AppError::database(anyhow::Error::new(e).context("Failed to insert user"))
         })?;
 
+        info!(user.id = %user.id, user.email = %user.email, user.role = ?user.role, "User created successfully");
         Ok(user)
     }
 
+    #[instrument(skip(db), fields(school_id = ?school_id_filter))]
     pub async fn get_users_paginated(
         db: &PgPool,
         filters: UserFilterParams,
@@ -61,6 +70,13 @@ impl UserService {
         let limit = filters.pagination.limit();
         let offset = filters.pagination.offset();
         let page = filters.pagination.page();
+
+        debug!(
+            limit = %limit,
+            offset = %offset,
+            filters = ?filters,
+            "Fetching paginated users"
+        );
 
         let mut conditions = vec![];
         let mut param_count = 0;
@@ -160,7 +176,10 @@ impl UserService {
             .fetch_all(db)
             .await
             .context("Failed to fetch paginated users")
-            .map_err(AppError::database)?;
+            .map_err(|e| {
+                error!(error = %e, "Database error fetching users");
+                AppError::database(e)
+            })?;
 
         let users: Result<Vec<User>, AppError> = rows
             .iter()
@@ -235,7 +254,10 @@ impl UserService {
             .fetch_one(db)
             .await
             .context("Failed to count users")
-            .map_err(AppError::database)?;
+            .map_err(|e| {
+                error!(error = %e, "Database error counting users");
+                AppError::database(e)
+            })?;
 
         let meta = PaginationMeta {
             total,
@@ -245,10 +267,19 @@ impl UserService {
             has_more: offset + limit < total,
         };
 
+        debug!(
+            total = %total,
+            returned = %users.len(),
+            "Users fetched successfully"
+        );
+
         Ok(PaginatedUsersResponse { data: users, meta })
     }
 
+    #[instrument(skip(db), fields(user.id = %id))]
     pub async fn get_user(db: &PgPool, id: Uuid) -> Result<User, AppError> {
+        debug!("Fetching user by ID");
+
         let user = sqlx::query_as!(
             User,
             r#"
@@ -261,13 +292,23 @@ impl UserService {
         .fetch_optional(db)
         .await
         .context("Failed to fetch user by ID")
-        .map_err(AppError::database)?
-        .ok_or_else(|| AppError::not_found(anyhow::anyhow!("User with id {} not found", id)))?;
+        .map_err(|e| {
+            error!(user.id = %id, error = %e, "Database error fetching user");
+            AppError::database(e)
+        })?
+        .ok_or_else(|| {
+            debug!(user.id = %id, "User not found");
+            AppError::not_found(anyhow::anyhow!("User with id {} not found", id))
+        })?;
 
+        debug!(user.id = %user.id, user.email = %user.email, "User found");
         Ok(user)
     }
 
+    #[instrument(skip(db), fields(user.id = %id))]
     pub async fn get_user_with_school(db: &PgPool, id: Uuid) -> Result<UserWithSchool, AppError> {
+        debug!("Fetching user with school information");
+
         let result = sqlx::query!(
             r#"
                 SELECT
@@ -295,8 +336,14 @@ impl UserService {
         .fetch_optional(db)
         .await
         .context("Failed to fetch user with school by ID")
-        .map_err(AppError::database)?
-        .ok_or_else(|| AppError::not_found(anyhow::anyhow!("User with id {} not found", id)))?;
+        .map_err(|e| {
+            error!(user.id = %id, error = %e, "Database error fetching user with school");
+            AppError::database(e)
+        })?
+        .ok_or_else(|| {
+            debug!(user.id = %id, "User not found");
+            AppError::not_found(anyhow::anyhow!("User with id {} not found", id))
+        })?;
 
         let user = User {
             id: result.user_id,
@@ -316,23 +363,32 @@ impl UserService {
         let school = if let (Some(school_id), Some(school_name)) =
             (result.school_id_inner, result.school_name)
         {
+            debug!(school.id = %school_id, school.name = %school_name, "User has associated school");
             Some(School {
                 id: school_id,
                 name: school_name,
                 address: result.school_address,
             })
         } else {
+            debug!("User has no associated school");
             None
         };
 
         Ok(UserWithSchool { user, school })
     }
 
+    #[instrument(skip(db, dto), fields(user.id = %user_id))]
     pub async fn update_profile(
         db: &PgPool,
         user_id: Uuid,
         dto: UpdateProfileDto,
     ) -> Result<User, AppError> {
+        debug!(
+            update_first_name = ?dto.first_name,
+            update_last_name = ?dto.last_name,
+            "Updating user profile"
+        );
+
         let existing = Self::get_user(db, user_id).await?;
 
         let first_name = dto.first_name.unwrap_or(existing.first_name);
@@ -353,26 +409,40 @@ impl UserService {
         .fetch_one(db)
         .await
         .context("Failed to update user profile")
-        .map_err(AppError::database)?;
+        .map_err(|e| {
+            error!(user.id = %user_id, error = %e, "Database error updating profile");
+            AppError::database(e)
+        })?;
 
+        info!(user.id = %user.id, "User profile updated successfully");
         Ok(user)
     }
 
+    #[instrument(skip(db, dto), fields(user.id = %user_id))]
     pub async fn change_password(
         db: &PgPool,
         user_id: Uuid,
         dto: ChangePasswordDto,
     ) -> Result<(), AppError> {
+        debug!("Attempting password change");
+
         let password_hash =
             sqlx::query_scalar::<_, String>("SELECT password FROM users WHERE id = $1")
                 .bind(user_id)
                 .fetch_optional(db)
                 .await
                 .context("Failed to fetch user password")
-                .map_err(AppError::database)?
-                .ok_or_else(|| AppError::not_found(anyhow::anyhow!("User not found")))?;
+                .map_err(|e| {
+                    error!(user.id = %user_id, error = %e, "Database error fetching password");
+                    AppError::database(e)
+                })?
+                .ok_or_else(|| {
+                    warn!(user.id = %user_id, "User not found during password change");
+                    AppError::not_found(anyhow::anyhow!("User not found"))
+                })?;
 
         if !verify_password(&dto.current_password, &password_hash)? {
+            warn!(user.id = %user_id, "Invalid current password provided");
             return Err(AppError::unprocessable(anyhow::anyhow!(
                 "Current password is incorrect"
             )));
@@ -386,8 +456,12 @@ impl UserService {
             .execute(db)
             .await
             .context("Failed to update password")
-            .map_err(AppError::database)?;
+            .map_err(|e| {
+                error!(user.id = %user_id, error = %e, "Database error updating password");
+                AppError::database(e)
+            })?;
 
+        info!(user.id = %user_id, "Password changed successfully");
         Ok(())
     }
 }

@@ -1,6 +1,6 @@
 use chrono::{Duration, Utc};
 use sqlx::PgPool;
-use tracing::instrument;
+use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
 use crate::config::email::EmailConfig;
@@ -23,13 +23,15 @@ use super::model::{
 pub struct AuthService;
 
 impl AuthService {
-    #[instrument]
+    #[instrument(skip(db, dto, jwt_config), fields(user.email = %dto.email, auth.event = "login_attempt"))]
     pub async fn login_user(
         db: &PgPool,
         dto: LoginRequest,
         jwt_config: &JwtConfig,
     ) -> Result<Result<LoginResponse, MfaRequiredResponse>, AppError> {
         use crate::modules::users::model::UserRole;
+
+        debug!(email = %dto.email, "Processing login request");
 
         #[derive(sqlx::FromRow)]
         struct UserWithPassword {
@@ -136,12 +138,13 @@ impl AuthService {
         }))
     }
 
-    #[instrument]
+    #[instrument(skip(db, dto, jwt_config), fields(auth.event = "mfa_verification"))]
     pub async fn verify_mfa_login(
         db: &PgPool,
         dto: MfaVerifyLoginRequest,
         jwt_config: &JwtConfig,
     ) -> Result<LoginResponse, AppError> {
+        debug!("Processing MFA verification request");
         use crate::modules::mfa::service::MfaService;
 
         // Verify temp token
@@ -187,12 +190,13 @@ impl AuthService {
         })
     }
 
-    #[instrument]
+    #[instrument(skip(db, dto, jwt_config), fields(auth.event = "mfa_recovery_verification"))]
     pub async fn verify_mfa_recovery_login(
         db: &PgPool,
         dto: MfaRecoveryLoginRequest,
         jwt_config: &JwtConfig,
     ) -> Result<LoginResponse, AppError> {
+        debug!("Processing MFA recovery code verification");
         use crate::modules::mfa::service::MfaService;
 
         // Verify temp token
@@ -240,12 +244,13 @@ impl AuthService {
         })
     }
 
-    #[instrument]
+    #[instrument(skip(db, dto, email_config), fields(user.email = %dto.email, auth.event = "password_reset_request"))]
     pub async fn forgot_password(
         db: &PgPool,
         dto: ForgotPasswordRequest,
         email_config: &EmailConfig,
     ) -> Result<(), AppError> {
+        debug!(email = %dto.email, "Processing password reset request");
         // Find user by email
         let user = sqlx::query_as::<_, User>(
             "SELECT id, first_name, last_name, email, role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE email = $1",
@@ -290,12 +295,13 @@ impl AuthService {
         Ok(())
     }
 
-    #[instrument]
+    #[instrument(skip(db, dto, email_config), fields(auth.event = "password_reset"))]
     pub async fn reset_password(
         db: &PgPool,
         dto: ResetPasswordRequest,
         email_config: &EmailConfig,
     ) -> Result<(), AppError> {
+        debug!("Processing password reset");
         // Find and validate token
         #[derive(sqlx::FromRow)]
         struct ResetToken {
@@ -360,12 +366,13 @@ impl AuthService {
         Ok(())
     }
 
-    #[instrument]
+    #[instrument(skip(db, dto, jwt_config), fields(auth.event = "token_refresh"))]
     pub async fn refresh_access_token(
         db: &PgPool,
         dto: RefreshTokenRequest,
         jwt_config: &JwtConfig,
     ) -> Result<LoginResponse, AppError> {
+        debug!("Processing token refresh request");
         // Verify refresh token JWT signature and expiry
         let claims = verify_refresh_token(&dto.refresh_token, jwt_config)?;
 
@@ -394,11 +401,20 @@ impl AuthService {
             ));
         }
 
+        // Check if token is expired
         if token_record.expires_at < Utc::now() {
+            warn!(
+                user.id = %user_id,
+                auth.event = "token_refresh_failed",
+                reason = "token_expired",
+                "Refresh token expired"
+            );
             return Err(AppError::unauthorized(
                 "Refresh token has expired".to_string(),
             ));
         }
+
+        debug!(user.id = %user_id, "Refresh token valid, generating new tokens");
 
         // Get user details
         let user = sqlx::query_as::<_, User>(
@@ -438,15 +454,23 @@ impl AuthService {
         })
     }
 
-    #[instrument]
+    #[instrument(skip(db), fields(user.id = %user_id, auth.event = "logout"))]
     pub async fn revoke_all_refresh_tokens(db: &PgPool, user_id: Uuid) -> Result<(), AppError> {
+        debug!("Revoking all refresh tokens for user");
+
         sqlx::query(
             "UPDATE refresh_tokens SET revoked = TRUE, updated_at = NOW()
              WHERE user_id = $1 AND revoked = FALSE",
         )
         .bind(user_id)
         .execute(db)
-        .await?;
+        .await
+        .map_err(|e| {
+            error!(user.id = %user_id, error = %e, "Database error revoking tokens");
+            AppError::from(e)
+        })?;
+
+        info!(user.id = %user_id, auth.event = "logout_success", "All refresh tokens revoked");
 
         Ok(())
     }

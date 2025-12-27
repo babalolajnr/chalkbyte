@@ -1,5 +1,5 @@
 use sqlx::PgPool;
-use tracing::instrument;
+use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
 use crate::metrics;
@@ -13,8 +13,10 @@ use crate::utils::pagination::PaginationMeta;
 pub struct SchoolService;
 
 impl SchoolService {
-    #[instrument]
+    #[instrument(skip(db, dto), fields(school.name = %dto.name, db.operation = "INSERT", db.table = "schools"))]
     pub async fn create_school(db: &PgPool, dto: CreateSchoolDto) -> Result<School, AppError> {
+        debug!(school.name = %dto.name, school.address = ?dto.address, "Creating new school");
+
         metrics::track_school_created();
 
         let school = sqlx::query_as::<_, School>(
@@ -29,21 +31,37 @@ impl SchoolService {
             if let sqlx::Error::Database(db_err) = &e
                 && db_err.is_unique_violation()
             {
+                warn!(school.name = %dto.name, "Attempted to create school with existing name");
                 return AppError::bad_request(anyhow::anyhow!("School name already exists"));
             }
+            error!(error = %e, school.name = %dto.name, "Database error creating school");
             AppError::from(e)
         })?;
+
+        info!(
+            school.id = %school.id,
+            school.name = %school.name,
+            "School created successfully"
+        );
 
         Ok(school)
     }
 
-    #[instrument]
+    #[instrument(skip(db, filters), fields(db.operation = "SELECT", db.table = "schools"))]
     pub async fn get_all_schools(
         db: &PgPool,
         filters: SchoolFilterParams,
     ) -> Result<PaginatedSchoolsResponse, AppError> {
         let limit = filters.pagination.limit();
         let offset = filters.pagination.offset();
+
+        debug!(
+            limit = %limit,
+            offset = %offset,
+            filter.name = ?filters.name,
+            filter.address = ?filters.address,
+            "Fetching schools with pagination"
+        );
 
         let mut count_query = String::from("SELECT COUNT(*) FROM schools WHERE 1=1");
         let mut where_clause = String::new();
@@ -65,7 +83,10 @@ impl SchoolService {
         for param in &params {
             count_sql = count_sql.bind(param);
         }
-        let total = count_sql.fetch_one(db).await?;
+        let total = count_sql.fetch_one(db).await.map_err(|e| {
+            error!(error = %e, "Database error counting schools");
+            AppError::from(e)
+        })?;
 
         let mut data_query = String::from("SELECT id, name, address FROM schools WHERE 1=1");
         data_query.push_str(&where_clause);
@@ -76,9 +97,19 @@ impl SchoolService {
         for param in params {
             data_sql = data_sql.bind(param);
         }
-        let schools = data_sql.fetch_all(db).await?;
+        let schools = data_sql.fetch_all(db).await.map_err(|e| {
+            error!(error = %e, "Database error fetching schools");
+            AppError::from(e)
+        })?;
 
         let has_more = offset + limit < total;
+
+        debug!(
+            total = %total,
+            returned = %schools.len(),
+            has_more = %has_more,
+            "Schools fetched successfully"
+        );
 
         Ok(PaginatedSchoolsResponse {
             data: schools,
@@ -92,33 +123,53 @@ impl SchoolService {
         })
     }
 
-    #[instrument]
+    #[instrument(skip(db), fields(school.id = %school_id, db.operation = "SELECT", db.table = "schools"))]
     pub async fn get_school_by_id(db: &PgPool, school_id: Uuid) -> Result<School, AppError> {
+        debug!("Fetching school by ID");
+
         let school =
             sqlx::query_as::<_, School>("SELECT id, name, address FROM schools WHERE id = $1")
                 .bind(school_id)
                 .fetch_optional(db)
-                .await?
-                .ok_or_else(|| AppError::not_found(anyhow::anyhow!("School not found")))?;
+                .await
+                .map_err(|e| {
+                    error!(school.id = %school_id, error = %e, "Database error fetching school");
+                    AppError::from(e)
+                })?
+                .ok_or_else(|| {
+                    debug!(school.id = %school_id, "School not found");
+                    AppError::not_found(anyhow::anyhow!("School not found"))
+                })?;
+
+        debug!(school.name = %school.name, "School found");
 
         Ok(school)
     }
 
-    #[instrument]
+    #[instrument(skip(db), fields(school.id = %school_id, db.operation = "DELETE", db.table = "schools"))]
     pub async fn delete_school(db: &PgPool, school_id: Uuid) -> Result<(), AppError> {
+        debug!("Deleting school");
+
         let result = sqlx::query("DELETE FROM schools WHERE id = $1")
             .bind(school_id)
             .execute(db)
-            .await?;
+            .await
+            .map_err(|e| {
+                error!(school.id = %school_id, error = %e, "Database error deleting school");
+                AppError::from(e)
+            })?;
 
         if result.rows_affected() == 0 {
+            debug!(school.id = %school_id, "School not found for deletion");
             return Err(AppError::not_found(anyhow::anyhow!("School not found")));
         }
+
+        info!(school.id = %school_id, "School deleted successfully");
 
         Ok(())
     }
 
-    #[instrument]
+    #[instrument(skip(db, filters), fields(school.id = %school_id, db.operation = "SELECT", db.table = "users"))]
     pub async fn get_school_students(
         db: &PgPool,
         school_id: Uuid,
@@ -126,6 +177,14 @@ impl SchoolService {
     ) -> Result<PaginatedUsersResponse, AppError> {
         let limit = filters.pagination.limit();
         let offset = filters.pagination.offset();
+
+        debug!(
+            limit = %limit,
+            offset = %offset,
+            filter.first_name = ?filters.first_name,
+            filter.last_name = ?filters.last_name,
+            "Fetching students for school"
+        );
 
         let mut count_query =
             String::from("SELECT COUNT(*) FROM users WHERE school_id = $1 AND role = 'student'");
@@ -153,7 +212,10 @@ impl SchoolService {
         for param in &params {
             count_sql = count_sql.bind(param);
         }
-        let total = count_sql.fetch_one(db).await?;
+        let total = count_sql.fetch_one(db).await.map_err(|e| {
+            error!(school.id = %school_id, error = %e, "Database error counting students");
+            AppError::from(e)
+        })?;
 
         let mut data_query = String::from(
             "SELECT id, first_name, last_name, email, role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE school_id = $1 AND role = 'student'",
@@ -166,9 +228,19 @@ impl SchoolService {
         for param in params {
             data_sql = data_sql.bind(param);
         }
-        let users = data_sql.fetch_all(db).await?;
+        let users = data_sql.fetch_all(db).await.map_err(|e| {
+            error!(school.id = %school_id, error = %e, "Database error fetching students");
+            AppError::from(e)
+        })?;
 
         let has_more = offset + limit < total;
+
+        debug!(
+            school.id = %school_id,
+            total = %total,
+            returned = %users.len(),
+            "Students fetched successfully"
+        );
 
         Ok(PaginatedUsersResponse {
             data: users,
@@ -182,7 +254,7 @@ impl SchoolService {
         })
     }
 
-    #[instrument]
+    #[instrument(skip(db, filters), fields(school.id = %school_id, db.operation = "SELECT", db.table = "users"))]
     pub async fn get_school_admins(
         db: &PgPool,
         school_id: Uuid,
@@ -190,6 +262,12 @@ impl SchoolService {
     ) -> Result<PaginatedUsersResponse, AppError> {
         let limit = filters.pagination.limit();
         let offset = filters.pagination.offset();
+
+        debug!(
+            limit = %limit,
+            offset = %offset,
+            "Fetching admins for school"
+        );
 
         let mut count_query =
             String::from("SELECT COUNT(*) FROM users WHERE school_id = $1 AND role = 'admin'");
@@ -217,7 +295,10 @@ impl SchoolService {
         for param in &params {
             count_sql = count_sql.bind(param);
         }
-        let total = count_sql.fetch_one(db).await?;
+        let total = count_sql.fetch_one(db).await.map_err(|e| {
+            error!(school.id = %school_id, error = %e, "Database error counting admins");
+            AppError::from(e)
+        })?;
 
         let mut data_query = String::from(
             "SELECT id, first_name, last_name, email, role, school_id FROM users WHERE school_id = $1 AND role = 'admin'",
@@ -230,9 +311,19 @@ impl SchoolService {
         for param in params {
             data_sql = data_sql.bind(param);
         }
-        let users = data_sql.fetch_all(db).await?;
+        let users = data_sql.fetch_all(db).await.map_err(|e| {
+            error!(school.id = %school_id, error = %e, "Database error fetching admins");
+            AppError::from(e)
+        })?;
 
         let has_more = offset + limit < total;
+
+        debug!(
+            school.id = %school_id,
+            total = %total,
+            returned = %users.len(),
+            "Admins fetched successfully"
+        );
 
         Ok(PaginatedUsersResponse {
             data: users,
@@ -246,38 +337,70 @@ impl SchoolService {
         })
     }
 
-    #[instrument]
+    #[instrument(skip(db), fields(school.id = %school_id, db.operation = "SELECT", db.table = "schools,users"))]
     pub async fn get_school_full_info(
         db: &PgPool,
         school_id: Uuid,
     ) -> Result<SchoolFullInfo, AppError> {
+        debug!("Fetching full school information with statistics");
+
         let school =
             sqlx::query_as::<_, School>("SELECT id, name, address FROM schools WHERE id = $1")
                 .bind(school_id)
                 .fetch_optional(db)
-                .await?
-                .ok_or_else(|| AppError::not_found(anyhow::anyhow!("School not found")))?;
+                .await
+                .map_err(|e| {
+                    error!(school.id = %school_id, error = %e, "Database error fetching school");
+                    AppError::from(e)
+                })?
+                .ok_or_else(|| {
+                    debug!(school.id = %school_id, "School not found");
+                    AppError::not_found(anyhow::anyhow!("School not found"))
+                })?;
+
+        debug!(school.name = %school.name, "School found, fetching statistics");
 
         let total_students = sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM users WHERE school_id = $1 AND role = 'student'",
         )
         .bind(school_id)
         .fetch_one(db)
-        .await?;
+        .await
+        .map_err(|e| {
+            error!(school.id = %school_id, error = %e, "Database error counting students");
+            AppError::from(e)
+        })?;
 
         let total_teachers = sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM users WHERE school_id = $1 AND role = 'teacher'",
         )
         .bind(school_id)
         .fetch_one(db)
-        .await?;
+        .await
+        .map_err(|e| {
+            error!(school.id = %school_id, error = %e, "Database error counting teachers");
+            AppError::from(e)
+        })?;
 
         let total_admins = sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM users WHERE school_id = $1 AND role = 'admin'",
         )
         .bind(school_id)
         .fetch_one(db)
-        .await?;
+        .await
+        .map_err(|e| {
+            error!(school.id = %school_id, error = %e, "Database error counting admins");
+            AppError::from(e)
+        })?;
+
+        info!(
+            school.id = %school_id,
+            school.name = %school.name,
+            total_students = %total_students,
+            total_teachers = %total_teachers,
+            total_admins = %total_admins,
+            "School full info retrieved successfully"
+        );
 
         Ok(SchoolFullInfo {
             id: school.id,
