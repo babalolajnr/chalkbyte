@@ -55,6 +55,8 @@ data-encoding = "2.6"
 rand = "0.8"
 rayon = "1.11.0"
 fake = { version = "4", features = ["derive", "chrono", "uuid"] }
+tower_governor = "0.8.0"
+governor = "0.10.4"
 
 
 [dev-dependencies]

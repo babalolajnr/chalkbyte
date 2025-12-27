@@ -5,6 +5,7 @@ use axum::http::{Request, StatusCode};
 use chalkbyte::config::cors::CorsConfig;
 use chalkbyte::config::email::EmailConfig;
 use chalkbyte::config::jwt::JwtConfig;
+use chalkbyte::config::rate_limit::RateLimitConfig;
 use chalkbyte::router::init_router;
 use chalkbyte::state::AppState;
 use common::{
@@ -22,6 +23,7 @@ async fn setup_test_app(pool: PgPool) -> axum::Router {
         jwt_config: JwtConfig::from_env(),
         email_config: EmailConfig::from_env(),
         cors_config: CorsConfig::from_env(),
+        rate_limit_config: RateLimitConfig::default(),
     };
     init_router(state)
 }

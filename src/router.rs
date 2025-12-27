@@ -15,6 +15,7 @@ use axum::http::{HeaderValue, Method};
 use axum::response::IntoResponse;
 use axum::{Router, middleware};
 
+use tower_governor::GovernorLayer;
 use tower_http::LatencyUnit;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
@@ -32,6 +33,11 @@ async fn health_handler() -> impl IntoResponse {
 }
 
 pub fn init_router(state: AppState) -> Router {
+    // Create rate limiter configs
+    let general_governor_config = state.rate_limit_config.general_governor_config();
+    let auth_governor_config = state.rate_limit_config.auth_governor_config();
+    let mfa_governor_config = state.rate_limit_config.auth_governor_config();
+
     Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .merge(Scalar::with_url("/scalar", ApiDoc::openapi()))
@@ -44,8 +50,16 @@ pub fn init_router(state: AppState) -> Router {
                     init_users_router()
                         .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
                 )
-                .nest("/auth", init_auth_router())
-                .nest("/mfa", init_mfa_router())
+                // Auth endpoints with stricter rate limiting
+                .nest(
+                    "/auth",
+                    init_auth_router().layer(GovernorLayer::new(auth_governor_config)),
+                )
+                // MFA endpoints with stricter rate limiting (auth-related)
+                .nest(
+                    "/mfa",
+                    init_mfa_router().layer(GovernorLayer::new(mfa_governor_config)),
+                )
                 .nest(
                     "/schools",
                     init_schools_router().route_layer(middleware::from_fn_with_state(
@@ -68,7 +82,9 @@ pub fn init_router(state: AppState) -> Router {
                     "/branches",
                     init_branches_router()
                         .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
-                ),
+                )
+                // Apply general rate limiting to all API routes
+                .layer(GovernorLayer::new(general_governor_config)),
         )
         .with_state(state.clone())
         .layer({
