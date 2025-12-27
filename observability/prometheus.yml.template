@@ -24,12 +24,12 @@ scrape_configs:
         labels:
           service: "prometheus"
 
-  # Scrape the Chalkbyte API metrics endpoint
-  # Note: Update the port in the target if PORT env var changes from default 3000
+  # Scrape the Chalkbyte API metrics endpoint (runs on separate server)
+  # Note: Metrics server runs on METRICS_PORT (default 9091) separate from main API
   - job_name: "chalkbyte-api"
     scrape_interval: 10s
     static_configs:
-      - targets: ["chalkbyte:${CHALKBYTE_PORT:-3000}"]
+      - targets: ["chalkbyte:${CHALKBYTE_METRICS_PORT:-9091}"]
         labels:
           service: "chalkbyte-api"
           environment: "development"

@@ -6,11 +6,15 @@ services:
       dockerfile: Dockerfile
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
+      - "${METRICS_PORT:-9091}:${METRICS_PORT:-9091}"
     env_file:
       - .env
     environment:
       - DATABASE_URL=postgresql://chalkbyte:chalkbyte_password@postgres:5432/chalkbyte_db
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - LOG_DIR=/var/log/chalkbyte
+    volumes:
+      - ./storage/logs:/var/log/chalkbyte
     depends_on:
       postgres:
         condition: service_healthy
@@ -33,20 +37,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    restart: no
-    networks:
-      - chalkbyte-network
-
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: chalkbyte-api-pgadmin
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@chalkbyte.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-    ports:
-      - "${PGADMIN_PORT:-8080}:80"
-    depends_on:
-      - postgres
     restart: no
     networks:
       - chalkbyte-network
@@ -150,7 +140,7 @@ services:
       - "--web.enable-lifecycle"
       - "--storage.tsdb.retention.time=30d"
     environment:
-      - CHALKBYTE_PORT=${PORT:-3000}
+      - CHALKBYTE_METRICS_PORT=${METRICS_PORT:-9091}
     volumes:
       - ./observability/prometheus.yml.template:/etc/prometheus/prometheus.yml.template
       - ./observability/prometheus-entrypoint.sh:/usr/local/bin/prometheus-entrypoint.sh

@@ -132,8 +132,8 @@ pub fn init_tracing() {
     use std::fs::OpenOptions;
     use tracing_subscriber::fmt;
 
-    let log_dir = "storage/logs";
-    std::fs::create_dir_all(log_dir).expect("Failed to create logs directory");
+    let log_dir = std::env::var("LOG_DIR").unwrap_or_else(|_| "storage/logs".to_string());
+    std::fs::create_dir_all(&log_dir).expect("Failed to create logs directory");
 
     // Console layer with filtering
     let console_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {

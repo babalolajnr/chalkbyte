@@ -7,11 +7,11 @@ use axum::{
 };
 use metrics::{counter, gauge, histogram};
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-/// Initialize Prometheus metrics exporter
+/// Initialize Prometheus metrics exporter with upkeep task
 pub fn init_metrics() -> PrometheusHandle {
-    PrometheusBuilder::new()
+    let handle = PrometheusBuilder::new()
         .set_buckets_for_metric(
             Matcher::Full("http_request_duration_seconds".to_string()),
             &[
@@ -21,7 +21,18 @@ pub fn init_metrics() -> PrometheusHandle {
         )
         .expect("Failed to set buckets")
         .install_recorder()
-        .expect("Failed to install Prometheus recorder")
+        .expect("Failed to install Prometheus recorder");
+
+    // Spawn upkeep task to clean stale metrics
+    let upkeep_handle = handle.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            upkeep_handle.run_upkeep();
+        }
+    });
+
+    handle
 }
 
 /// Metrics middleware to track HTTP requests
@@ -64,8 +75,8 @@ pub async fn metrics_middleware(req: Request, next: Next) -> Response {
     response
 }
 
-/// Router for exposing metrics endpoint
-pub fn metrics_router(handle: PrometheusHandle) -> Router {
+/// Router for metrics server
+pub fn metrics_app(handle: PrometheusHandle) -> Router {
     Router::new().route("/metrics", get(move || async move { handle.render() }))
 }
 

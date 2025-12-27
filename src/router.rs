@@ -11,9 +11,8 @@ use crate::modules::students::router::init_students_router;
 use crate::modules::users::router::init_users_router;
 use crate::state::AppState;
 
-use axum::http::StatusCode;
 use axum::http::{HeaderValue, Method};
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
 use axum::{Router, middleware};
 
 use tower_http::LatencyUnit;

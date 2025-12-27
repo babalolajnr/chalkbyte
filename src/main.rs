@@ -13,6 +13,59 @@ mod state;
 mod utils;
 mod validator;
 
+async fn start_main_server(state: state::AppState, port: u16) {
+    let app = init_router(state);
+
+    let addr = format!("0.0.0.0:{}", port);
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+
+    println!("🚀 Server running on http://localhost:{}", port);
+    println!(
+        "📚 Swagger UI available at http://localhost:{}/swagger-ui",
+        port
+    );
+    println!("📖 Scalar UI available at http://localhost:{}/scalar", port);
+
+    let shutdown_signal = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to install CTRL+C signal handler");
+        println!("🛑 Shutting down main server gracefully...");
+    };
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal)
+        .await
+        .unwrap();
+}
+
+async fn start_metrics_server(
+    metrics_handle: metrics_exporter_prometheus::PrometheusHandle,
+    metrics_port: u16,
+) {
+    let app = metrics::metrics_app(metrics_handle);
+
+    let addr = format!("0.0.0.0:{}", metrics_port);
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+
+    println!(
+        "📊 Metrics server running on http://localhost:{}/metrics",
+        metrics_port
+    );
+
+    let shutdown_signal = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to install CTRL+C signal handler");
+        println!("🛑 Shutting down metrics server gracefully...");
+    };
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal)
+        .await
+        .unwrap();
+}
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
@@ -23,7 +76,6 @@ async fn main() {
     let metrics_handle = metrics::init_metrics();
 
     let state = init_app_state().await;
-    let app = init_router(state).merge(metrics::metrics_router(metrics_handle));
 
     // Get the port from the environment variable, default to 3000 if not set
     let port = std::env::var("PORT")
@@ -31,27 +83,19 @@ async fn main() {
         .and_then(|p| p.parse::<u16>().ok())
         .unwrap_or(3000);
 
-    let addr = format!("0.0.0.0:{}", port);
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-    println!("🚀 Server running on http://localhost:{}", port);
-    println!(
-        "📚 Swagger UI available at http://localhost:{}/swagger-ui",
-        port
+    // Get metrics port from environment variable, default to 3001
+    let metrics_port = std::env::var("METRICS_PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(3001);
+
+    // Start both servers concurrently
+    // The metrics endpoint runs on a separate port and should not be publicly exposed
+    let (_main, _metrics) = tokio::join!(
+        start_main_server(state, port),
+        start_metrics_server(metrics_handle, metrics_port)
     );
-    println!("📖 Scalar UI available at http://localhost:{}/scalar", port);
-    println!("📊 Metrics available at http://localhost:{}/metrics", port);
 
-    // Set up graceful shutdown
-    let shutdown_signal = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("Failed to install CTRL+C signal handler");
-        println!("🛑 Shutting down gracefully...");
-        logging::shutdown_tracer().await;
-    };
-
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal)
-        .await
-        .unwrap();
+    // Shutdown tracing
+    logging::shutdown_tracer().await;
 }

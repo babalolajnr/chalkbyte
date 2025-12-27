@@ -75,7 +75,7 @@ docker compose --profile observability restart prometheus
 - **Tempo**: http://localhost:3200
 - **Loki**: http://localhost:3100
 - **API Health**: http://localhost:${PORT}/health (default: 3000)
-- **API Metrics**: http://localhost:${PORT}/metrics
+- **API Metrics**: http://localhost:${METRICS_PORT}/metrics (default: 3001) - **Separate Server**
 - **OTLP Collector**: http://localhost:4317 (gRPC)
 
 ### Current Features
@@ -115,6 +115,7 @@ All ports are configurable via environment variables in your `.env` file:
 
 **Application Ports:**
 - `PORT=3002` - Chalkbyte API port (default: 3000)
+- `METRICS_PORT=3001` - Prometheus metrics endpoint (default: 3001, runs on separate server)
 
 **Observability Stack Ports (all optional, defaults shown):**
 - `GRAFANA_PORT=3001` - Grafana web UI
@@ -137,11 +138,13 @@ All ports are configurable via environment variables in your `.env` file:
 - `OTEL_COLLECTOR_ZPAGES_PORT=13133` - Health check
 
 **Important Notes:**
-- Only the `PORT` variable affects Prometheus scraping - it monitors your app on this port
+- The metrics endpoint (`/metrics`) runs on a **separate server** (default port 3001) for security - it should not be publicly exposed
+- The `METRICS_PORT` variable affects Prometheus scraping - Prometheus monitors metrics on this port
+- The main API runs on `PORT` (default 3000) without the `/metrics` endpoint
 - All other ports are for external host access only - internal container communication uses fixed ports
 - No manual configuration needed! Just set ports in `.env` and restart services:
   ```bash
-  # After changing PORT in .env
+  # After changing METRICS_PORT in .env
   docker compose --profile observability restart prometheus
   
   # After changing any other port
@@ -304,18 +307,6 @@ my_axum_api/
 ├── .env                       # Environment variables
 └── README.md
 ```
-
-## 📚 Documentation
-
-- **[docs/SETUP_GUIDE.md](./docs/SETUP_GUIDE.md)** - Complete setup walkthrough
-- **[docs/CLI_GUIDE.md](./docs/CLI_GUIDE.md)** - CLI tool usage and examples
-- **[docs/QUICK_REFERENCE.md](./docs/QUICK_REFERENCE.md)** - Quick command reference
-- **[docs/USER_ROLES.md](./docs/USER_ROLES.md)** - Role system and permissions
-- **[docs/AUTHENTICATION.md](./docs/AUTHENTICATION.md)** - Authentication guide
-- **[docs/OBSERVABILITY_SETUP.md](./docs/OBSERVABILITY_SETUP.md)** - Observability quick start
-- **[docs/OBSERVABILITY.md](./docs/OBSERVABILITY.md)** - Complete observability guide
-- **[docs/OBSERVABILITY_INTEGRATION_STATUS.md](./docs/OBSERVABILITY_INTEGRATION_STATUS.md)** - Current status
-- **[docs/SYSTEM_ADMIN_IMPLEMENTATION.md](./docs/SYSTEM_ADMIN_IMPLEMENTATION.md)** - Technical details
 
 ## 🤝 Contributing
 
