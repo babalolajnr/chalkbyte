@@ -18,6 +18,12 @@ use crate::modules::mfa::model::{
     DisableMfaRequest, EnableMfaResponse, MfaStatusResponse, RegenerateMfaRecoveryCodesResponse,
     VerifyMfaRequest,
 };
+use crate::modules::roles::model::{
+    AssignPermissionsDto, AssignRoleToUserDto, CreateCustomRoleDto, CustomRole,
+    CustomRoleWithPermissions, PaginatedPermissionsResponse, PaginatedRolesResponse, Permission,
+    PermissionFilterParams, RoleAssignmentResponse, RoleFilterParams, UpdateCustomRoleDto,
+    UserCustomRole,
+};
 use crate::modules::students::model::{CreateStudentDto, Student, UpdateStudentDto};
 use crate::modules::users::controller::ProfileResponse;
 use crate::modules::users::model::{
@@ -77,6 +83,19 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
         crate::modules::branches::controller::get_students_in_branch,
         crate::modules::branches::controller::move_student_to_branch,
         crate::modules::branches::controller::remove_student_from_branch,
+        crate::modules::roles::controller::get_permissions,
+        crate::modules::roles::controller::get_permission_by_id,
+        crate::modules::roles::controller::create_role,
+        crate::modules::roles::controller::get_roles,
+        crate::modules::roles::controller::get_role_by_id,
+        crate::modules::roles::controller::update_role,
+        crate::modules::roles::controller::delete_role,
+        crate::modules::roles::controller::assign_permissions,
+        crate::modules::roles::controller::remove_permission,
+        crate::modules::roles::controller::assign_role_to_user,
+        crate::modules::roles::controller::remove_role_from_user,
+        crate::modules::roles::controller::get_user_roles,
+        crate::modules::roles::controller::get_user_permissions,
     ),
     components(
         schemas(
@@ -130,6 +149,19 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
             MoveStudentToBranchDto,
             BranchFilterParams,
             PaginatedBranchesResponse,
+            Permission,
+            CustomRole,
+            CustomRoleWithPermissions,
+            UserCustomRole,
+            CreateCustomRoleDto,
+            UpdateCustomRoleDto,
+            AssignPermissionsDto,
+            AssignRoleToUserDto,
+            RoleFilterParams,
+            PermissionFilterParams,
+            PaginatedRolesResponse,
+            PaginatedPermissionsResponse,
+            RoleAssignmentResponse,
         )
     ),
     modifiers(&SecurityAddon),
@@ -140,7 +172,8 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
         (name = "Schools", description = "School management endpoints"),
         (name = "Students", description = "Student management endpoints"),
         (name = "Levels", description = "Level/Grade management endpoints"),
-        (name = "Branches", description = "Branch management endpoints")
+        (name = "Branches", description = "Branch management endpoints"),
+        (name = "Roles", description = "Custom roles and permissions management")
     ),
     info(
         title = "Chalkbyte API",

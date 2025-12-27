@@ -10,6 +10,7 @@ tests/
 │   └── mod.rs                 # Test helpers and setup functions
 ├── integration_auth.rs        # Authentication endpoint tests (6 tests)
 ├── integration_mfa.rs         # MFA endpoint tests
+├── integration_roles.rs       # Roles & permissions endpoint tests (26 tests)
 ├── integration_schools.rs     # Schools endpoint tests
 ├── integration_students.rs    # Students endpoint tests
 ├── integration_users.rs       # Users endpoint tests
@@ -38,9 +39,10 @@ cargo test
 ### Run Specific Test Suite
 
 ```bash
-# Integration tests (requires test database)
-cargo test integration_auth
-cargo test integration_levels
+# Integration tests (requires test database and test-utils feature)
+cargo test --features test-utils integration_auth
+cargo test --features test-utils integration_levels
+cargo test --features test-utils integration_roles
 
 # Unit tests (in source files)
 cargo test --lib jwt::tests
@@ -52,13 +54,24 @@ cargo test --lib levels::service::tests
 ### Run Single Test
 
 ```bash
-cargo test test_login_success
+cargo test --features test-utils test_login_success
 ```
 
 ### Run Tests with Output
 
 ```bash
-cargo test -- --nocapture
+cargo test --features test-utils -- --nocapture
+```
+
+### Important: test-utils Feature Flag
+
+Integration tests require the `test-utils` feature flag to disable rate limiting.
+The rate limiter uses `PeerIpKeyExtractor` which requires socket connection info
+that isn't available in test environments using `tower::ServiceExt::oneshot`.
+
+```bash
+# Always use --features test-utils for integration tests
+cargo test --features test-utils --test integration_roles -- --test-threads=1
 ```
 
 ## Test Database Setup
@@ -150,6 +163,7 @@ Tests cover:
 - ✅ JWT token creation and validation - 20 unit tests (includes MFA and refresh tokens)
 - ✅ Role middleware and authorization - 16 unit tests
 - ✅ Levels module (CRUD, assignments, authorization) - 42 tests (18 integration + 24 unit)
+- ✅ Roles & permissions module (CRUD, assignments, authorization) - 26 integration tests
 - ✅ MFA flows and verification
 - ✅ Schools management
 - ✅ Students management
@@ -177,4 +191,6 @@ For comprehensive test coverage details, see:
 - Unit tests call functions/methods directly without HTTP layer
 - Run with `--test-threads=1` for stable database test execution
 - Integration tests require PostgreSQL test database with migrations applied
+- Integration tests require `--features test-utils` flag to disable rate limiting
 - Total unit tests: 70 (JWT: 20, Password: 10, Role: 16, Levels: 24)
+- Total integration tests for roles: 26 (permissions, role CRUD, role-permission mapping, user-role assignments, authorization checks)
