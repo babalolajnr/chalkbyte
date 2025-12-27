@@ -1,5 +1,6 @@
 use crate::{
     modules::students::model::{CreateStudentDto, Student, UpdateStudentDto},
+    modules::users::model::system_roles,
     utils::{errors::AppError, password::hash_password},
 };
 use anyhow::Context;
@@ -18,21 +19,21 @@ impl StudentService {
     ) -> Result<Student, AppError> {
         let hashed_password = hash_password(&dto.password)?;
 
-        let student = sqlx::query_as!(
-            Student,
+        // Insert user without role column
+        let student = sqlx::query_as::<_, Student>(
             r#"
-            INSERT INTO users (first_name, last_name, email, password, role, school_id, date_of_birth, grade_level)
-            VALUES ($1, $2, $3, $4, 'student', $5, $6, $7)
+            INSERT INTO users (first_name, last_name, email, password, school_id, date_of_birth, grade_level)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id, first_name, last_name, email, school_id, date_of_birth, grade_level, created_at, updated_at
             "#,
-            dto.first_name,
-            dto.last_name,
-            dto.email,
-            hashed_password,
-            school_id,
-            dto.date_of_birth,
-            dto.grade_level
         )
+        .bind(&dto.first_name)
+        .bind(&dto.last_name)
+        .bind(&dto.email)
+        .bind(&hashed_password)
+        .bind(school_id)
+        .bind(dto.date_of_birth)
+        .bind(&dto.grade_level)
         .fetch_one(db)
         .await
         .map_err(|e| {
@@ -47,6 +48,16 @@ impl StudentService {
             AppError::database(anyhow::Error::from(e))
         })?;
 
+        // Assign student role via user_roles
+        sqlx::query(
+            "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        )
+        .bind(student.id)
+        .bind(system_roles::STUDENT)
+        .execute(db)
+        .await
+        .map_err(|e| AppError::database(anyhow::Error::from(e)))?;
+
         Ok(student)
     }
 
@@ -57,32 +68,37 @@ impl StudentService {
         limit: i64,
         offset: i64,
     ) -> Result<(Vec<Student>, i64), AppError> {
-        let total = sqlx::query_scalar!(
+        let student_role_id = system_roles::STUDENT;
+
+        let total = sqlx::query_scalar::<_, i64>(
             r#"
-            SELECT COUNT(*) as "count!"
-            FROM users
-            WHERE school_id = $1 AND role = 'student'
+            SELECT COUNT(*)
+            FROM users u
+            INNER JOIN user_roles ur ON ur.user_id = u.id
+            WHERE u.school_id = $1 AND ur.role_id = $2
             "#,
-            school_id
         )
+        .bind(school_id)
+        .bind(student_role_id)
         .fetch_one(db)
         .await
         .context("Failed to count students by school")
         .map_err(AppError::database)?;
 
-        let students = sqlx::query_as!(
-            Student,
+        let students = sqlx::query_as::<_, Student>(
             r#"
-            SELECT id, first_name, last_name, email, school_id, date_of_birth, grade_level, created_at, updated_at
-            FROM users
-            WHERE school_id = $1 AND role = 'student'
-            ORDER BY last_name, first_name
-            LIMIT $2 OFFSET $3
+            SELECT u.id, u.first_name, u.last_name, u.email, u.school_id, u.date_of_birth, u.grade_level, u.created_at, u.updated_at
+            FROM users u
+            INNER JOIN user_roles ur ON ur.user_id = u.id
+            WHERE u.school_id = $1 AND ur.role_id = $2
+            ORDER BY u.last_name, u.first_name
+            LIMIT $3 OFFSET $4
             "#,
-            school_id,
-            limit,
-            offset
         )
+        .bind(school_id)
+        .bind(student_role_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(db)
         .await
         .context("Failed to fetch students by school")
@@ -97,47 +113,61 @@ impl StudentService {
         id: Uuid,
         school_id: Uuid,
     ) -> Result<Student, AppError> {
-        // First check if student exists
-        let student_exists = sqlx::query!(
+        let student_role_id = system_roles::STUDENT;
+
+        // Check if user exists and is a student
+        let student_exists = sqlx::query_scalar::<_, bool>(
             r#"
-            SELECT id, school_id
-            FROM users
-            WHERE id = $1 AND role = 'student'
+            SELECT EXISTS(
+                SELECT 1 FROM users u
+                INNER JOIN user_roles ur ON ur.user_id = u.id
+                WHERE u.id = $1 AND ur.role_id = $2
+            )
             "#,
-            id
         )
-        .fetch_optional(db)
+        .bind(id)
+        .bind(student_role_id)
+        .fetch_one(db)
         .await
         .context("Failed to check student existence")
         .map_err(AppError::database)?;
 
-        match student_exists {
-            None => Err(AppError::not_found(anyhow::anyhow!("Student not found"))),
-            Some(record) => {
-                if record.school_id != Some(school_id) {
-                    Err(AppError::forbidden(
-                        "Cannot access student from different school".to_string(),
-                    ))
-                } else {
-                    let student = sqlx::query_as!(
-                        Student,
-                        r#"
-                        SELECT id, first_name, last_name, email, school_id, date_of_birth, grade_level, created_at, updated_at
-                        FROM users
-                        WHERE id = $1 AND school_id = $2 AND role = 'student'
-                        "#,
-                        id,
-                        school_id
-                    )
-                    .fetch_one(db)
-                    .await
-                    .context("Failed to fetch student by ID")
-                    .map_err(AppError::database)?;
-
-                    Ok(student)
-                }
-            }
+        if !student_exists {
+            return Err(AppError::not_found(anyhow::anyhow!("Student not found")));
         }
+
+        // Check school ownership
+        let student_school_id =
+            sqlx::query_scalar::<_, Option<Uuid>>("SELECT school_id FROM users WHERE id = $1")
+                .bind(id)
+                .fetch_one(db)
+                .await
+                .context("Failed to fetch student school")
+                .map_err(AppError::database)?;
+
+        if student_school_id != Some(school_id) {
+            return Err(AppError::forbidden(
+                "Cannot access student from different school".to_string(),
+            ));
+        }
+
+        let student = sqlx::query_as::<_, Student>(
+            r#"
+            SELECT u.id, u.first_name, u.last_name, u.email, u.school_id, u.date_of_birth, u.grade_level, u.created_at, u.updated_at
+            FROM users u
+            INNER JOIN user_roles ur ON ur.user_id = u.id
+            WHERE u.id = $1 AND u.school_id = $2 AND ur.role_id = $3
+            "#,
+        )
+        .bind(id)
+        .bind(school_id)
+        .bind(student_role_id)
+        .fetch_one(db)
+        .await
+        .context("Failed to fetch student by ID")
+        .map_err(AppError::database)?;
+
+        Ok(student)
     }
 
     #[instrument(skip(db, dto))]
@@ -155,44 +185,48 @@ impl StudentService {
         let date_of_birth = dto.date_of_birth.or(existing.date_of_birth);
         let grade_level = dto.grade_level.or(existing.grade_level);
 
+        let student_role_id = system_roles::STUDENT;
+
         let updated_student = if let Some(password) = dto.password {
             let hashed_password = hash_password(&password)?;
-            sqlx::query_as!(
-                Student,
+            sqlx::query_as::<_, Student>(
                 r#"
-                UPDATE users
+                UPDATE users u
                 SET first_name = $1, last_name = $2, email = $3, password = $4, date_of_birth = $5, grade_level = $6, updated_at = NOW()
-                WHERE id = $7 AND school_id = $8 AND role = 'student'
-                RETURNING id, first_name, last_name, email, school_id, date_of_birth, grade_level, created_at, updated_at
+                FROM user_roles ur
+                WHERE u.id = ur.user_id AND u.id = $7 AND u.school_id = $8 AND ur.role_id = $9
+                RETURNING u.id, u.first_name, u.last_name, u.email, u.school_id, u.date_of_birth, u.grade_level, u.created_at, u.updated_at
                 "#,
-                first_name,
-                last_name,
-                email,
-                hashed_password,
-                date_of_birth,
-                grade_level,
-                id,
-                school_id
             )
+            .bind(&first_name)
+            .bind(&last_name)
+            .bind(&email)
+            .bind(&hashed_password)
+            .bind(date_of_birth)
+            .bind(&grade_level)
+            .bind(id)
+            .bind(school_id)
+            .bind(student_role_id)
             .fetch_one(db)
             .await
         } else {
-            sqlx::query_as!(
-                Student,
+            sqlx::query_as::<_, Student>(
                 r#"
-                UPDATE users
+                UPDATE users u
                 SET first_name = $1, last_name = $2, email = $3, date_of_birth = $4, grade_level = $5, updated_at = NOW()
-                WHERE id = $6 AND school_id = $7 AND role = 'student'
-                RETURNING id, first_name, last_name, email, school_id, date_of_birth, grade_level, created_at, updated_at
+                FROM user_roles ur
+                WHERE u.id = ur.user_id AND u.id = $6 AND u.school_id = $7 AND ur.role_id = $8
+                RETURNING u.id, u.first_name, u.last_name, u.email, u.school_id, u.date_of_birth, u.grade_level, u.created_at, u.updated_at
                 "#,
-                first_name,
-                last_name,
-                email,
-                date_of_birth,
-                grade_level,
-                id,
-                school_id
             )
+            .bind(&first_name)
+            .bind(&last_name)
+            .bind(&email)
+            .bind(date_of_birth)
+            .bind(&grade_level)
+            .bind(id)
+            .bind(school_id)
+            .bind(student_role_id)
             .fetch_one(db)
             .await
         }
@@ -213,44 +247,61 @@ impl StudentService {
 
     #[instrument(skip(db))]
     pub async fn delete_student(db: &PgPool, id: Uuid, school_id: Uuid) -> Result<(), AppError> {
-        // First check if student exists
-        let student_exists = sqlx::query!(
+        let student_role_id = system_roles::STUDENT;
+
+        // Check if user exists and is a student
+        let student_exists = sqlx::query_scalar::<_, bool>(
             r#"
-            SELECT id, school_id
-            FROM users
-            WHERE id = $1 AND role = 'student'
+            SELECT EXISTS(
+                SELECT 1 FROM users u
+                INNER JOIN user_roles ur ON ur.user_id = u.id
+                WHERE u.id = $1 AND ur.role_id = $2
+            )
             "#,
-            id
         )
-        .fetch_optional(db)
+        .bind(id)
+        .bind(student_role_id)
+        .fetch_one(db)
         .await
         .context("Failed to check student existence")
         .map_err(AppError::database)?;
 
-        match student_exists {
-            None => Err(AppError::not_found(anyhow::anyhow!("Student not found"))),
-            Some(record) => {
-                if record.school_id != Some(school_id) {
-                    Err(AppError::forbidden(
-                        "Cannot delete student from different school".to_string(),
-                    ))
-                } else {
-                    sqlx::query!(
-                        r#"
-                        DELETE FROM users
-                        WHERE id = $1 AND school_id = $2 AND role = 'student'
-                        "#,
-                        id,
-                        school_id
-                    )
-                    .execute(db)
-                    .await
-                    .context("Failed to delete student")
-                    .map_err(AppError::database)?;
-
-                    Ok(())
-                }
-            }
+        if !student_exists {
+            return Err(AppError::not_found(anyhow::anyhow!("Student not found")));
         }
+
+        // Check school ownership
+        let student_school_id =
+            sqlx::query_scalar::<_, Option<Uuid>>("SELECT school_id FROM users WHERE id = $1")
+                .bind(id)
+                .fetch_one(db)
+                .await
+                .context("Failed to fetch student school")
+                .map_err(AppError::database)?;
+
+        if student_school_id != Some(school_id) {
+            return Err(AppError::forbidden(
+                "Cannot delete student from different school".to_string(),
+            ));
+        }
+
+        // Delete role assignment first
+        sqlx::query("DELETE FROM user_roles WHERE user_id = $1")
+            .bind(id)
+            .execute(db)
+            .await
+            .context("Failed to delete student role assignment")
+            .map_err(AppError::database)?;
+
+        // Delete the user
+        sqlx::query("DELETE FROM users WHERE id = $1 AND school_id = $2")
+            .bind(id)
+            .bind(school_id)
+            .execute(db)
+            .await
+            .context("Failed to delete student")
+            .map_err(AppError::database)?;
+
+        Ok(())
     }
 }

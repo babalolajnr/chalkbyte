@@ -1,12 +1,13 @@
 use crate::middleware::auth::AuthUser;
+use crate::middleware::role::{get_user_id_from_auth, is_admin};
 use crate::modules::auth::controller::ErrorResponse;
 use crate::modules::students::model::{
     CreateStudentDto, PaginatedStudentsResponse, PaginationMeta, QueryParams, Student,
     UpdateStudentDto,
 };
 use crate::modules::students::service::StudentService;
+use crate::modules::users::service::UserService;
 use crate::state::AppState;
-use crate::utils::auth_helpers::get_admin_school_id;
 use crate::utils::errors::AppError;
 use axum::{
     Json,
@@ -39,7 +40,9 @@ pub async fn create_student(
     auth_user: AuthUser,
     Json(dto): Json<CreateStudentDto>,
 ) -> Result<Json<Student>, AppError> {
-    if auth_user.0.role != "admin" {
+    let user_id = get_user_id_from_auth(&auth_user)?;
+
+    if !is_admin(&state.db, user_id).await? {
         return Err(AppError::forbidden(
             "Only school admins can create students".to_string(),
         ));
@@ -48,7 +51,10 @@ pub async fn create_student(
     dto.validate()
         .map_err(|e| AppError::unprocessable(anyhow::anyhow!("Validation failed: {}", e)))?;
 
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    let requester = UserService::get_user(&state.db, user_id).await?;
+    let school_id = requester
+        .school_id
+        .ok_or_else(|| AppError::forbidden("Admin must be assigned to a school".to_string()))?;
 
     let student = StudentService::create_student(&state.db, dto, school_id).await?;
     Ok(Json(student))
@@ -77,13 +83,18 @@ pub async fn get_students(
     auth_user: AuthUser,
     Query(params): Query<QueryParams>,
 ) -> Result<Json<PaginatedStudentsResponse>, AppError> {
-    if auth_user.0.role != "admin" {
+    let user_id = get_user_id_from_auth(&auth_user)?;
+
+    if !is_admin(&state.db, user_id).await? {
         return Err(AppError::forbidden(
             "Only school admins can list students".to_string(),
         ));
     }
 
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    let requester = UserService::get_user(&state.db, user_id).await?;
+    let school_id = requester
+        .school_id
+        .ok_or_else(|| AppError::forbidden("Admin must be assigned to a school".to_string()))?;
 
     let limit = params.limit();
     let offset = params.offset();
@@ -131,13 +142,18 @@ pub async fn get_student(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Student>, AppError> {
-    if auth_user.0.role != "admin" {
+    let user_id = get_user_id_from_auth(&auth_user)?;
+
+    if !is_admin(&state.db, user_id).await? {
         return Err(AppError::forbidden(
             "Only school admins can view students".to_string(),
         ));
     }
 
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    let requester = UserService::get_user(&state.db, user_id).await?;
+    let school_id = requester
+        .school_id
+        .ok_or_else(|| AppError::forbidden("Admin must be assigned to a school".to_string()))?;
 
     let student = StudentService::get_student_by_id(&state.db, id, school_id).await?;
     Ok(Json(student))
@@ -170,7 +186,9 @@ pub async fn update_student(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateStudentDto>,
 ) -> Result<Json<Student>, AppError> {
-    if auth_user.0.role != "admin" {
+    let user_id = get_user_id_from_auth(&auth_user)?;
+
+    if !is_admin(&state.db, user_id).await? {
         return Err(AppError::forbidden(
             "Only school admins can update students".to_string(),
         ));
@@ -179,7 +197,10 @@ pub async fn update_student(
     dto.validate()
         .map_err(|e| AppError::unprocessable(anyhow::anyhow!("Validation failed: {}", e)))?;
 
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    let requester = UserService::get_user(&state.db, user_id).await?;
+    let school_id = requester
+        .school_id
+        .ok_or_else(|| AppError::forbidden("Admin must be assigned to a school".to_string()))?;
 
     let student = StudentService::update_student(&state.db, id, school_id, dto).await?;
     Ok(Json(student))
@@ -209,13 +230,18 @@ pub async fn delete_student(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if auth_user.0.role != "admin" {
+    let user_id = get_user_id_from_auth(&auth_user)?;
+
+    if !is_admin(&state.db, user_id).await? {
         return Err(AppError::forbidden(
             "Only school admins can delete students".to_string(),
         ));
     }
 
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    let requester = UserService::get_user(&state.db, user_id).await?;
+    let school_id = requester
+        .school_id
+        .ok_or_else(|| AppError::forbidden("Admin must be assigned to a school".to_string()))?;
 
     StudentService::delete_student(&state.db, id, school_id).await?;
     Ok(Json(json!({"message": "Student deleted successfully"})))

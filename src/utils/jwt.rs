@@ -9,23 +9,14 @@ use crate::utils::errors::AppError;
 pub fn create_access_token(
     user_id: Uuid,
     email: &str,
-    role: &crate::modules::users::model::UserRole,
     jwt_config: &JwtConfig,
 ) -> Result<String, AppError> {
     let now = Utc::now().timestamp() as usize;
     let exp = now + jwt_config.access_token_expiry as usize;
 
-    let role_str = match role {
-        crate::modules::users::model::UserRole::SystemAdmin => "system_admin",
-        crate::modules::users::model::UserRole::Admin => "admin",
-        crate::modules::users::model::UserRole::Teacher => "teacher",
-        crate::modules::users::model::UserRole::Student => "student",
-    };
-
     let claims = Claims {
         sub: user_id.to_string(),
         email: email.to_string(),
-        role: role_str.to_string(),
         exp,
         iat: now,
     };
@@ -51,23 +42,14 @@ pub fn verify_token(token: &str, jwt_config: &JwtConfig) -> Result<Claims, AppEr
 pub fn create_mfa_temp_token(
     user_id: Uuid,
     email: &str,
-    role: &crate::modules::users::model::UserRole,
     jwt_config: &JwtConfig,
 ) -> Result<String, AppError> {
     let now = Utc::now().timestamp() as usize;
     let exp = now + 600; // 10 minutes expiry for MFA verification
 
-    let role_str = match role {
-        crate::modules::users::model::UserRole::SystemAdmin => "system_admin",
-        crate::modules::users::model::UserRole::Admin => "admin",
-        crate::modules::users::model::UserRole::Teacher => "teacher",
-        crate::modules::users::model::UserRole::Student => "student",
-    };
-
     let claims = MfaTempClaims {
         sub: user_id.to_string(),
         email: email.to_string(),
-        role: role_str.to_string(),
         mfa_pending: true,
         exp,
         iat: now,
@@ -102,23 +84,14 @@ pub fn verify_mfa_temp_token(
 pub fn create_refresh_token(
     user_id: Uuid,
     email: &str,
-    role: &crate::modules::users::model::UserRole,
     jwt_config: &JwtConfig,
 ) -> Result<String, AppError> {
     let now = Utc::now().timestamp() as usize;
     let exp = now + jwt_config.refresh_token_expiry as usize;
 
-    let role_str = match role {
-        crate::modules::users::model::UserRole::SystemAdmin => "system_admin",
-        crate::modules::users::model::UserRole::Admin => "admin",
-        crate::modules::users::model::UserRole::Teacher => "teacher",
-        crate::modules::users::model::UserRole::Student => "student",
-    };
-
     let claims = RefreshTokenClaims {
         sub: user_id.to_string(),
         email: email.to_string(),
-        role: role_str.to_string(),
         exp,
         iat: now,
     };
@@ -147,7 +120,6 @@ pub fn verify_refresh_token(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::users::model::UserRole;
 
     fn get_test_jwt_config() -> JwtConfig {
         JwtConfig {
@@ -162,9 +134,8 @@ mod tests {
         let jwt_config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
         let email = "test@example.com";
-        let role = UserRole::Student;
 
-        let result = create_access_token(user_id, email, &role, &jwt_config);
+        let result = create_access_token(user_id, email, &jwt_config);
 
         assert!(result.is_ok());
         let token = result.unwrap();
@@ -172,39 +143,18 @@ mod tests {
     }
 
     #[test]
-    fn test_create_access_token_all_roles() {
-        let jwt_config = get_test_jwt_config();
-        let user_id = Uuid::new_v4();
-        let email = "test@example.com";
-
-        let roles = vec![
-            UserRole::SystemAdmin,
-            UserRole::Admin,
-            UserRole::Teacher,
-            UserRole::Student,
-        ];
-
-        for role in roles {
-            let result = create_access_token(user_id, email, &role, &jwt_config);
-            assert!(result.is_ok());
-        }
-    }
-
-    #[test]
     fn test_verify_token_success() {
         let jwt_config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
         let email = "test@example.com";
-        let role = UserRole::Student;
 
-        let token = create_access_token(user_id, email, &role, &jwt_config).unwrap();
+        let token = create_access_token(user_id, email, &jwt_config).unwrap();
         let result = verify_token(&token, &jwt_config);
 
         assert!(result.is_ok());
         let claims = result.unwrap();
         assert_eq!(claims.email, email);
         assert_eq!(claims.sub, user_id.to_string());
-        assert_eq!(claims.role, "student");
     }
 
     #[test]
@@ -222,9 +172,8 @@ mod tests {
         let jwt_config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
         let email = "test@example.com";
-        let role = UserRole::Student;
 
-        let token = create_access_token(user_id, email, &role, &jwt_config).unwrap();
+        let token = create_access_token(user_id, email, &jwt_config).unwrap();
 
         let wrong_jwt_config = JwtConfig {
             secret: "different_secret_key".to_string(),
@@ -248,65 +197,12 @@ mod tests {
     }
 
     #[test]
-    fn test_token_contains_correct_role_system_admin() {
-        let jwt_config = get_test_jwt_config();
-        let user_id = Uuid::new_v4();
-        let email = "admin@example.com";
-        let role = UserRole::SystemAdmin;
-
-        let token = create_access_token(user_id, email, &role, &jwt_config).unwrap();
-        let claims = verify_token(&token, &jwt_config).unwrap();
-
-        assert_eq!(claims.role, "system_admin");
-    }
-
-    #[test]
-    fn test_token_contains_correct_role_admin() {
-        let jwt_config = get_test_jwt_config();
-        let user_id = Uuid::new_v4();
-        let email = "admin@example.com";
-        let role = UserRole::Admin;
-
-        let token = create_access_token(user_id, email, &role, &jwt_config).unwrap();
-        let claims = verify_token(&token, &jwt_config).unwrap();
-
-        assert_eq!(claims.role, "admin");
-    }
-
-    #[test]
-    fn test_token_contains_correct_role_teacher() {
-        let jwt_config = get_test_jwt_config();
-        let user_id = Uuid::new_v4();
-        let email = "teacher@example.com";
-        let role = UserRole::Teacher;
-
-        let token = create_access_token(user_id, email, &role, &jwt_config).unwrap();
-        let claims = verify_token(&token, &jwt_config).unwrap();
-
-        assert_eq!(claims.role, "teacher");
-    }
-
-    #[test]
-    fn test_token_contains_correct_role_student() {
-        let jwt_config = get_test_jwt_config();
-        let user_id = Uuid::new_v4();
-        let email = "student@example.com";
-        let role = UserRole::Student;
-
-        let token = create_access_token(user_id, email, &role, &jwt_config).unwrap();
-        let claims = verify_token(&token, &jwt_config).unwrap();
-
-        assert_eq!(claims.role, "student");
-    }
-
-    #[test]
     fn test_token_expiry_is_set() {
         let jwt_config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
         let email = "test@example.com";
-        let role = UserRole::Student;
 
-        let token = create_access_token(user_id, email, &role, &jwt_config).unwrap();
+        let token = create_access_token(user_id, email, &jwt_config).unwrap();
         let claims = verify_token(&token, &jwt_config).unwrap();
 
         assert!(claims.exp > claims.iat);
@@ -321,9 +217,8 @@ mod tests {
         let jwt_config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
         let email = "test+special@example.co.uk";
-        let role = UserRole::Student;
 
-        let token = create_access_token(user_id, email, &role, &jwt_config).unwrap();
+        let token = create_access_token(user_id, email, &jwt_config).unwrap();
         let claims = verify_token(&token, &jwt_config).unwrap();
 
         assert_eq!(claims.email, email);
@@ -353,10 +248,9 @@ mod tests {
         let user_id2 = Uuid::new_v4();
         let email1 = "user1@example.com";
         let email2 = "user2@example.com";
-        let role = UserRole::Student;
 
-        let token1 = create_access_token(user_id1, email1, &role, &jwt_config).unwrap();
-        let token2 = create_access_token(user_id2, email2, &role, &jwt_config).unwrap();
+        let token1 = create_access_token(user_id1, email1, &jwt_config).unwrap();
+        let token2 = create_access_token(user_id2, email2, &jwt_config).unwrap();
 
         assert_ne!(token1, token2);
 
@@ -374,9 +268,8 @@ mod tests {
         let jwt_config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
         let email = "test@example.com";
-        let role = UserRole::Teacher;
 
-        let result = create_refresh_token(user_id, email, &role, &jwt_config);
+        let result = create_refresh_token(user_id, email, &jwt_config);
 
         assert!(result.is_ok());
         let token = result.unwrap();
@@ -388,16 +281,14 @@ mod tests {
         let jwt_config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
         let email = "refresh@example.com";
-        let role = UserRole::Admin;
 
-        let token = create_refresh_token(user_id, email, &role, &jwt_config).unwrap();
+        let token = create_refresh_token(user_id, email, &jwt_config).unwrap();
         let result = verify_refresh_token(&token, &jwt_config);
 
         assert!(result.is_ok());
         let claims = result.unwrap();
         assert_eq!(claims.email, email);
         assert_eq!(claims.sub, user_id.to_string());
-        assert_eq!(claims.role, "admin");
     }
 
     #[test]
@@ -405,9 +296,8 @@ mod tests {
         let jwt_config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
         let email = "mfa@example.com";
-        let role = UserRole::Student;
 
-        let result = create_mfa_temp_token(user_id, email, &role, &jwt_config);
+        let result = create_mfa_temp_token(user_id, email, &jwt_config);
 
         assert!(result.is_ok());
         let token = result.unwrap();
@@ -419,9 +309,8 @@ mod tests {
         let jwt_config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
         let email = "mfa@example.com";
-        let role = UserRole::Teacher;
 
-        let token = create_mfa_temp_token(user_id, email, &role, &jwt_config).unwrap();
+        let token = create_mfa_temp_token(user_id, email, &jwt_config).unwrap();
         let result = verify_mfa_temp_token(&token, &jwt_config);
 
         assert!(result.is_ok());
@@ -446,10 +335,9 @@ mod tests {
         let jwt_config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
         let email = "test@example.com";
-        let role = UserRole::Student;
 
-        let access_token = create_access_token(user_id, email, &role, &jwt_config).unwrap();
-        let refresh_token = create_refresh_token(user_id, email, &role, &jwt_config).unwrap();
+        let access_token = create_access_token(user_id, email, &jwt_config).unwrap();
+        let refresh_token = create_refresh_token(user_id, email, &jwt_config).unwrap();
 
         let access_claims = verify_token(&access_token, &jwt_config).unwrap();
         let refresh_claims = verify_refresh_token(&refresh_token, &jwt_config).unwrap();

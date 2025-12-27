@@ -1,9 +1,7 @@
 //! Role-based authorization middleware for Axum
 //!
-//! This module provides multiple approaches for role-based access control:
-//! 1. Layer-based middleware using `RequireRole`
-//! 2. Extractor-based approach using `RequireRoles`
-//! 3. Helper functions for manual role checking
+//! This module provides permission-based access control using the database
+//! to check user roles and permissions dynamically.
 
 #![allow(dead_code)]
 
@@ -13,35 +11,22 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use uuid::Uuid;
 
 use crate::middleware::auth::AuthUser;
-use crate::modules::users::model::UserRole;
+use crate::modules::roles::service as roles_service;
+use crate::modules::users::model::system_roles;
+use crate::modules::users::service::UserService;
 use crate::state::AppState;
 use crate::utils::errors::AppError;
 
 /// Middleware function that checks if the authenticated user has one of the required roles.
-///
-/// # Usage with axum::middleware::from_fn_with_state
-///
-/// ```rust,ignore
-/// use axum::{Router, middleware};
-/// use crate::middleware::role::require_roles;
-/// use crate::modules::users::model::UserRole;
-///
-/// let protected_routes = Router::new()
-///     .route("/admin-only", get(admin_handler))
-///     .layer(middleware::from_fn_with_state(
-///         state.clone(),
-///         |state, req, next| require_roles(state, req, next, vec![UserRole::SystemAdmin])
-///     ));
-/// ```
 pub async fn require_roles(
     State(state): State<AppState>,
     mut req: Request,
     next: Next,
-    allowed_roles: Vec<UserRole>,
+    allowed_role_ids: Vec<Uuid>,
 ) -> Result<Response, AppError> {
-    // Extract the authenticated user from request parts
     let (mut parts, body) = req.into_parts();
 
     let auth_user = match AuthUser::from_request_parts(&mut parts, &state).await {
@@ -49,63 +34,73 @@ pub async fn require_roles(
         Err(e) => return Err(e),
     };
 
-    // Parse the user's role
-    let user_role = parse_role_from_string(&auth_user.0.role)?;
+    let user_id = Uuid::parse_str(&auth_user.0.sub)
+        .map_err(|_| AppError::unauthorized("Invalid user ID in token".to_string()))?;
 
-    // Check if user has one of the allowed roles
-    if !allowed_roles.contains(&user_role) {
+    // Check if user has any of the allowed roles
+    let has_role = UserService::user_has_any_role(&state.db, user_id, &allowed_role_ids).await?;
+
+    if !has_role {
+        return Err(AppError::forbidden(
+            "Access denied. You do not have the required role.".to_string(),
+        ));
+    }
+
+    req = Request::from_parts(parts, body);
+    Ok(next.run(req).await)
+}
+
+/// Middleware function that checks if the user has a specific permission.
+pub async fn require_permission(
+    State(state): State<AppState>,
+    mut req: Request,
+    next: Next,
+    permission_name: &str,
+) -> Result<Response, AppError> {
+    let (mut parts, body) = req.into_parts();
+
+    let auth_user = match AuthUser::from_request_parts(&mut parts, &state).await {
+        Ok(user) => user,
+        Err(e) => return Err(e),
+    };
+
+    let user_id = Uuid::parse_str(&auth_user.0.sub)
+        .map_err(|_| AppError::unauthorized("Invalid user ID in token".to_string()))?;
+
+    // Check if user has the permission
+    let has_permission =
+        roles_service::user_has_permission(&state.db, user_id, permission_name).await?;
+
+    if !has_permission {
         return Err(AppError::forbidden(format!(
-            "Access denied. Required roles: {:?}, but user has role: {:?}",
-            allowed_roles, user_role
+            "Access denied. Missing required permission: {}",
+            permission_name
         )));
     }
 
-    // Reconstruct the request and continue
     req = Request::from_parts(parts, body);
     Ok(next.run(req).await)
 }
 
 /// Helper function to create a middleware closure for system admin only routes
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use axum::{Router, middleware};
-/// use crate::middleware::role::require_system_admin;
-///
-/// let admin_routes = Router::new()
-///     .route("/system-settings", get(settings_handler))
-///     .layer(middleware::from_fn_with_state(state.clone(), require_system_admin));
-/// ```
 pub async fn require_system_admin(
     State(state): State<AppState>,
     req: Request,
     next: Next,
 ) -> Response {
-    match require_roles(State(state), req, next, vec![UserRole::SystemAdmin]).await {
+    match require_roles(State(state), req, next, vec![system_roles::SYSTEM_ADMIN]).await {
         Ok(response) => response,
         Err(err) => err.into_response(),
     }
 }
 
 /// Helper function for school admin routes (both SystemAdmin and Admin allowed)
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use axum::{Router, middleware};
-/// use crate::middleware::role::require_admin;
-///
-/// let admin_routes = Router::new()
-///     .route("/school-settings", get(settings_handler))
-///     .layer(middleware::from_fn_with_state(state.clone(), require_admin));
-/// ```
 pub async fn require_admin(State(state): State<AppState>, req: Request, next: Next) -> Response {
     match require_roles(
         State(state),
         req,
         next,
-        vec![UserRole::SystemAdmin, UserRole::Admin],
+        vec![system_roles::SYSTEM_ADMIN, system_roles::ADMIN],
     )
     .await
     {
@@ -115,23 +110,16 @@ pub async fn require_admin(State(state): State<AppState>, req: Request, next: Ne
 }
 
 /// Helper function for teacher routes (SystemAdmin, Admin, and Teacher allowed)
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use axum::{Router, middleware};
-/// use crate::middleware::role::require_teacher;
-///
-/// let teacher_routes = Router::new()
-///     .route("/grades", get(grades_handler))
-///     .layer(middleware::from_fn_with_state(state.clone(), require_teacher));
-/// ```
 pub async fn require_teacher(State(state): State<AppState>, req: Request, next: Next) -> Response {
     match require_roles(
         State(state),
         req,
         next,
-        vec![UserRole::SystemAdmin, UserRole::Admin, UserRole::Teacher],
+        vec![
+            system_roles::SYSTEM_ADMIN,
+            system_roles::ADMIN,
+            system_roles::TEACHER,
+        ],
     )
     .await
     {
@@ -140,22 +128,9 @@ pub async fn require_teacher(State(state): State<AppState>, req: Request, next: 
     }
 }
 
-/// Simple role checker extractor for single role requirement
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use crate::middleware::role::RequireSystemAdmin;
-///
-/// pub async fn system_handler(
-///     _require_admin: RequireSystemAdmin,
-///     auth_user: AuthUser,
-/// ) -> Result<Json<Response>, AppError> {
-///     // Only system admins can access this
-/// }
-/// ```
+/// Simple role checker extractor for system admin requirement
 #[derive(Debug, Clone)]
-pub struct RequireSystemAdmin;
+pub struct RequireSystemAdmin(pub Uuid);
 
 impl FromRequestParts<AppState> for RequireSystemAdmin {
     type Rejection = AppError;
@@ -165,21 +140,24 @@ impl FromRequestParts<AppState> for RequireSystemAdmin {
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
         let auth_user = AuthUser::from_request_parts(parts, state).await?;
-        let user_role = parse_role_from_string(&auth_user.0.role)?;
+        let user_id = Uuid::parse_str(&auth_user.0.sub)
+            .map_err(|_| AppError::unauthorized("Invalid user ID in token".to_string()))?;
 
-        if user_role != UserRole::SystemAdmin {
+        let is_sys_admin = UserService::is_system_admin(&state.db, user_id).await?;
+
+        if !is_sys_admin {
             return Err(AppError::forbidden(
                 "Access denied. Only system administrators can access this resource.".to_string(),
             ));
         }
 
-        Ok(RequireSystemAdmin)
+        Ok(RequireSystemAdmin(user_id))
     }
 }
 
 /// Extractor for admin-level access (SystemAdmin or Admin)
 #[derive(Debug, Clone)]
-pub struct RequireAdmin;
+pub struct RequireAdmin(pub Uuid);
 
 impl FromRequestParts<AppState> for RequireAdmin {
     type Rejection = AppError;
@@ -189,21 +167,29 @@ impl FromRequestParts<AppState> for RequireAdmin {
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
         let auth_user = AuthUser::from_request_parts(parts, state).await?;
-        let user_role = parse_role_from_string(&auth_user.0.role)?;
+        let user_id = Uuid::parse_str(&auth_user.0.sub)
+            .map_err(|_| AppError::unauthorized("Invalid user ID in token".to_string()))?;
 
-        if user_role != UserRole::SystemAdmin && user_role != UserRole::Admin {
+        let has_role = UserService::user_has_any_role(
+            &state.db,
+            user_id,
+            &[system_roles::SYSTEM_ADMIN, system_roles::ADMIN],
+        )
+        .await?;
+
+        if !has_role {
             return Err(AppError::forbidden(
                 "Access denied. Administrator privileges required.".to_string(),
             ));
         }
 
-        Ok(RequireAdmin)
+        Ok(RequireAdmin(user_id))
     }
 }
 
 /// Extractor for teacher-level access (SystemAdmin, Admin, or Teacher)
 #[derive(Debug, Clone)]
-pub struct RequireTeacher;
+pub struct RequireTeacher(pub Uuid);
 
 impl FromRequestParts<AppState> for RequireTeacher {
     type Rejection = AppError;
@@ -213,289 +199,151 @@ impl FromRequestParts<AppState> for RequireTeacher {
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
         let auth_user = AuthUser::from_request_parts(parts, state).await?;
-        let user_role = parse_role_from_string(&auth_user.0.role)?;
+        let user_id = Uuid::parse_str(&auth_user.0.sub)
+            .map_err(|_| AppError::unauthorized("Invalid user ID in token".to_string()))?;
 
-        if user_role != UserRole::SystemAdmin
-            && user_role != UserRole::Admin
-            && user_role != UserRole::Teacher
-        {
+        let has_role = UserService::user_has_any_role(
+            &state.db,
+            user_id,
+            &[
+                system_roles::SYSTEM_ADMIN,
+                system_roles::ADMIN,
+                system_roles::TEACHER,
+            ],
+        )
+        .await?;
+
+        if !has_role {
             return Err(AppError::forbidden(
                 "Access denied. Teacher privileges required.".to_string(),
             ));
         }
 
-        Ok(RequireTeacher)
+        Ok(RequireTeacher(user_id))
     }
 }
 
-/// Helper function to check if a user has a specific role in controller logic
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use crate::middleware::role::check_role;
-/// use crate::modules::users::model::UserRole;
-///
-/// pub async fn handler(auth_user: AuthUser) -> Result<Json<Response>, AppError> {
-///     check_role(&auth_user, UserRole::SystemAdmin)?;
-///     // Handler logic
-/// }
-/// ```
-pub fn check_role(auth_user: &AuthUser, required_role: UserRole) -> Result<(), AppError> {
-    let user_role = parse_role_from_string(&auth_user.0.role)?;
+/// Extractor that checks for a specific permission
+#[derive(Debug, Clone)]
+pub struct RequirePermission<const N: usize>(pub Uuid);
 
-    if user_role != required_role {
-        return Err(AppError::forbidden(format!(
-            "Access denied. Required role: {:?}, but user has role: {:?}",
-            required_role, user_role
-        )));
-    }
-
-    Ok(())
+/// Helper function to check if a user has any of the specified roles (async version)
+pub async fn check_user_has_any_role(
+    db: &sqlx::PgPool,
+    user_id: Uuid,
+    role_ids: &[Uuid],
+) -> Result<bool, AppError> {
+    UserService::user_has_any_role(db, user_id, role_ids).await
 }
 
-/// Helper function to check if a user has any of the specified roles
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use crate::middleware::role::check_any_role;
-/// use crate::modules::users::model::UserRole;
-///
-/// pub async fn handler(auth_user: AuthUser) -> Result<Json<Response>, AppError> {
-///     check_any_role(&auth_user, &[UserRole::SystemAdmin, UserRole::Admin])?;
-///     // Handler logic
-/// }
-/// ```
-pub fn check_any_role(auth_user: &AuthUser, allowed_roles: &[UserRole]) -> Result<(), AppError> {
-    let user_role = parse_role_from_string(&auth_user.0.role)?;
-
-    if !allowed_roles.contains(&user_role) {
-        return Err(AppError::forbidden(format!(
-            "Access denied. Required roles: {:?}, but user has role: {:?}",
-            allowed_roles, user_role
-        )));
-    }
-
-    Ok(())
+/// Helper function to check if a user has a specific permission (async version)
+pub async fn check_user_has_permission(
+    db: &sqlx::PgPool,
+    user_id: Uuid,
+    permission_name: &str,
+) -> Result<bool, AppError> {
+    roles_service::user_has_permission(db, user_id, permission_name).await
 }
 
-/// Parse a role string into a UserRole enum
-fn parse_role_from_string(role_str: &str) -> Result<UserRole, AppError> {
-    match role_str {
-        "system_admin" => Ok(UserRole::SystemAdmin),
-        "admin" => Ok(UserRole::Admin),
-        "teacher" => Ok(UserRole::Teacher),
-        "student" => Ok(UserRole::Student),
-        _ => Err(AppError::internal_error(format!(
-            "Invalid role: {}",
-            role_str
-        ))),
-    }
+/// Check if user is a system admin
+pub async fn is_system_admin(db: &sqlx::PgPool, user_id: Uuid) -> Result<bool, AppError> {
+    UserService::is_system_admin(db, user_id).await
 }
 
-/// Get the hierarchy level of a role (higher number = more privileges)
-pub fn role_hierarchy_level(role: &UserRole) -> u8 {
-    match role {
-        UserRole::SystemAdmin => 3,
-        UserRole::Admin => 2,
-        UserRole::Teacher => 1,
-        UserRole::Student => 0,
-    }
+/// Check if user is an admin (school admin or system admin)
+pub async fn is_admin(db: &sqlx::PgPool, user_id: Uuid) -> Result<bool, AppError> {
+    UserService::user_has_any_role(
+        db,
+        user_id,
+        &[system_roles::SYSTEM_ADMIN, system_roles::ADMIN],
+    )
+    .await
 }
 
-/// Check if a role has at least the specified level of access
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use crate::middleware::role::{check_role_hierarchy, parse_role_from_string};
-/// use crate::modules::users::model::UserRole;
-///
-/// let user_role = parse_role_from_string(&auth_user.0.role)?;
-/// check_role_hierarchy(&user_role, &UserRole::Admin)?;
-/// ```
-pub fn check_role_hierarchy(
-    user_role: &UserRole,
-    minimum_required_role: &UserRole,
-) -> Result<(), AppError> {
-    if role_hierarchy_level(user_role) < role_hierarchy_level(minimum_required_role) {
-        return Err(AppError::forbidden(format!(
-            "Access denied. Minimum required role: {:?}, but user has role: {:?}",
-            minimum_required_role, user_role
-        )));
-    }
+/// Check if user is at least a teacher (teacher, admin, or system admin)
+pub async fn is_teacher_or_above(db: &sqlx::PgPool, user_id: Uuid) -> Result<bool, AppError> {
+    UserService::user_has_any_role(
+        db,
+        user_id,
+        &[
+            system_roles::SYSTEM_ADMIN,
+            system_roles::ADMIN,
+            system_roles::TEACHER,
+        ],
+    )
+    .await
+}
 
-    Ok(())
+/// Get the user ID from auth claims
+pub fn get_user_id_from_auth(auth_user: &AuthUser) -> Result<Uuid, AppError> {
+    Uuid::parse_str(&auth_user.0.sub)
+        .map_err(|_| AppError::unauthorized("Invalid user ID in token".to_string()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::auth::model::Claims;
 
-    fn create_test_auth_user(role: &str) -> AuthUser {
+    #[test]
+    fn test_system_role_ids() {
+        assert_eq!(
+            system_roles::SYSTEM_ADMIN.to_string(),
+            "00000000-0000-0000-0000-000000000001"
+        );
+        assert_eq!(
+            system_roles::ADMIN.to_string(),
+            "00000000-0000-0000-0000-000000000002"
+        );
+        assert_eq!(
+            system_roles::TEACHER.to_string(),
+            "00000000-0000-0000-0000-000000000003"
+        );
+        assert_eq!(
+            system_roles::STUDENT.to_string(),
+            "00000000-0000-0000-0000-000000000004"
+        );
+    }
+
+    #[test]
+    fn test_is_system_role() {
+        assert!(system_roles::is_system_role(&system_roles::SYSTEM_ADMIN));
+        assert!(system_roles::is_system_role(&system_roles::ADMIN));
+        assert!(system_roles::is_system_role(&system_roles::TEACHER));
+        assert!(system_roles::is_system_role(&system_roles::STUDENT));
+        assert!(!system_roles::is_system_role(&Uuid::new_v4()));
+    }
+
+    #[test]
+    fn test_get_user_id_from_auth() {
+        use crate::modules::auth::model::Claims;
+
+        let user_id = Uuid::new_v4();
         let claims = Claims {
-            sub: "00000000-0000-0000-0000-000000000000".to_string(),
+            sub: user_id.to_string(),
             email: "test@example.com".to_string(),
-            role: role.to_string(),
             exp: 9999999999,
             iat: 1234567890,
         };
-        AuthUser(claims)
+        let auth_user = AuthUser(claims);
+
+        let result = get_user_id_from_auth(&auth_user);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), user_id);
     }
 
     #[test]
-    fn test_role_hierarchy() {
-        assert_eq!(role_hierarchy_level(&UserRole::SystemAdmin), 3);
-        assert_eq!(role_hierarchy_level(&UserRole::Admin), 2);
-        assert_eq!(role_hierarchy_level(&UserRole::Teacher), 1);
-        assert_eq!(role_hierarchy_level(&UserRole::Student), 0);
-    }
+    fn test_get_user_id_from_auth_invalid() {
+        use crate::modules::auth::model::Claims;
 
-    #[test]
-    fn test_parse_role_from_string() {
-        assert!(matches!(
-            parse_role_from_string("system_admin"),
-            Ok(UserRole::SystemAdmin)
-        ));
-        assert!(matches!(
-            parse_role_from_string("admin"),
-            Ok(UserRole::Admin)
-        ));
-        assert!(matches!(
-            parse_role_from_string("teacher"),
-            Ok(UserRole::Teacher)
-        ));
-        assert!(matches!(
-            parse_role_from_string("student"),
-            Ok(UserRole::Student)
-        ));
-        assert!(parse_role_from_string("invalid").is_err());
-    }
+        let claims = Claims {
+            sub: "not-a-uuid".to_string(),
+            email: "test@example.com".to_string(),
+            exp: 9999999999,
+            iat: 1234567890,
+        };
+        let auth_user = AuthUser(claims);
 
-    #[test]
-    fn test_check_role_exact_match() {
-        let auth_user = create_test_auth_user("system_admin");
-        assert!(check_role(&auth_user, UserRole::SystemAdmin).is_ok());
-
-        let auth_user = create_test_auth_user("admin");
-        assert!(check_role(&auth_user, UserRole::Admin).is_ok());
-
-        let auth_user = create_test_auth_user("teacher");
-        assert!(check_role(&auth_user, UserRole::Teacher).is_ok());
-
-        let auth_user = create_test_auth_user("student");
-        assert!(check_role(&auth_user, UserRole::Student).is_ok());
-    }
-
-    #[test]
-    fn test_check_role_no_match() {
-        let auth_user = create_test_auth_user("student");
-        assert!(check_role(&auth_user, UserRole::Admin).is_err());
-
-        let auth_user = create_test_auth_user("teacher");
-        assert!(check_role(&auth_user, UserRole::SystemAdmin).is_err());
-
-        let auth_user = create_test_auth_user("admin");
-        assert!(check_role(&auth_user, UserRole::SystemAdmin).is_err());
-    }
-
-    #[test]
-    fn test_check_any_role_single_match() {
-        let auth_user = create_test_auth_user("admin");
-        let allowed = vec![UserRole::Admin];
-        assert!(check_any_role(&auth_user, &allowed).is_ok());
-    }
-
-    #[test]
-    fn test_check_any_role_multiple_match() {
-        let allowed = vec![UserRole::Admin, UserRole::Teacher, UserRole::Student];
-
-        let auth_user = create_test_auth_user("admin");
-        assert!(check_any_role(&auth_user, &allowed).is_ok());
-
-        let auth_user = create_test_auth_user("teacher");
-        assert!(check_any_role(&auth_user, &allowed).is_ok());
-
-        let auth_user = create_test_auth_user("student");
-        assert!(check_any_role(&auth_user, &allowed).is_ok());
-    }
-
-    #[test]
-    fn test_check_any_role_no_match() {
-        let allowed = vec![UserRole::Admin, UserRole::Teacher];
-        let auth_user = create_test_auth_user("student");
-        assert!(check_any_role(&auth_user, &allowed).is_err());
-    }
-
-    #[test]
-    fn test_check_any_role_empty_list() {
-        let allowed = vec![];
-        let auth_user = create_test_auth_user("admin");
-        assert!(check_any_role(&auth_user, &allowed).is_err());
-    }
-
-    #[test]
-    fn test_role_hierarchy_levels() {
-        assert_eq!(role_hierarchy_level(&UserRole::SystemAdmin), 3);
-        assert_eq!(role_hierarchy_level(&UserRole::Admin), 2);
-        assert_eq!(role_hierarchy_level(&UserRole::Teacher), 1);
-        assert_eq!(role_hierarchy_level(&UserRole::Student), 0);
-    }
-
-    #[test]
-    fn test_role_hierarchy_ordering() {
-        assert!(
-            role_hierarchy_level(&UserRole::SystemAdmin) > role_hierarchy_level(&UserRole::Admin)
-        );
-        assert!(role_hierarchy_level(&UserRole::Admin) > role_hierarchy_level(&UserRole::Teacher));
-        assert!(
-            role_hierarchy_level(&UserRole::Teacher) > role_hierarchy_level(&UserRole::Student)
-        );
-    }
-
-    #[test]
-    fn test_check_role_hierarchy_system_admin_highest() {
-        assert!(check_role_hierarchy(&UserRole::SystemAdmin, &UserRole::Admin).is_ok());
-        assert!(check_role_hierarchy(&UserRole::SystemAdmin, &UserRole::Teacher).is_ok());
-        assert!(check_role_hierarchy(&UserRole::SystemAdmin, &UserRole::Student).is_ok());
-    }
-
-    #[test]
-    fn test_check_role_hierarchy_admin_over_staff() {
-        assert!(check_role_hierarchy(&UserRole::Admin, &UserRole::Teacher).is_ok());
-        assert!(check_role_hierarchy(&UserRole::Admin, &UserRole::Student).is_ok());
-    }
-
-    #[test]
-    fn test_check_role_hierarchy_teacher_over_student() {
-        assert!(check_role_hierarchy(&UserRole::Teacher, &UserRole::Student).is_ok());
-    }
-
-    #[test]
-    fn test_check_role_hierarchy_same_level() {
-        assert!(check_role_hierarchy(&UserRole::SystemAdmin, &UserRole::SystemAdmin).is_ok());
-        assert!(check_role_hierarchy(&UserRole::Admin, &UserRole::Admin).is_ok());
-        assert!(check_role_hierarchy(&UserRole::Teacher, &UserRole::Teacher).is_ok());
-        assert!(check_role_hierarchy(&UserRole::Student, &UserRole::Student).is_ok());
-    }
-
-    #[test]
-    fn test_check_role_hierarchy_lower_cannot_access_higher() {
-        assert!(check_role_hierarchy(&UserRole::Student, &UserRole::Teacher).is_err());
-        assert!(check_role_hierarchy(&UserRole::Student, &UserRole::Admin).is_err());
-        assert!(check_role_hierarchy(&UserRole::Student, &UserRole::SystemAdmin).is_err());
-        assert!(check_role_hierarchy(&UserRole::Teacher, &UserRole::Admin).is_err());
-        assert!(check_role_hierarchy(&UserRole::Teacher, &UserRole::SystemAdmin).is_err());
-        assert!(check_role_hierarchy(&UserRole::Admin, &UserRole::SystemAdmin).is_err());
-    }
-
-    #[test]
-    fn test_user_role_equality() {
-        assert_eq!(UserRole::SystemAdmin, UserRole::SystemAdmin);
-        assert_eq!(UserRole::Admin, UserRole::Admin);
-        assert_ne!(UserRole::SystemAdmin, UserRole::Admin);
-        assert_ne!(UserRole::Teacher, UserRole::Student);
+        let result = get_user_id_from_auth(&auth_user);
+        assert!(result.is_err());
     }
 }

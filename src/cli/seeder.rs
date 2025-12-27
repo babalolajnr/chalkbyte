@@ -1,4 +1,4 @@
-use crate::modules::users::model::UserRole;
+use crate::modules::users::model::system_roles;
 use bcrypt::hash;
 use fake::faker::address::en::*;
 use fake::faker::name::en::*;
@@ -18,7 +18,7 @@ pub struct UserSeed {
     pub last_name: String,
     pub email: String,
     pub password_hash: String,
-    pub role: UserRole,
+    pub role_id: Uuid,
     pub school_id: Option<Uuid>,
 }
 
@@ -122,12 +122,24 @@ pub async fn seed_database(
     println!("\n💾 Inserting users in batches...");
     let user_insert_start = Instant::now();
 
-    insert_users_batch(db, &users).await?;
+    let user_ids_with_roles = insert_users_batch(db, &users).await?;
 
     println!(
         "   ✓ Inserted {} users in {:?}",
-        users.len(),
+        user_ids_with_roles.len(),
         user_insert_start.elapsed()
+    );
+
+    // Step 6: Assign roles to users
+    println!("\n🔐 Assigning roles to users...");
+    let role_start = Instant::now();
+
+    assign_roles_batch(db, &user_ids_with_roles).await?;
+
+    println!(
+        "   ✓ Assigned roles to {} users in {:?}",
+        user_ids_with_roles.len(),
+        role_start.elapsed()
     );
 
     println!(
@@ -180,15 +192,15 @@ fn generate_users_parallel(
     for (school_idx, &school_id) in school_ids.iter().enumerate() {
         // Admins
         for user_idx in 0..users_per_school.admins {
-            user_specs.push((UserRole::Admin, Some(school_id), school_idx, user_idx));
+            user_specs.push((system_roles::ADMIN, Some(school_id), school_idx, user_idx));
         }
         // Teachers
         for user_idx in 0..users_per_school.teachers {
-            user_specs.push((UserRole::Teacher, Some(school_id), school_idx, user_idx));
+            user_specs.push((system_roles::TEACHER, Some(school_id), school_idx, user_idx));
         }
         // Students
         for user_idx in 0..users_per_school.students {
-            user_specs.push((UserRole::Student, Some(school_id), school_idx, user_idx));
+            user_specs.push((system_roles::STUDENT, Some(school_id), school_idx, user_idx));
         }
     }
 
@@ -196,14 +208,14 @@ fn generate_users_parallel(
     // This is where rayon shines - distributing work across CPU cores
     user_specs
         .into_par_iter()
-        .map(|(role, school_id, school_idx, user_idx)| {
-            generate_user_with_hash(role, school_id, school_idx, user_idx, password_hash)
+        .map(|(role_id, school_id, school_idx, user_idx)| {
+            generate_user_with_hash(role_id, school_id, school_idx, user_idx, password_hash)
         })
         .collect()
 }
 
 fn generate_user_with_hash(
-    role: UserRole,
+    role_id: Uuid,
     school_id: Option<Uuid>,
     school_idx: usize,
     user_idx: usize,
@@ -212,12 +224,10 @@ fn generate_user_with_hash(
     let first_name: String = FirstName().fake();
     let last_name: String = LastName().fake();
 
-    let role_prefix = match role {
-        UserRole::SystemAdmin => "sysadmin",
-        UserRole::Admin => "admin",
-        UserRole::Teacher => "teacher",
-        UserRole::Student => "student",
-    };
+    let role_prefix = system_roles::get_name(&role_id)
+        .unwrap_or("user")
+        .to_lowercase()
+        .replace(' ', "_");
 
     let email = format!(
         "{}.{}+{}{}@example.com",
@@ -232,7 +242,7 @@ fn generate_user_with_hash(
         last_name,
         email,
         password_hash: password_hash.to_string(),
-        role,
+        role_id,
         school_id,
     }
 }
@@ -299,69 +309,122 @@ async fn insert_schools_chunk(
 }
 
 /// Inserts users in batches using multi-value INSERT statements
-/// Uses a single transaction for atomicity and performance
+/// Returns (user_id, role_id) tuples for role assignment
 async fn insert_users_batch(
     db: &PgPool,
     users: &[UserSeed],
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Vec<(Uuid, Uuid)>, Box<dyn std::error::Error>> {
     // Use a single transaction for all inserts - reduces overhead and ensures atomicity
     let mut tx = db.begin().await?;
 
-    // Batch size for PostgreSQL (6 params per user, max ~32,767 params)
-    // 1000 users * 6 params = 6,000 params per batch (safe margin)
+    // Batch size for PostgreSQL (5 params per user, max ~32,767 params)
+    // 1000 users * 5 params = 5,000 params per batch (safe margin)
     const BATCH_SIZE: usize = 1000;
 
+    let mut all_user_roles = Vec::with_capacity(users.len());
+
     for chunk in users.chunks(BATCH_SIZE) {
-        insert_users_chunk(&mut tx, chunk).await?;
+        let user_ids = insert_users_chunk(&mut tx, chunk).await?;
+        // Pair each user_id with its role_id
+        for (user_id, user_seed) in user_ids.iter().zip(chunk.iter()) {
+            all_user_roles.push((*user_id, user_seed.role_id));
+        }
     }
 
     tx.commit().await?;
-    Ok(())
+    Ok(all_user_roles)
 }
 
 /// Inserts a chunk of users using a single multi-value INSERT statement
-/// Example: INSERT INTO users VALUES ($1, $2, ...), ($7, $8, ...), ($13, $14, ...)
-/// This is much faster than individual INSERT statements
+/// Returns the generated user IDs
 async fn insert_users_chunk(
     tx: &mut Transaction<'_, Postgres>,
     users: &[UserSeed],
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Vec<Uuid>, Box<dyn std::error::Error>> {
     if users.is_empty() {
-        return Ok(());
+        return Ok(Vec::new());
     }
 
     // Build multi-value INSERT query for batch insertion
     // Single query with multiple value sets is ~10-100x faster than individual INSERTs
     let mut query = String::from(
-        "INSERT INTO users (first_name, last_name, email, password, role, school_id) VALUES ",
+        "INSERT INTO users (first_name, last_name, email, password, school_id) VALUES ",
     );
 
     for (i, _) in users.iter().enumerate() {
         if i > 0 {
             query.push_str(", ");
         }
-        let param_idx = i * 6;
+        let param_idx = i * 5;
         query.push_str(&format!(
-            "(${}, ${}, ${}, ${}, ${}::user_role, ${})",
+            "(${}, ${}, ${}, ${}, ${})",
             param_idx + 1,
             param_idx + 2,
             param_idx + 3,
             param_idx + 4,
-            param_idx + 5,
-            param_idx + 6
+            param_idx + 5
         ));
     }
 
+    query.push_str(" RETURNING id");
+
     // Build query with bound parameters
-    let mut q = sqlx::query(&query);
+    let mut q = sqlx::query_scalar(&query);
     for user in users {
         q = q
             .bind(&user.first_name)
             .bind(&user.last_name)
             .bind(&user.email)
             .bind(&user.password_hash)
-            .bind(format!("{:?}", user.role).to_lowercase())
             .bind(user.school_id);
+    }
+
+    let ids: Vec<Uuid> = q.fetch_all(&mut **tx).await?;
+    Ok(ids)
+}
+
+/// Assigns roles to users in batches
+async fn assign_roles_batch(
+    db: &PgPool,
+    user_roles: &[(Uuid, Uuid)],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut tx = db.begin().await?;
+
+    // Batch size for role assignments (2 params per assignment)
+    const BATCH_SIZE: usize = 2000;
+
+    for chunk in user_roles.chunks(BATCH_SIZE) {
+        assign_roles_chunk(&mut tx, chunk).await?;
+    }
+
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Assigns roles to a chunk of users
+async fn assign_roles_chunk(
+    tx: &mut Transaction<'_, Postgres>,
+    user_roles: &[(Uuid, Uuid)],
+) -> Result<(), Box<dyn std::error::Error>> {
+    if user_roles.is_empty() {
+        return Ok(());
+    }
+
+    let mut query = String::from("INSERT INTO user_roles (user_id, role_id) VALUES ");
+
+    for (i, _) in user_roles.iter().enumerate() {
+        if i > 0 {
+            query.push_str(", ");
+        }
+        let param_idx = i * 2;
+        query.push_str(&format!("(${}, ${})", param_idx + 1, param_idx + 2));
+    }
+
+    query.push_str(" ON CONFLICT (user_id, role_id) DO NOTHING");
+
+    let mut q = sqlx::query(&query);
+    for (user_id, role_id) in user_roles {
+        q = q.bind(user_id).bind(role_id);
     }
 
     q.execute(&mut **tx).await?;
@@ -377,8 +440,17 @@ pub async fn clear_seeded_data(db: &PgPool) -> Result<(), Box<dyn std::error::Er
     // Use a transaction for atomic cleanup - all or nothing
     let mut tx = db.begin().await?;
 
+    // First, delete users who have the seeded email pattern AND are not system admins
+    // We check by their role assignments to avoid deleting system admins
     let users_deleted = sqlx::query!(
-        "DELETE FROM users WHERE role != 'system_admin' AND email LIKE '%@example.com'"
+        r#"DELETE FROM users u
+        WHERE u.email LIKE '%@example.com'
+        AND NOT EXISTS (
+            SELECT 1 FROM user_roles ur
+            WHERE ur.user_id = u.id
+            AND ur.role_id = $1
+        )"#,
+        system_roles::SYSTEM_ADMIN
     )
     .execute(&mut *tx)
     .await?

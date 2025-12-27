@@ -5,7 +5,8 @@ use axum::{
 use uuid::Uuid;
 
 use crate::middleware::auth::AuthUser;
-use crate::modules::users::model::UserRole;
+use crate::middleware::role::{get_user_id_from_auth, is_admin, is_system_admin};
+use crate::modules::users::model::system_roles;
 use crate::state::AppState;
 use crate::utils::errors::AppError;
 use crate::validator::ValidatedJson;
@@ -16,19 +17,6 @@ use super::model::{
     RoleAssignmentResponse, RoleFilterParams, UpdateCustomRoleDto,
 };
 use super::service;
-
-fn parse_user_role(role_str: &str) -> Result<UserRole, AppError> {
-    match role_str {
-        "system_admin" => Ok(UserRole::SystemAdmin),
-        "admin" => Ok(UserRole::Admin),
-        "teacher" => Ok(UserRole::Teacher),
-        "student" => Ok(UserRole::Student),
-        _ => Err(AppError::internal_error(format!(
-            "Invalid role: {}",
-            role_str
-        ))),
-    }
-}
 
 // ============ Permission Endpoints ============
 
@@ -100,24 +88,20 @@ pub async fn create_role(
     auth_user: AuthUser,
     ValidatedJson(dto): ValidatedJson<CreateCustomRoleDto>,
 ) -> Result<Json<CustomRoleWithPermissions>, AppError> {
-    let user_role = parse_user_role(&auth_user.0.role)?;
-    let is_system_admin = user_role == UserRole::SystemAdmin;
+    let user_id = get_user_id_from_auth(&auth_user)?;
+    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
 
     // Get requester's school_id
-    let requester = sqlx::query!(
-        "SELECT school_id FROM users WHERE id = $1",
-        Uuid::parse_str(&auth_user.0.sub)
-            .map_err(|_| AppError::internal_error("Invalid user ID".to_string()))?
-    )
-    .fetch_one(&state.db)
-    .await?;
+    let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", user_id)
+        .fetch_one(&state.db)
+        .await?;
 
     let role = service::create_custom_role(
         &state.db,
         dto,
         requester.school_id,
-        is_system_admin,
-        Uuid::parse_str(&auth_user.0.sub).unwrap(),
+        user_is_system_admin,
+        user_id,
     )
     .await?;
 
@@ -147,19 +131,17 @@ pub async fn get_roles(
     auth_user: AuthUser,
     Query(params): Query<RoleFilterParams>,
 ) -> Result<Json<PaginatedRolesResponse>, AppError> {
-    let user_role = parse_user_role(&auth_user.0.role)?;
-    let is_system_admin = user_role == UserRole::SystemAdmin;
+    let user_id = get_user_id_from_auth(&auth_user)?;
+    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
 
-    let requester = sqlx::query!(
-        "SELECT school_id FROM users WHERE id = $1",
-        Uuid::parse_str(&auth_user.0.sub)
-            .map_err(|_| AppError::internal_error("Invalid user ID".to_string()))?
-    )
-    .fetch_one(&state.db)
-    .await?;
+    let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", user_id)
+        .fetch_one(&state.db)
+        .await?;
 
     let result =
-        service::get_custom_roles(&state.db, params, requester.school_id, is_system_admin).await?;
+        service::get_custom_roles(&state.db, params, requester.school_id, user_is_system_admin)
+            .await?;
+
     Ok(Json(result))
 }
 
@@ -170,7 +152,7 @@ pub async fn get_roles(
         ("id" = Uuid, Path, description = "Role ID")
     ),
     responses(
-        (status = 200, description = "Role details", body = CustomRoleWithPermissions),
+        (status = 200, description = "Role details with permissions", body = CustomRoleWithPermissions),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Role not found")
@@ -183,19 +165,17 @@ pub async fn get_role_by_id(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<CustomRoleWithPermissions>, AppError> {
-    let user_role = parse_user_role(&auth_user.0.role)?;
-    let is_system_admin = user_role == UserRole::SystemAdmin;
+    let user_id = get_user_id_from_auth(&auth_user)?;
+    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
 
-    let requester = sqlx::query!(
-        "SELECT school_id FROM users WHERE id = $1",
-        Uuid::parse_str(&auth_user.0.sub)
-            .map_err(|_| AppError::internal_error("Invalid user ID".to_string()))?
-    )
-    .fetch_one(&state.db)
-    .await?;
+    let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", user_id)
+        .fetch_one(&state.db)
+        .await?;
 
     let role =
-        service::get_custom_role_by_id(&state.db, id, requester.school_id, is_system_admin).await?;
+        service::get_custom_role_by_id(&state.db, id, requester.school_id, user_is_system_admin)
+            .await?;
+
     Ok(Json(role))
 }
 
@@ -222,21 +202,33 @@ pub async fn update_role(
     Path(id): Path<Uuid>,
     ValidatedJson(dto): ValidatedJson<UpdateCustomRoleDto>,
 ) -> Result<Json<CustomRoleWithPermissions>, AppError> {
-    let user_role = parse_user_role(&auth_user.0.role)?;
-    let is_system_admin = user_role == UserRole::SystemAdmin;
+    let user_id = get_user_id_from_auth(&auth_user)?;
+    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
 
-    let requester = sqlx::query!(
-        "SELECT school_id FROM users WHERE id = $1",
-        Uuid::parse_str(&auth_user.0.sub)
-            .map_err(|_| AppError::internal_error("Invalid user ID".to_string()))?
+    let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", user_id)
+        .fetch_one(&state.db)
+        .await?;
+
+    // Cannot update system roles unless you're a system admin
+    let role =
+        service::get_custom_role_by_id(&state.db, id, requester.school_id, user_is_system_admin)
+            .await?;
+    if role.role.is_system_role && !user_is_system_admin {
+        return Err(AppError::forbidden(
+            "Only system admins can update system roles".to_string(),
+        ));
+    }
+
+    let updated_role = service::update_custom_role(
+        &state.db,
+        id,
+        dto,
+        requester.school_id,
+        user_is_system_admin,
     )
-    .fetch_one(&state.db)
     .await?;
 
-    let role =
-        service::update_custom_role(&state.db, id, dto, requester.school_id, is_system_admin)
-            .await?;
-    Ok(Json(role))
+    Ok(Json(updated_role))
 }
 
 #[utoipa::path(
@@ -259,22 +251,24 @@ pub async fn delete_role(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<(), AppError> {
-    let user_role = parse_user_role(&auth_user.0.role)?;
-    let is_system_admin = user_role == UserRole::SystemAdmin;
+    let user_id = get_user_id_from_auth(&auth_user)?;
+    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
 
-    let requester = sqlx::query!(
-        "SELECT school_id FROM users WHERE id = $1",
-        Uuid::parse_str(&auth_user.0.sub)
-            .map_err(|_| AppError::internal_error("Invalid user ID".to_string()))?
-    )
-    .fetch_one(&state.db)
-    .await?;
+    // Cannot delete system roles
+    if system_roles::is_system_role(&id) {
+        return Err(AppError::forbidden(
+            "Cannot delete built-in system roles".to_string(),
+        ));
+    }
 
-    service::delete_custom_role(&state.db, id, requester.school_id, is_system_admin).await?;
+    let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", user_id)
+        .fetch_one(&state.db)
+        .await?;
+
+    service::delete_custom_role(&state.db, id, requester.school_id, user_is_system_admin).await?;
+
     Ok(())
 }
-
-// ============ Role Permissions Endpoints ============
 
 #[utoipa::path(
     post,
@@ -296,29 +290,36 @@ pub async fn delete_role(
 pub async fn assign_permissions(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Path(role_id): Path<Uuid>,
+    Path(id): Path<Uuid>,
     Json(dto): Json<AssignPermissionsDto>,
 ) -> Result<Json<CustomRoleWithPermissions>, AppError> {
-    let user_role = parse_user_role(&auth_user.0.role)?;
-    let is_system_admin = user_role == UserRole::SystemAdmin;
+    let user_id = get_user_id_from_auth(&auth_user)?;
+    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
 
-    let requester = sqlx::query!(
-        "SELECT school_id FROM users WHERE id = $1",
-        Uuid::parse_str(&auth_user.0.sub)
-            .map_err(|_| AppError::internal_error("Invalid user ID".to_string()))?
-    )
-    .fetch_one(&state.db)
-    .await?;
+    let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", user_id)
+        .fetch_one(&state.db)
+        .await?;
 
-    let role = service::assign_permissions_to_role(
+    // Check if user can modify this role
+    let role =
+        service::get_custom_role_by_id(&state.db, id, requester.school_id, user_is_system_admin)
+            .await?;
+    if role.role.is_system_role && !user_is_system_admin {
+        return Err(AppError::forbidden(
+            "Only system admins can modify system role permissions".to_string(),
+        ));
+    }
+
+    let updated_role = service::assign_permissions_to_role(
         &state.db,
-        role_id,
-        dto,
+        id,
+        dto.permission_ids,
         requester.school_id,
-        is_system_admin,
+        user_is_system_admin,
     )
     .await?;
-    Ok(Json(role))
+
+    Ok(Json(updated_role))
 }
 
 #[utoipa::path(
@@ -342,26 +343,37 @@ pub async fn remove_permission(
     auth_user: AuthUser,
     Path((role_id, permission_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<CustomRoleWithPermissions>, AppError> {
-    let user_role = parse_user_role(&auth_user.0.role)?;
-    let is_system_admin = user_role == UserRole::SystemAdmin;
+    let user_id = get_user_id_from_auth(&auth_user)?;
+    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
 
-    let requester = sqlx::query!(
-        "SELECT school_id FROM users WHERE id = $1",
-        Uuid::parse_str(&auth_user.0.sub)
-            .map_err(|_| AppError::internal_error("Invalid user ID".to_string()))?
+    let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", user_id)
+        .fetch_one(&state.db)
+        .await?;
+
+    // Check if user can modify this role
+    let role = service::get_custom_role_by_id(
+        &state.db,
+        role_id,
+        requester.school_id,
+        user_is_system_admin,
     )
-    .fetch_one(&state.db)
     .await?;
+    if role.role.is_system_role && !user_is_system_admin {
+        return Err(AppError::forbidden(
+            "Only system admins can modify system role permissions".to_string(),
+        ));
+    }
 
-    let role = service::remove_permission_from_role(
+    let updated_role = service::remove_permission_from_role(
         &state.db,
         role_id,
         permission_id,
         requester.school_id,
-        is_system_admin,
+        user_is_system_admin,
     )
     .await?;
-    Ok(Json(role))
+
+    Ok(Json(updated_role))
 }
 
 // ============ User Role Assignment Endpoints ============
@@ -374,7 +386,7 @@ pub async fn remove_permission(
     ),
     request_body = AssignRoleToUserDto,
     responses(
-        (status = 200, description = "Role assigned successfully", body = RoleAssignmentResponse),
+        (status = 200, description = "Role assigned to user", body = RoleAssignmentResponse),
         (status = 400, description = "Invalid request"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
@@ -386,34 +398,55 @@ pub async fn remove_permission(
 pub async fn assign_role_to_user(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Path(user_id): Path<Uuid>,
+    Path(target_user_id): Path<Uuid>,
     Json(dto): Json<AssignRoleToUserDto>,
 ) -> Result<Json<RoleAssignmentResponse>, AppError> {
-    let user_role = parse_user_role(&auth_user.0.role)?;
-    let is_system_admin = user_role == UserRole::SystemAdmin;
+    let requester_id = get_user_id_from_auth(&auth_user)?;
+    let user_is_system_admin = is_system_admin(&state.db, requester_id).await?;
+    let user_is_admin = is_admin(&state.db, requester_id).await?;
 
-    let requester_id = Uuid::parse_str(&auth_user.0.sub)
-        .map_err(|_| AppError::internal_error("Invalid user ID".to_string()))?;
+    // Only admins can assign roles
+    if !user_is_admin {
+        return Err(AppError::forbidden(
+            "Only admins can assign roles to users".to_string(),
+        ));
+    }
 
     let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", requester_id)
         .fetch_one(&state.db)
         .await?;
 
-    let assignment = service::assign_role_to_user(
+    // Check if trying to assign a system role
+    if system_roles::is_system_role(&dto.role_id) && !user_is_system_admin {
+        return Err(AppError::forbidden(
+            "Only system admins can assign system roles".to_string(),
+        ));
+    }
+
+    // Verify target user is in the same school (unless system admin)
+    if !user_is_system_admin {
+        let target_user = sqlx::query!("SELECT school_id FROM users WHERE id = $1", target_user_id)
+            .fetch_one(&state.db)
+            .await?;
+
+        if target_user.school_id != requester.school_id {
+            return Err(AppError::forbidden(
+                "You can only assign roles to users in your school".to_string(),
+            ));
+        }
+    }
+
+    let response = service::assign_role_to_user(
         &state.db,
-        user_id,
+        target_user_id,
         dto.role_id,
         requester_id,
         requester.school_id,
-        is_system_admin,
+        user_is_system_admin,
     )
     .await?;
 
-    Ok(Json(RoleAssignmentResponse {
-        message: "Role assigned successfully".to_string(),
-        user_id: assignment.user_id,
-        role_id: assignment.role_id,
-    }))
+    Ok(Json(response))
 }
 
 #[utoipa::path(
@@ -424,10 +457,10 @@ pub async fn assign_role_to_user(
         ("role_id" = Uuid, Path, description = "Role ID")
     ),
     responses(
-        (status = 204, description = "Role removed successfully"),
+        (status = 204, description = "Role removed from user"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
-        (status = 404, description = "User or role not found")
+        (status = 404, description = "User or role assignment not found")
     ),
     tag = "Roles",
     security(("bearer_auth" = []))
@@ -435,27 +468,39 @@ pub async fn assign_role_to_user(
 pub async fn remove_role_from_user(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Path((user_id, role_id)): Path<(Uuid, Uuid)>,
+    Path((target_user_id, role_id)): Path<(Uuid, Uuid)>,
 ) -> Result<(), AppError> {
-    let user_role = parse_user_role(&auth_user.0.role)?;
-    let is_system_admin = user_role == UserRole::SystemAdmin;
+    let requester_id = get_user_id_from_auth(&auth_user)?;
+    let user_is_system_admin = is_system_admin(&state.db, requester_id).await?;
+    let user_is_admin = is_admin(&state.db, requester_id).await?;
 
-    let requester = sqlx::query!(
-        "SELECT school_id FROM users WHERE id = $1",
-        Uuid::parse_str(&auth_user.0.sub)
-            .map_err(|_| AppError::internal_error("Invalid user ID".to_string()))?
-    )
-    .fetch_one(&state.db)
-    .await?;
+    // Only admins can remove roles
+    if !user_is_admin {
+        return Err(AppError::forbidden(
+            "Only admins can remove roles from users".to_string(),
+        ));
+    }
+
+    let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", requester_id)
+        .fetch_one(&state.db)
+        .await?;
+
+    // Check if trying to remove a system role
+    if system_roles::is_system_role(&role_id) && !user_is_system_admin {
+        return Err(AppError::forbidden(
+            "Only system admins can remove system roles".to_string(),
+        ));
+    }
 
     service::remove_role_from_user(
         &state.db,
-        user_id,
+        target_user_id,
         role_id,
         requester.school_id,
-        is_system_admin,
+        user_is_system_admin,
     )
     .await?;
+
     Ok(())
 }
 
@@ -477,21 +522,38 @@ pub async fn remove_role_from_user(
 pub async fn get_user_roles(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Path(user_id): Path<Uuid>,
+    Path(target_user_id): Path<Uuid>,
 ) -> Result<Json<Vec<CustomRoleWithPermissions>>, AppError> {
-    let user_role = parse_user_role(&auth_user.0.role)?;
-    let is_system_admin = user_role == UserRole::SystemAdmin;
+    let requester_id = get_user_id_from_auth(&auth_user)?;
+    let user_is_system_admin = is_system_admin(&state.db, requester_id).await?;
+    let user_is_admin = is_admin(&state.db, requester_id).await?;
 
-    let requester = sqlx::query!(
-        "SELECT school_id FROM users WHERE id = $1",
-        Uuid::parse_str(&auth_user.0.sub)
-            .map_err(|_| AppError::internal_error("Invalid user ID".to_string()))?
-    )
-    .fetch_one(&state.db)
-    .await?;
+    // Users can view their own roles, admins can view any user's roles in their school
+    if requester_id != target_user_id && !user_is_admin {
+        return Err(AppError::forbidden(
+            "You can only view your own roles".to_string(),
+        ));
+    }
 
-    let roles =
-        service::get_user_roles(&state.db, user_id, requester.school_id, is_system_admin).await?;
+    // If not system admin, verify target is in same school
+    if !user_is_system_admin && requester_id != target_user_id {
+        let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", requester_id)
+            .fetch_one(&state.db)
+            .await?;
+
+        let target_user = sqlx::query!("SELECT school_id FROM users WHERE id = $1", target_user_id)
+            .fetch_one(&state.db)
+            .await?;
+
+        if target_user.school_id != requester.school_id {
+            return Err(AppError::forbidden(
+                "You can only view roles for users in your school".to_string(),
+            ));
+        }
+    }
+
+    let roles = service::get_user_roles(&state.db, target_user_id).await?;
+
     Ok(Json(roles))
 }
 
@@ -502,7 +564,7 @@ pub async fn get_user_roles(
         ("user_id" = Uuid, Path, description = "User ID")
     ),
     responses(
-        (status = 200, description = "User's permissions", body = Vec<Permission>),
+        (status = 200, description = "User's permissions from all roles", body = Vec<Permission>),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "User not found")
@@ -513,37 +575,37 @@ pub async fn get_user_roles(
 pub async fn get_user_permissions(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Path(user_id): Path<Uuid>,
+    Path(target_user_id): Path<Uuid>,
 ) -> Result<Json<Vec<Permission>>, AppError> {
-    let user_role = parse_user_role(&auth_user.0.role)?;
-    let is_system_admin = user_role == UserRole::SystemAdmin;
+    let requester_id = get_user_id_from_auth(&auth_user)?;
+    let user_is_system_admin = is_system_admin(&state.db, requester_id).await?;
+    let user_is_admin = is_admin(&state.db, requester_id).await?;
 
-    // Authorization check: user can view their own permissions, or admin can view any
-    let requester_id = Uuid::parse_str(&auth_user.0.sub)
-        .map_err(|_| AppError::internal_error("Invalid user ID".to_string()))?;
-
-    if requester_id != user_id && !is_system_admin && user_role != UserRole::Admin {
+    // Users can view their own permissions, admins can view any user's permissions
+    if requester_id != target_user_id && !user_is_admin {
         return Err(AppError::forbidden(
             "You can only view your own permissions".to_string(),
         ));
     }
 
-    // For school admins, verify user is in their school
-    if user_role == UserRole::Admin {
+    // If not system admin, verify target is in same school
+    if !user_is_system_admin && requester_id != target_user_id {
         let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", requester_id)
             .fetch_one(&state.db)
             .await?;
-        let target_user = sqlx::query!("SELECT school_id FROM users WHERE id = $1", user_id)
+
+        let target_user = sqlx::query!("SELECT school_id FROM users WHERE id = $1", target_user_id)
             .fetch_one(&state.db)
             .await?;
 
-        if requester.school_id != target_user.school_id {
+        if target_user.school_id != requester.school_id {
             return Err(AppError::forbidden(
                 "You can only view permissions for users in your school".to_string(),
             ));
         }
     }
 
-    let permissions = service::get_user_permissions(&state.db, user_id).await?;
+    let permissions = service::get_user_permissions(&state.db, target_user_id).await?;
+
     Ok(Json(permissions))
 }

@@ -69,6 +69,76 @@ interface PaginationParams {
 
 ---
 
+## Login Response
+
+The login endpoint (`POST /api/auth/login`) now includes the user's custom roles and permissions in the response:
+
+```typescript
+interface LoginResponse {
+  access_token: string;
+  refresh_token: string;
+  user: User;
+  roles: CustomRoleWithPermissions[];
+  permissions: Permission[];  // Deduplicated list from all roles
+}
+```
+
+**Example Response:**
+
+```json
+{
+  "access_token": "eyJ...",
+  "refresh_token": "eyJ...",
+  "user": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "first_name": "John",
+    "last_name": "Doe",
+    "email": "john@school.com",
+    "role": "admin",
+    "school_id": "550e8400-e29b-41d4-a716-446655440001"
+  },
+  "roles": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440002",
+      "name": "Grade Coordinator",
+      "description": "Manages grade-level activities",
+      "school_id": "550e8400-e29b-41d4-a716-446655440001",
+      "is_system_role": false,
+      "created_at": "2024-01-15T10:30:00Z",
+      "updated_at": "2024-01-15T10:30:00Z",
+      "permissions": [
+        {
+          "id": "550e8400-e29b-41d4-a716-446655440003",
+          "name": "grades.view",
+          "description": "View student grades",
+          "category": "grades",
+          "created_at": "2024-01-01T00:00:00Z",
+          "updated_at": "2024-01-01T00:00:00Z"
+        }
+      ]
+    }
+  ],
+  "permissions": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440003",
+      "name": "grades.view",
+      "description": "View student grades",
+      "category": "grades",
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+This applies to all login methods:
+- `POST /api/auth/login` - Standard login
+- `POST /api/auth/mfa/verify` - MFA verification
+- `POST /api/auth/mfa/recovery` - MFA recovery code login
+- `POST /api/auth/refresh` - Token refresh
+
+---
+
 ## Endpoints
 
 ### Permissions
@@ -536,6 +606,39 @@ const { permissions } = useUserPermissions(userId);
 if (hasPermission(permissions, 'users.create')) {
   // Show create user button
 }
+```
+
+### Using Login Response for Permissions
+
+```typescript
+// authStore.ts (e.g., Zustand, Redux, or Context)
+interface AuthState {
+  user: User | null;
+  customRoles: CustomRoleWithPermissions[];
+  permissions: Permission[];
+  setAuth: (response: LoginResponse) => void;
+}
+
+// On login success
+const login = async (email: string, password: string) => {
+  const response = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+  
+  const data: LoginResponse = await response.json();
+  
+  // Store tokens
+  localStorage.setItem('access_token', data.access_token);
+  localStorage.setItem('refresh_token', data.refresh_token);
+  
+  // Store user, roles, and permissions in state
+  authStore.setAuth(data);
+};
+
+// Permission check using stored permissions
+const canCreateUser = hasPermission(authStore.permissions, 'users.create');
 ```
 
 ### Role Assignment Component

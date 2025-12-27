@@ -29,7 +29,7 @@ use crate::modules::users::controller::ProfileResponse;
 use crate::modules::users::model::{
     ChangePasswordDto, CreateSchoolDto, CreateUserDto, PaginatedSchoolsResponse,
     PaginatedUsersResponse, School, SchoolFilterParams, SchoolFullInfo, UpdateProfileDto, User,
-    UserFilterParams, UserRole,
+    UserFilterParams,
 };
 use crate::utils::pagination::{PaginationMeta, PaginationParams};
 
@@ -100,7 +100,6 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
     components(
         schemas(
             User,
-            UserRole,
             CreateUserDto,
             UpdateProfileDto,
             ChangePasswordDto,

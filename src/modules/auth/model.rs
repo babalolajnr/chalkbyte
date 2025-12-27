@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use validator::Validate;
 
+use crate::modules::roles::model::{CustomRoleWithPermissions, Permission};
 use crate::modules::users::model::User;
 
 // JWT Claims structure
@@ -9,7 +10,6 @@ use crate::modules::users::model::User;
 pub struct Claims {
     pub sub: String, // user_id
     pub email: String,
-    pub role: String,
     pub exp: usize,
     pub iat: usize,
 }
@@ -19,7 +19,6 @@ pub struct Claims {
 pub struct MfaTempClaims {
     pub sub: String,
     pub email: String,
-    pub role: String,
     pub mfa_pending: bool,
     pub exp: usize,
     pub iat: usize,
@@ -30,7 +29,6 @@ pub struct MfaTempClaims {
 pub struct RefreshTokenClaims {
     pub sub: String,
     pub email: String,
-    pub role: String,
     pub exp: usize,
     pub iat: usize,
 }
@@ -51,6 +49,8 @@ pub struct LoginResponse {
     pub access_token: String,
     pub refresh_token: String,
     pub user: User,
+    pub roles: Vec<CustomRoleWithPermissions>,
+    pub permissions: Vec<Permission>,
 }
 
 // MFA required response (temp token for MFA verification)
@@ -122,23 +122,21 @@ mod tests {
         let claims = Claims {
             sub: "user-id-123".to_string(),
             email: "test@example.com".to_string(),
-            role: "student".to_string(),
             exp: 1234567890,
             iat: 1234567800,
         };
         let serialized = serde_json::to_string(&claims).unwrap();
         assert!(serialized.contains(r#""sub":"user-id-123""#));
         assert!(serialized.contains(r#""email":"test@example.com""#));
-        assert!(serialized.contains(r#""role":"student""#));
     }
 
     #[test]
     fn test_claims_deserialize() {
-        let json = r#"{"sub":"user-id-456","email":"user@test.com","role":"teacher","exp":9999999999,"iat":9999999900}"#;
+        let json =
+            r#"{"sub":"user-id-456","email":"user@test.com","exp":9999999999,"iat":9999999900}"#;
         let claims: Claims = serde_json::from_str(json).unwrap();
         assert_eq!(claims.sub, "user-id-456");
         assert_eq!(claims.email, "user@test.com");
-        assert_eq!(claims.role, "teacher");
         assert_eq!(claims.exp, 9999999999);
         assert_eq!(claims.iat, 9999999900);
     }
@@ -148,14 +146,12 @@ mod tests {
         let claims = Claims {
             sub: "user-id-789".to_string(),
             email: "clone@example.com".to_string(),
-            role: "admin".to_string(),
             exp: 1234567890,
             iat: 1234567800,
         };
         let cloned = claims.clone();
         assert_eq!(claims.sub, cloned.sub);
         assert_eq!(claims.email, cloned.email);
-        assert_eq!(claims.role, cloned.role);
     }
 
     #[test]
@@ -251,13 +247,11 @@ mod tests {
         let claims = RefreshTokenClaims {
             sub: "user-123".to_string(),
             email: "refresh@test.com".to_string(),
-            role: "admin".to_string(),
             exp: 1234567890,
             iat: 1234567800,
         };
         let serialized = serde_json::to_string(&claims).unwrap();
         assert!(serialized.contains(r#""sub":"user-123""#));
-        assert!(serialized.contains(r#""role":"admin""#));
     }
 
     #[test]
@@ -292,7 +286,6 @@ mod tests {
         let claims = MfaTempClaims {
             sub: "user-mfa-123".to_string(),
             email: "mfa@test.com".to_string(),
-            role: "student".to_string(),
             mfa_pending: true,
             exp: 1234567890,
             iat: 1234567800,

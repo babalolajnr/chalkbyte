@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::metrics;
 use crate::modules::users::model::{
     CreateSchoolDto, PaginatedSchoolsResponse, PaginatedUsersResponse, School, SchoolFilterParams,
-    SchoolFullInfo, User, UserFilterParams,
+    SchoolFullInfo, User, UserFilterParams, system_roles,
 };
 use crate::utils::errors::AppError;
 use crate::utils::pagination::PaginationMeta;
@@ -186,8 +186,10 @@ impl SchoolService {
             "Fetching students for school"
         );
 
-        let mut count_query =
-            String::from("SELECT COUNT(*) FROM users WHERE school_id = $1 AND role = 'student'");
+        let student_role_id = system_roles::STUDENT;
+        let mut count_query = String::from(
+            "SELECT COUNT(*) FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id WHERE u.school_id = $1 AND ur.role_id = $2",
+        );
         let mut where_clause = String::new();
         let mut params: Vec<String> = Vec::new();
 
@@ -208,7 +210,9 @@ impl SchoolService {
 
         count_query.push_str(&where_clause);
 
-        let mut count_sql = sqlx::query_scalar::<_, i64>(&count_query).bind(school_id);
+        let mut count_sql = sqlx::query_scalar::<_, i64>(&count_query)
+            .bind(school_id)
+            .bind(student_role_id);
         for param in &params {
             count_sql = count_sql.bind(param);
         }
@@ -218,13 +222,15 @@ impl SchoolService {
         })?;
 
         let mut data_query = String::from(
-            "SELECT id, first_name, last_name, email, role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE school_id = $1 AND role = 'student'",
+            "SELECT u.id, u.first_name, u.last_name, u.email, u.school_id, u.level_id, u.branch_id, u.date_of_birth, u.grade_level, u.created_at, u.updated_at FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id WHERE u.school_id = $1 AND ur.role_id = $2",
         );
         data_query.push_str(&where_clause);
         data_query.push_str(" ORDER BY created_at DESC");
         data_query.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
 
-        let mut data_sql = sqlx::query_as::<_, User>(&data_query).bind(school_id);
+        let mut data_sql = sqlx::query_as::<_, User>(&data_query)
+            .bind(school_id)
+            .bind(student_role_id);
         for param in params {
             data_sql = data_sql.bind(param);
         }
@@ -269,8 +275,10 @@ impl SchoolService {
             "Fetching admins for school"
         );
 
-        let mut count_query =
-            String::from("SELECT COUNT(*) FROM users WHERE school_id = $1 AND role = 'admin'");
+        let admin_role_id = system_roles::ADMIN;
+        let mut count_query = String::from(
+            "SELECT COUNT(*) FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id WHERE u.school_id = $1 AND ur.role_id = $2",
+        );
         let mut where_clause = String::new();
         let mut params: Vec<String> = Vec::new();
 
@@ -291,7 +299,9 @@ impl SchoolService {
 
         count_query.push_str(&where_clause);
 
-        let mut count_sql = sqlx::query_scalar::<_, i64>(&count_query).bind(school_id);
+        let mut count_sql = sqlx::query_scalar::<_, i64>(&count_query)
+            .bind(school_id)
+            .bind(admin_role_id);
         for param in &params {
             count_sql = count_sql.bind(param);
         }
@@ -301,13 +311,15 @@ impl SchoolService {
         })?;
 
         let mut data_query = String::from(
-            "SELECT id, first_name, last_name, email, role, school_id FROM users WHERE school_id = $1 AND role = 'admin'",
+            "SELECT u.id, u.first_name, u.last_name, u.email, u.school_id, u.level_id, u.branch_id, u.date_of_birth, u.grade_level, u.created_at, u.updated_at FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id WHERE u.school_id = $1 AND ur.role_id = $2",
         );
         data_query.push_str(&where_clause);
         data_query.push_str(" ORDER BY created_at DESC");
         data_query.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
 
-        let mut data_sql = sqlx::query_as::<_, User>(&data_query).bind(school_id);
+        let mut data_sql = sqlx::query_as::<_, User>(&data_query)
+            .bind(school_id)
+            .bind(admin_role_id);
         for param in params {
             data_sql = data_sql.bind(param);
         }
@@ -361,9 +373,10 @@ impl SchoolService {
         debug!(school.name = %school.name, "School found, fetching statistics");
 
         let total_students = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM users WHERE school_id = $1 AND role = 'student'",
+            "SELECT COUNT(*) FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id WHERE u.school_id = $1 AND ur.role_id = $2",
         )
         .bind(school_id)
+        .bind(system_roles::STUDENT)
         .fetch_one(db)
         .await
         .map_err(|e| {
@@ -372,9 +385,10 @@ impl SchoolService {
         })?;
 
         let total_teachers = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM users WHERE school_id = $1 AND role = 'teacher'",
+            "SELECT COUNT(*) FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id WHERE u.school_id = $1 AND ur.role_id = $2",
         )
         .bind(school_id)
+        .bind(system_roles::TEACHER)
         .fetch_one(db)
         .await
         .map_err(|e| {
@@ -383,9 +397,10 @@ impl SchoolService {
         })?;
 
         let total_admins = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM users WHERE school_id = $1 AND role = 'admin'",
+            "SELECT COUNT(*) FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id WHERE u.school_id = $1 AND ur.role_id = $2",
         )
         .bind(school_id)
+        .bind(system_roles::ADMIN)
         .fetch_one(db)
         .await
         .map_err(|e| {

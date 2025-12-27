@@ -5,6 +5,7 @@ use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
 use crate::middleware::auth::AuthUser;
+use crate::middleware::role::{get_user_id_from_auth, is_admin, is_system_admin};
 use crate::modules::users::model::{
     CreateSchoolDto, PaginatedSchoolsResponse, PaginatedUsersResponse, School, SchoolFilterParams,
     SchoolFullInfo, UserFilterParams,
@@ -15,7 +16,7 @@ use crate::utils::errors::AppError;
 
 use super::service::SchoolService;
 
-#[instrument(skip(db, auth_user), fields(user.id = %auth_user.0.sub, user.role = %auth_user.0.role))]
+#[instrument(skip(db, auth_user), fields(user.id = %auth_user.0.sub))]
 async fn get_admin_school_id(db: &sqlx::PgPool, auth_user: &AuthUser) -> Result<Uuid, AppError> {
     let user_id = Uuid::parse_str(&auth_user.0.sub)
         .map_err(|_| AppError::bad_request(anyhow::anyhow!("Invalid user ID")))?;
@@ -42,7 +43,6 @@ async fn get_admin_school_id(db: &sqlx::PgPool, auth_user: &AuthUser) -> Result<
 )]
 #[instrument(skip(state, auth_user, dto), fields(
     user.id = %auth_user.0.sub,
-    user.role = %auth_user.0.role,
     school.name = %dto.name
 ))]
 pub async fn create_school(
@@ -50,10 +50,11 @@ pub async fn create_school(
     auth_user: AuthUser,
     Json(dto): Json<CreateSchoolDto>,
 ) -> Result<Json<School>, AppError> {
-    if auth_user.0.role != "system_admin" {
+    let user_id = get_user_id_from_auth(&auth_user)?;
+
+    if !is_system_admin(&state.db, user_id).await? {
         warn!(
             user.id = %auth_user.0.sub,
-            user.role = %auth_user.0.role,
             "Unauthorized attempt to create school"
         );
         return Err(AppError::forbidden(
@@ -92,8 +93,7 @@ pub async fn create_school(
     security(("bearer_auth" = []))
 )]
 #[instrument(skip(state, auth_user, filters), fields(
-    user.id = %auth_user.0.sub,
-    user.role = %auth_user.0.role
+    user.id = %auth_user.0.sub
 ))]
 pub async fn get_all_schools(
     State(state): State<AppState>,
@@ -103,10 +103,11 @@ pub async fn get_all_schools(
     let Query(filters) = filters
         .map_err(|e| AppError::bad_request(anyhow::anyhow!("Invalid query parameters: {}", e)))?;
 
-    if auth_user.0.role != "system_admin" {
+    let user_id = get_user_id_from_auth(&auth_user)?;
+
+    if !is_system_admin(&state.db, user_id).await? {
         warn!(
             user.id = %auth_user.0.sub,
-            user.role = %auth_user.0.role,
             "Unauthorized attempt to list all schools"
         );
         return Err(AppError::forbidden(
@@ -147,7 +148,6 @@ pub async fn get_all_schools(
 )]
 #[instrument(skip(state, _auth_user), fields(
     user.id = %_auth_user.0.sub,
-    user.role = %_auth_user.0.role,
     school.id = %id
 ))]
 pub async fn get_school(
@@ -181,7 +181,6 @@ pub async fn get_school(
 )]
 #[instrument(skip(state, auth_user), fields(
     user.id = %auth_user.0.sub,
-    user.role = %auth_user.0.role,
     school.id = %id
 ))]
 pub async fn delete_school(
@@ -189,7 +188,9 @@ pub async fn delete_school(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<(), AppError> {
-    if auth_user.0.role != "system_admin" {
+    let user_id = get_user_id_from_auth(&auth_user)?;
+
+    if !is_system_admin(&state.db, user_id).await? {
         warn!(
             user.id = %auth_user.0.sub,
             school.id = %id,
@@ -231,7 +232,6 @@ pub async fn delete_school(
 )]
 #[instrument(skip(state, auth_user, filters), fields(
     user.id = %auth_user.0.sub,
-    user.role = %auth_user.0.role,
     school.id = %school_id
 ))]
 pub async fn get_school_students(
@@ -243,7 +243,11 @@ pub async fn get_school_students(
     let Query(filters) = filters
         .map_err(|e| AppError::bad_request(anyhow::anyhow!("Invalid query parameters: {}", e)))?;
 
-    if auth_user.0.role == "admin" {
+    let user_id = get_user_id_from_auth(&auth_user)?;
+    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
+    let user_is_admin = is_admin(&state.db, user_id).await?;
+
+    if user_is_admin && !user_is_system_admin {
         let admin_school_id = get_admin_school_id(&state.db, &auth_user).await?;
         if admin_school_id != school_id {
             warn!(
@@ -256,14 +260,13 @@ pub async fn get_school_students(
                 "You can only view students from your own school".to_string(),
             ));
         }
-    } else if auth_user.0.role != "system_admin" && auth_user.0.role != "teacher" {
+    } else if !user_is_system_admin && !user_is_admin {
         warn!(
             user.id = %auth_user.0.sub,
-            user.role = %auth_user.0.role,
             "Unauthorized role attempted to view students"
         );
         return Err(AppError::forbidden(
-            "Only admins and teachers can view students".to_string(),
+            "Only admins can view students".to_string(),
         ));
     }
 
@@ -302,7 +305,6 @@ pub async fn get_school_students(
 )]
 #[instrument(skip(state, auth_user, filters), fields(
     user.id = %auth_user.0.sub,
-    user.role = %auth_user.0.role,
     school.id = %school_id
 ))]
 pub async fn get_school_admins(
@@ -314,10 +316,11 @@ pub async fn get_school_admins(
     let Query(filters) = filters
         .map_err(|e| AppError::bad_request(anyhow::anyhow!("Invalid query parameters: {}", e)))?;
 
-    if auth_user.0.role != "system_admin" {
+    let user_id = get_user_id_from_auth(&auth_user)?;
+
+    if !is_system_admin(&state.db, user_id).await? {
         warn!(
             user.id = %auth_user.0.sub,
-            user.role = %auth_user.0.role,
             school.id = %school_id,
             "Unauthorized attempt to view school admins"
         );
@@ -356,7 +359,6 @@ pub async fn get_school_admins(
 )]
 #[instrument(skip(state, auth_user), fields(
     user.id = %auth_user.0.sub,
-    user.role = %auth_user.0.role,
     school.id = %school_id
 ))]
 pub async fn get_school_full_info(
@@ -364,7 +366,11 @@ pub async fn get_school_full_info(
     auth_user: AuthUser,
     Path(school_id): Path<Uuid>,
 ) -> Result<Json<SchoolFullInfo>, AppError> {
-    if auth_user.0.role == "admin" {
+    let user_id = get_user_id_from_auth(&auth_user)?;
+    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
+    let user_is_admin = is_admin(&state.db, user_id).await?;
+
+    if user_is_admin && !user_is_system_admin {
         let admin_school_id = get_admin_school_id(&state.db, &auth_user).await?;
         if admin_school_id != school_id {
             warn!(
@@ -377,10 +383,9 @@ pub async fn get_school_full_info(
                 "You can only view information for your own school".to_string(),
             ));
         }
-    } else if auth_user.0.role != "system_admin" {
+    } else if !user_is_system_admin {
         warn!(
             user.id = %auth_user.0.sub,
-            user.role = %auth_user.0.role,
             "Unauthorized role attempted to view school full info"
         );
         return Err(AppError::forbidden(

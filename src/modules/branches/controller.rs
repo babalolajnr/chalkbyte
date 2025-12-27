@@ -8,6 +8,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::middleware::auth::AuthUser;
+use crate::middleware::role::{get_user_id_from_auth, is_admin};
 use crate::modules::branches::model::{
     AssignStudentsToBranchDto, Branch, BranchFilterParams, BranchWithStats, BulkAssignResponse,
     CreateBranchDto, MoveStudentToBranchDto, PaginatedBranchesResponse, UpdateBranchDto,
@@ -17,6 +18,19 @@ use crate::modules::users::model::User;
 use crate::state::AppState;
 use crate::utils::auth_helpers::get_admin_school_id;
 use crate::utils::errors::AppError;
+
+/// Helper to verify admin access
+async fn require_admin_access(db: &sqlx::PgPool, auth_user: &AuthUser) -> Result<Uuid, AppError> {
+    let user_id = get_user_id_from_auth(auth_user)?;
+
+    if !is_admin(db, user_id).await? {
+        return Err(AppError::forbidden(
+            "Only school admins can perform this action".to_string(),
+        ));
+    }
+
+    get_admin_school_id(db, auth_user).await
+}
 
 #[utoipa::path(
     post,
@@ -41,15 +55,9 @@ pub async fn create_branch(
     Path(level_id): Path<Uuid>,
     Json(dto): Json<CreateBranchDto>,
 ) -> Result<(StatusCode, Json<Branch>), AppError> {
-    if auth_user.0.role != "admin" {
-        return Err(AppError::forbidden(
-            "Only school admins can create branches".to_string(),
-        ));
-    }
+    let school_id = require_admin_access(&state.db, &auth_user).await?;
 
     dto.validate()?;
-
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     let branch = BranchService::create_branch(&state.db, level_id, school_id, dto).await?;
 
@@ -78,13 +86,7 @@ pub async fn get_branches(
     Path(level_id): Path<Uuid>,
     Query(filters): Query<BranchFilterParams>,
 ) -> Result<Json<PaginatedBranchesResponse>, AppError> {
-    if auth_user.0.role != "admin" {
-        return Err(AppError::forbidden(
-            "Only school admins can view branches".to_string(),
-        ));
-    }
-
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    let school_id = require_admin_access(&state.db, &auth_user).await?;
 
     let branches =
         BranchService::get_branches_by_level(&state.db, level_id, school_id, filters).await?;
@@ -113,13 +115,7 @@ pub async fn get_branch_by_id(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<BranchWithStats>, AppError> {
-    if auth_user.0.role != "admin" {
-        return Err(AppError::forbidden(
-            "Only school admins can view branches".to_string(),
-        ));
-    }
-
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    let school_id = require_admin_access(&state.db, &auth_user).await?;
 
     let branch = BranchService::get_branch_by_id(&state.db, id, school_id).await?;
 
@@ -150,15 +146,9 @@ pub async fn update_branch(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateBranchDto>,
 ) -> Result<Json<Branch>, AppError> {
-    if auth_user.0.role != "admin" {
-        return Err(AppError::forbidden(
-            "Only school admins can update branches".to_string(),
-        ));
-    }
+    let school_id = require_admin_access(&state.db, &auth_user).await?;
 
     dto.validate()?;
-
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     let branch = BranchService::update_branch(&state.db, id, school_id, dto).await?;
 
@@ -186,13 +176,7 @@ pub async fn delete_branch(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    if auth_user.0.role != "admin" {
-        return Err(AppError::forbidden(
-            "Only school admins can delete branches".to_string(),
-        ));
-    }
-
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    let school_id = require_admin_access(&state.db, &auth_user).await?;
 
     BranchService::delete_branch(&state.db, id, school_id).await?;
 
@@ -223,15 +207,9 @@ pub async fn assign_students_to_branch(
     Path(id): Path<Uuid>,
     Json(dto): Json<AssignStudentsToBranchDto>,
 ) -> Result<Json<BulkAssignResponse>, AppError> {
-    if auth_user.0.role != "admin" {
-        return Err(AppError::forbidden(
-            "Only school admins can assign students to branches".to_string(),
-        ));
-    }
+    let school_id = require_admin_access(&state.db, &auth_user).await?;
 
     dto.validate()?;
-
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     let response = BranchService::assign_students_to_branch(&state.db, id, school_id, dto).await?;
 
@@ -259,13 +237,7 @@ pub async fn get_students_in_branch(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<User>>, AppError> {
-    if auth_user.0.role != "admin" {
-        return Err(AppError::forbidden(
-            "Only school admins can view students in branches".to_string(),
-        ));
-    }
-
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    let school_id = require_admin_access(&state.db, &auth_user).await?;
 
     let students = BranchService::get_students_in_branch(&state.db, id, school_id).await?;
 
@@ -296,15 +268,9 @@ pub async fn move_student_to_branch(
     Path(student_id): Path<Uuid>,
     Json(dto): Json<MoveStudentToBranchDto>,
 ) -> Result<StatusCode, AppError> {
-    if auth_user.0.role != "admin" {
-        return Err(AppError::forbidden(
-            "Only school admins can move students between branches".to_string(),
-        ));
-    }
+    let school_id = require_admin_access(&state.db, &auth_user).await?;
 
     dto.validate()?;
-
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     BranchService::move_student_to_branch(&state.db, student_id, school_id, dto).await?;
 
@@ -332,13 +298,7 @@ pub async fn remove_student_from_branch(
     auth_user: AuthUser,
     Path(student_id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    if auth_user.0.role != "admin" {
-        return Err(AppError::forbidden(
-            "Only school admins can remove students from branches".to_string(),
-        ));
-    }
-
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    let school_id = require_admin_access(&state.db, &auth_user).await?;
 
     BranchService::remove_student_from_branch(&state.db, student_id, school_id).await?;
 

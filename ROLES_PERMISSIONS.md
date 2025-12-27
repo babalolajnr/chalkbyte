@@ -24,8 +24,8 @@ Stores available permission types.
 | created_at | TIMESTAMPTZ | Creation timestamp |
 | updated_at | TIMESTAMPTZ | Last update timestamp |
 
-#### `custom_roles`
-Stores custom roles (system-wide or school-scoped).
+#### `roles`
+Stores roles (system-wide or school-scoped).
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -43,18 +43,18 @@ Junction table linking roles to permissions.
 | Column | Type | Description |
 |--------|------|-------------|
 | id | UUID | Primary key |
-| role_id | UUID | Foreign key to custom_roles |
+| role_id | UUID | Foreign key to roles |
 | permission_id | UUID | Foreign key to permissions |
 | created_at | TIMESTAMPTZ | Creation timestamp |
 
-#### `user_custom_roles`
-Assigns users to custom roles.
+#### `user_roles`
+Assigns users to roles.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | UUID | Primary key |
 | user_id | UUID | Foreign key to users |
-| role_id | UUID | Foreign key to custom_roles |
+| role_id | UUID | Foreign key to roles |
 | assigned_at | TIMESTAMPTZ | Assignment timestamp |
 | assigned_by | UUID | User who made the assignment |
 

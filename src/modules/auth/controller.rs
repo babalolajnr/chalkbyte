@@ -109,7 +109,7 @@ pub async fn forgot_password(
     State(state): State<AppState>,
     ValidatedJson(dto): ValidatedJson<ForgotPasswordRequest>,
 ) -> Result<Json<MessageResponse>, AppError> {
-    AuthService::forgot_password(&state.db, dto, &state.email_config).await?;
+    AuthService::forgot_password(&state.db, dto).await?;
     Ok(Json(MessageResponse {
         message: "If an account exists with that email, a password reset link has been sent."
             .to_string(),
@@ -133,7 +133,7 @@ pub async fn reset_password(
     State(state): State<AppState>,
     ValidatedJson(dto): ValidatedJson<ResetPasswordRequest>,
 ) -> Result<Json<MessageResponse>, AppError> {
-    AuthService::reset_password(&state.db, dto, &state.email_config).await?;
+    AuthService::reset_password(&state.db, dto).await?;
     Ok(Json(MessageResponse {
         message: "Password has been reset successfully. You can now log in with your new password."
             .to_string(),

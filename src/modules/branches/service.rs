@@ -1,3 +1,4 @@
+use crate::modules::users::model::system_roles;
 use sqlx::PgPool;
 use tracing::instrument;
 use uuid::Uuid;
@@ -101,8 +102,9 @@ impl BranchService {
                     b.updated_at,
                     COUNT(u.id) as "student_count!"
                 FROM branches b
-                LEFT JOIN users u ON u.branch_id = b.id AND u.role = 'student'
-                WHERE b.level_id = $1 AND b.name ILIKE $2
+                LEFT JOIN users u ON u.branch_id = b.id
+                LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role_id = '00000000-0000-0000-0000-000000000004'::uuid
+                WHERE b.level_id = $1 AND b.name ILIKE $2 AND (u.id IS NULL OR ur.role_id IS NOT NULL)
                 GROUP BY b.id
                 ORDER BY b.created_at DESC
                 LIMIT $3 OFFSET $4
@@ -125,9 +127,10 @@ impl BranchService {
                     b.level_id,
                     b.created_at,
                     b.updated_at,
-                    COUNT(u.id) as "student_count!"
+                    COUNT(DISTINCT CASE WHEN ur.role_id IS NOT NULL THEN u.id END) as "student_count!"
                 FROM branches b
-                LEFT JOIN users u ON u.branch_id = b.id AND u.role = 'student'
+                LEFT JOIN users u ON u.branch_id = b.id
+                LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role_id = '00000000-0000-0000-0000-000000000004'::uuid
                 WHERE b.level_id = $1
                 GROUP BY b.id
                 ORDER BY b.created_at DESC
@@ -188,10 +191,11 @@ impl BranchService {
                 b.level_id,
                 b.created_at,
                 b.updated_at,
-                COUNT(u.id) as "student_count!"
+                COUNT(DISTINCT CASE WHEN ur.role_id IS NOT NULL THEN u.id END) as "student_count!"
             FROM branches b
             INNER JOIN levels l ON l.id = b.level_id
-            LEFT JOIN users u ON u.branch_id = b.id AND u.role = 'student'
+            LEFT JOIN users u ON u.branch_id = b.id
+            LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role_id = '00000000-0000-0000-0000-000000000004'::uuid
             WHERE b.id = $1 AND l.school_id = $2
             GROUP BY b.id
             "#,
@@ -318,17 +322,33 @@ impl BranchService {
         let mut assigned_count = 0;
         let mut failed_ids = Vec::new();
 
+        let student_role_id = system_roles::STUDENT;
         for student_id in dto.student_ids {
-            let result = sqlx::query!(
+            // Check if user has student role
+            let is_student = sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS(SELECT 1 FROM user_roles WHERE user_id = $1 AND role_id = $2)",
+            )
+            .bind(student_id)
+            .bind(student_role_id)
+            .fetch_one(db)
+            .await
+            .unwrap_or(false);
+
+            if !is_student {
+                failed_ids.push(student_id);
+                continue;
+            }
+
+            let result = sqlx::query(
                 r#"
                 UPDATE users
                 SET branch_id = $1, updated_at = NOW()
-                WHERE id = $2 AND role = 'student' AND school_id = $3
+                WHERE id = $2 AND school_id = $3
                 "#,
-                branch_id,
-                student_id,
-                school_id
             )
+            .bind(branch_id)
+            .bind(student_id)
+            .bind(school_id)
             .execute(db)
             .await;
 
@@ -370,16 +390,30 @@ impl BranchService {
             }
         }
 
-        let result = sqlx::query!(
+        // Check if user has student role
+        let student_role_id = system_roles::STUDENT;
+        let is_student = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM user_roles WHERE user_id = $1 AND role_id = $2)",
+        )
+        .bind(student_id)
+        .bind(student_role_id)
+        .fetch_one(db)
+        .await?;
+
+        if !is_student {
+            return Err(AppError::not_found(anyhow::anyhow!("Student not found")));
+        }
+
+        let result = sqlx::query(
             r#"
             UPDATE users
             SET branch_id = $1, updated_at = NOW()
-            WHERE id = $2 AND role = 'student' AND school_id = $3
+            WHERE id = $2 AND school_id = $3
             "#,
-            dto.branch_id,
-            student_id,
-            school_id
         )
+        .bind(dto.branch_id)
+        .bind(student_id)
+        .bind(school_id)
         .execute(db)
         .await?;
 
@@ -417,21 +451,21 @@ impl BranchService {
             crate::modules::users::model::User,
             r#"
             SELECT
-                id,
-                first_name,
-                last_name,
-                email,
-                role as "role: _",
-                school_id,
-                level_id,
-                branch_id,
-                date_of_birth,
-                grade_level,
-                created_at,
-                updated_at
-            FROM users
-            WHERE branch_id = $1 AND role = 'student'
-            ORDER BY last_name, first_name
+                u.id,
+                u.first_name,
+                u.last_name,
+                u.email,
+                u.school_id,
+                u.level_id,
+                u.branch_id,
+                u.date_of_birth,
+                u.grade_level,
+                u.created_at,
+                u.updated_at
+            FROM users u
+            INNER JOIN user_roles ur ON ur.user_id = u.id
+            WHERE u.branch_id = $1 AND ur.role_id = '00000000-0000-0000-0000-000000000004'::uuid
+            ORDER BY u.last_name, u.first_name
             "#,
             branch_id
         )
@@ -451,7 +485,11 @@ impl BranchService {
             r#"
             UPDATE users
             SET branch_id = NULL, updated_at = NOW()
-            WHERE id = $1 AND role = 'student' AND school_id = $2
+            WHERE id = $1 AND school_id = $2
+            AND EXISTS (
+                SELECT 1 FROM user_roles ur
+                WHERE ur.user_id = $1 AND ur.role_id = '00000000-0000-0000-0000-000000000004'::uuid
+            )
             "#,
             student_id,
             school_id
@@ -501,22 +539,33 @@ mod tests {
     }
 
     async fn create_student(pool: &PgPool, school_id: Uuid) -> Uuid {
-        sqlx::query_scalar!(
+        let user_id = sqlx::query_scalar!(
             r#"
-            INSERT INTO users (first_name, last_name, email, password, role, school_id)
-            VALUES ($1, $2, $3, $4, $5::text::user_role, $6)
+            INSERT INTO users (first_name, last_name, email, password, school_id)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING id
             "#,
             "Test",
             "Student",
             format!("student-{}@test.com", Uuid::new_v4()),
             "$2b$10$test",
-            "student",
             school_id
         )
         .fetch_one(pool)
         .await
-        .unwrap()
+        .unwrap();
+
+        // Assign student role
+        sqlx::query!(
+            "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)",
+            user_id,
+            crate::modules::users::model::system_roles::STUDENT
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+
+        user_id
     }
 
     #[sqlx::test(migrations = "./migrations")]

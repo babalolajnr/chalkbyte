@@ -322,7 +322,7 @@ async fn test_mfa_login_verification_returns_all_user_fields(pool: PgPool) {
     // Test that the SQL query used in verify_mfa_login returns all required User fields
     // This is the exact query from src/modules/auth/service.rs line 151
     let user_result = sqlx::query_as::<_, User>(
-        "SELECT id, first_name, last_name, email, role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE id = $1"
+        "SELECT id, first_name, last_name, email, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE id = $1"
     )
     .bind(user_id)
     .fetch_one(&pool)

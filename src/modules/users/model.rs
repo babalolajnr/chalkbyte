@@ -4,40 +4,12 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, ToSchema, PartialEq)]
-#[sqlx(type_name = "user_role", rename_all = "snake_case")]
-#[serde(rename_all = "snake_case")]
-pub enum UserRole {
-    SystemAdmin,
-    Admin,
-    Teacher,
-    Student,
-}
-
-impl Default for UserRole {
-    fn default() -> Self {
-        Self::Student
-    }
-}
-
-impl std::fmt::Display for UserRole {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            UserRole::SystemAdmin => write!(f, "system_admin"),
-            UserRole::Admin => write!(f, "admin"),
-            UserRole::Teacher => write!(f, "teacher"),
-            UserRole::Student => write!(f, "student"),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, FromRow, Debug, ToSchema)]
+#[derive(Serialize, Deserialize, FromRow, Debug, Clone, ToSchema)]
 pub struct User {
     pub id: Uuid,
     pub first_name: String,
     pub last_name: String,
     pub email: String,
-    pub role: UserRole,
     pub school_id: Option<Uuid>,
     pub level_id: Option<Uuid>,
     pub branch_id: Option<Uuid>,
@@ -57,8 +29,9 @@ pub struct CreateUserDto {
     pub email: String,
     #[validate(length(min = 8))]
     pub password: String,
+    /// Role IDs to assign to the user. If empty, no roles are assigned.
     #[serde(default)]
-    pub role: Option<UserRole>,
+    pub role_ids: Vec<Uuid>,
     pub school_id: Option<Uuid>,
 }
 
@@ -75,7 +48,7 @@ pub struct CreateSchoolDto {
     pub address: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, FromRow, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UserWithSchool {
     pub user: User,
     pub school: Option<School>,
@@ -100,7 +73,8 @@ pub struct UserFilterParams {
     pub first_name: Option<String>,
     pub last_name: Option<String>,
     pub email: Option<String>,
-    pub role: Option<UserRole>,
+    /// Filter by role ID
+    pub role_id: Option<Uuid>,
     pub school_id: Option<Uuid>,
     #[serde(flatten)]
     pub pagination: crate::utils::pagination::PaginationParams,
@@ -140,131 +114,91 @@ pub struct ChangePasswordDto {
     pub new_password: String,
 }
 
+/// Well-known system role IDs
+pub mod system_roles {
+    use uuid::Uuid;
+
+    /// System Admin role - full system access
+    pub const SYSTEM_ADMIN: Uuid = Uuid::from_u128(0x00000000_0000_0000_0000_000000000001);
+    /// Admin role - school-scoped management
+    pub const ADMIN: Uuid = Uuid::from_u128(0x00000000_0000_0000_0000_000000000002);
+    /// Teacher role - teaching-related permissions
+    pub const TEACHER: Uuid = Uuid::from_u128(0x00000000_0000_0000_0000_000000000003);
+    /// Student role - basic read permissions
+    pub const STUDENT: Uuid = Uuid::from_u128(0x00000000_0000_0000_0000_000000000004);
+
+    /// Get all system role IDs
+    pub fn all() -> Vec<Uuid> {
+        vec![SYSTEM_ADMIN, ADMIN, TEACHER, STUDENT]
+    }
+
+    /// Check if a role ID is a system role
+    pub fn is_system_role(role_id: &Uuid) -> bool {
+        all().contains(role_id)
+    }
+
+    /// Get role name by ID
+    pub fn get_name(role_id: &Uuid) -> Option<&'static str> {
+        match *role_id {
+            id if id == SYSTEM_ADMIN => Some("System Admin"),
+            id if id == ADMIN => Some("Admin"),
+            id if id == TEACHER => Some("Teacher"),
+            id if id == STUDENT => Some("Student"),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json;
 
     #[test]
-    fn test_user_role_default() {
-        let default_role = UserRole::default();
-        assert_eq!(default_role, UserRole::Student);
+    fn test_system_roles_ids() {
+        assert_eq!(
+            system_roles::SYSTEM_ADMIN.to_string(),
+            "00000000-0000-0000-0000-000000000001"
+        );
+        assert_eq!(
+            system_roles::ADMIN.to_string(),
+            "00000000-0000-0000-0000-000000000002"
+        );
+        assert_eq!(
+            system_roles::TEACHER.to_string(),
+            "00000000-0000-0000-0000-000000000003"
+        );
+        assert_eq!(
+            system_roles::STUDENT.to_string(),
+            "00000000-0000-0000-0000-000000000004"
+        );
     }
 
     #[test]
-    fn test_user_role_equality() {
-        assert_eq!(UserRole::Student, UserRole::Student);
-        assert_eq!(UserRole::Teacher, UserRole::Teacher);
-        assert_eq!(UserRole::Admin, UserRole::Admin);
-        assert_eq!(UserRole::SystemAdmin, UserRole::SystemAdmin);
+    fn test_is_system_role() {
+        assert!(system_roles::is_system_role(&system_roles::SYSTEM_ADMIN));
+        assert!(system_roles::is_system_role(&system_roles::ADMIN));
+        assert!(system_roles::is_system_role(&system_roles::TEACHER));
+        assert!(system_roles::is_system_role(&system_roles::STUDENT));
+        assert!(!system_roles::is_system_role(&Uuid::new_v4()));
     }
 
     #[test]
-    fn test_user_role_inequality() {
-        assert_ne!(UserRole::Student, UserRole::Teacher);
-        assert_ne!(UserRole::Teacher, UserRole::Admin);
-        assert_ne!(UserRole::Admin, UserRole::SystemAdmin);
-        assert_ne!(UserRole::Student, UserRole::SystemAdmin);
-    }
-
-    #[test]
-    fn test_user_role_clone() {
-        let role = UserRole::Admin;
-        let cloned = role.clone();
-        assert_eq!(role, cloned);
-    }
-
-    #[test]
-    fn test_user_role_serialize_student() {
-        let role = UserRole::Student;
-        let serialized = serde_json::to_string(&role).unwrap();
-        assert_eq!(serialized, r#""student""#);
-    }
-
-    #[test]
-    fn test_user_role_serialize_teacher() {
-        let role = UserRole::Teacher;
-        let serialized = serde_json::to_string(&role).unwrap();
-        assert_eq!(serialized, r#""teacher""#);
-    }
-
-    #[test]
-    fn test_user_role_serialize_admin() {
-        let role = UserRole::Admin;
-        let serialized = serde_json::to_string(&role).unwrap();
-        assert_eq!(serialized, r#""admin""#);
-    }
-
-    #[test]
-    fn test_user_role_serialize_system_admin() {
-        let role = UserRole::SystemAdmin;
-        let serialized = serde_json::to_string(&role).unwrap();
-        assert_eq!(serialized, r#""system_admin""#);
-    }
-
-    #[test]
-    fn test_user_role_deserialize_student() {
-        let json = r#""student""#;
-        let role: UserRole = serde_json::from_str(json).unwrap();
-        assert_eq!(role, UserRole::Student);
-    }
-
-    #[test]
-    fn test_user_role_deserialize_teacher() {
-        let json = r#""teacher""#;
-        let role: UserRole = serde_json::from_str(json).unwrap();
-        assert_eq!(role, UserRole::Teacher);
-    }
-
-    #[test]
-    fn test_user_role_deserialize_admin() {
-        let json = r#""admin""#;
-        let role: UserRole = serde_json::from_str(json).unwrap();
-        assert_eq!(role, UserRole::Admin);
-    }
-
-    #[test]
-    fn test_user_role_deserialize_system_admin() {
-        let json = r#""system_admin""#;
-        let role: UserRole = serde_json::from_str(json).unwrap();
-        assert_eq!(role, UserRole::SystemAdmin);
-    }
-
-    #[test]
-    fn test_user_role_deserialize_invalid() {
-        let json = r#""invalid_role""#;
-        let result: Result<UserRole, _> = serde_json::from_str(json);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_user_role_serialize_deserialize_round_trip() {
-        let roles = vec![
-            UserRole::Student,
-            UserRole::Teacher,
-            UserRole::Admin,
-            UserRole::SystemAdmin,
-        ];
-
-        for original_role in roles {
-            let serialized = serde_json::to_string(&original_role).unwrap();
-            let deserialized: UserRole = serde_json::from_str(&serialized).unwrap();
-            assert_eq!(original_role, deserialized);
-        }
-    }
-
-    #[test]
-    fn test_user_role_pattern_matching() {
-        let role = UserRole::Admin;
-
-        let result = match role {
-            UserRole::SystemAdmin => "system_admin",
-            UserRole::Admin => "admin",
-            UserRole::Teacher => "teacher",
-            UserRole::Student => "student",
-        };
-
-        assert_eq!(result, "admin");
+    fn test_get_role_name() {
+        assert_eq!(
+            system_roles::get_name(&system_roles::SYSTEM_ADMIN),
+            Some("System Admin")
+        );
+        assert_eq!(system_roles::get_name(&system_roles::ADMIN), Some("Admin"));
+        assert_eq!(
+            system_roles::get_name(&system_roles::TEACHER),
+            Some("Teacher")
+        );
+        assert_eq!(
+            system_roles::get_name(&system_roles::STUDENT),
+            Some("Student")
+        );
+        assert_eq!(system_roles::get_name(&Uuid::new_v4()), None);
     }
 
     #[test]
@@ -314,7 +248,6 @@ mod tests {
             first_name: "John".to_string(),
             last_name: "Doe".to_string(),
             email: "john@example.com".to_string(),
-            role: UserRole::Student,
             school_id: None,
             level_id: None,
             branch_id: None,
@@ -345,13 +278,25 @@ mod tests {
 
     #[test]
     fn test_create_user_dto_deserialize() {
-        let json = r#"{"first_name":"Jane","last_name":"Smith","email":"jane@test.com","password":"password123","role":"teacher","school_id":null}"#;
+        let json = r#"{"first_name":"Jane","last_name":"Smith","email":"jane@test.com","password":"password123","role_ids":[],"school_id":null}"#;
         let dto: CreateUserDto = serde_json::from_str(json).unwrap();
         assert_eq!(dto.first_name, "Jane");
         assert_eq!(dto.last_name, "Smith");
         assert_eq!(dto.email, "jane@test.com");
         assert_eq!(dto.password, "password123");
-        assert_eq!(dto.role, Some(UserRole::Teacher));
+        assert!(dto.role_ids.is_empty());
+    }
+
+    #[test]
+    fn test_create_user_dto_with_roles() {
+        let role_id = Uuid::new_v4();
+        let json = format!(
+            r#"{{"first_name":"Jane","last_name":"Smith","email":"jane@test.com","password":"password123","role_ids":["{}"],"school_id":null}}"#,
+            role_id
+        );
+        let dto: CreateUserDto = serde_json::from_str(&json).unwrap();
+        assert_eq!(dto.role_ids.len(), 1);
+        assert_eq!(dto.role_ids[0], role_id);
     }
 
     #[test]

@@ -412,7 +412,7 @@ async fn test_get_roles_as_system_admin_sees_all(pool: PgPool) {
     // Create a school role directly in DB
     let role_name = format!("Test School Role {}", Uuid::new_v4());
     sqlx::query!(
-        r#"INSERT INTO custom_roles (name, school_id, is_system_role) VALUES ($1, $2, false)"#,
+        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false)"#,
         role_name,
         school.id
     )
@@ -459,7 +459,7 @@ async fn test_get_roles_as_school_admin_scoped(pool: PgPool) {
     let role2_name = format!("School2 Role {}", Uuid::new_v4());
 
     sqlx::query!(
-        r#"INSERT INTO custom_roles (name, school_id, is_system_role) VALUES ($1, $2, false)"#,
+        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false)"#,
         role1_name,
         school1.id
     )
@@ -468,7 +468,7 @@ async fn test_get_roles_as_school_admin_scoped(pool: PgPool) {
     .unwrap();
 
     sqlx::query!(
-        r#"INSERT INTO custom_roles (name, school_id, is_system_role) VALUES ($1, $2, false)"#,
+        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false)"#,
         role2_name,
         school2.id
     )
@@ -514,7 +514,7 @@ async fn test_get_role_by_id(pool: PgPool) {
 
     let role_name = format!("GetById Role {}", Uuid::new_v4());
     let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO custom_roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
+        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
         role_name,
         school.id
     )
@@ -560,7 +560,7 @@ async fn test_school_admin_cannot_access_other_school_role(pool: PgPool) {
 
     let role_name = format!("Other School Role {}", Uuid::new_v4());
     let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO custom_roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
+        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
         role_name,
         school2.id
     )
@@ -597,7 +597,7 @@ async fn test_school_admin_cannot_access_system_role(pool: PgPool) {
 
     let role_name = format!("System Role {}", Uuid::new_v4());
     let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO custom_roles (name, is_system_role) VALUES ($1, true) RETURNING id"#,
+        r#"INSERT INTO roles (name, is_system_role) VALUES ($1, true) RETURNING id"#,
         role_name
     )
     .fetch_one(&mut *tx)
@@ -635,7 +635,7 @@ async fn test_update_role(pool: PgPool) {
 
     let role_name = format!("Update Role {}", Uuid::new_v4());
     let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO custom_roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
+        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
         role_name,
         school.id
     )
@@ -689,7 +689,7 @@ async fn test_delete_role(pool: PgPool) {
 
     let role_name = format!("Delete Role {}", Uuid::new_v4());
     let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO custom_roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
+        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
         role_name,
         school.id
     )
@@ -716,7 +716,7 @@ async fn test_delete_role(pool: PgPool) {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Verify role is deleted
-    let deleted = sqlx::query!("SELECT id FROM custom_roles WHERE id = $1", role_id)
+    let deleted = sqlx::query!("SELECT id FROM roles WHERE id = $1", role_id)
         .fetch_optional(&pool)
         .await
         .unwrap();
@@ -737,7 +737,7 @@ async fn test_assign_permissions_to_role(pool: PgPool) {
 
     let role_name = format!("Perm Assign Role {}", Uuid::new_v4());
     let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO custom_roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
+        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
         role_name,
         school.id
     )
@@ -788,7 +788,7 @@ async fn test_remove_permission_from_role(pool: PgPool) {
 
     let role_name = format!("Perm Remove Role {}", Uuid::new_v4());
     let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO custom_roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
+        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
         role_name,
         school.id
     )
@@ -855,7 +855,7 @@ async fn test_assign_role_to_user(pool: PgPool) {
 
     let role_name = format!("Assignable Role {}", Uuid::new_v4());
     let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO custom_roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
+        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
         role_name,
         school.id
     )
@@ -915,7 +915,7 @@ async fn test_assign_duplicate_role_fails(pool: PgPool) {
 
     let role_name = format!("Dup Assign Role {}", Uuid::new_v4());
     let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO custom_roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
+        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
         role_name,
         school.id
     )
@@ -995,7 +995,7 @@ async fn test_school_admin_cannot_assign_role_to_other_school_user(pool: PgPool)
 
     let role_name = format!("School1 Role {}", Uuid::new_v4());
     let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO custom_roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
+        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
         role_name,
         school1.id
     )
@@ -1049,7 +1049,7 @@ async fn test_school_admin_cannot_assign_system_role(pool: PgPool) {
 
     let role_name = format!("System Role {}", Uuid::new_v4());
     let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO custom_roles (name, is_system_role) VALUES ($1, true) RETURNING id"#,
+        r#"INSERT INTO roles (name, is_system_role) VALUES ($1, true) RETURNING id"#,
         role_name
     )
     .fetch_one(&mut *tx)
@@ -1102,7 +1102,7 @@ async fn test_remove_role_from_user(pool: PgPool) {
 
     let role_name = format!("Removable Role {}", Uuid::new_v4());
     let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO custom_roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
+        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
         role_name,
         school.id
     )
@@ -1112,7 +1112,7 @@ async fn test_remove_role_from_user(pool: PgPool) {
 
     // Assign role to user directly
     sqlx::query!(
-        "INSERT INTO user_custom_roles (user_id, role_id, assigned_by) VALUES ($1, $2, $3)",
+        "INSERT INTO user_roles (user_id, role_id, assigned_by) VALUES ($1, $2, $3)",
         target_user.id,
         role_id,
         admin.id
@@ -1141,7 +1141,7 @@ async fn test_remove_role_from_user(pool: PgPool) {
 
     // Verify role is removed
     let assignment = sqlx::query!(
-        "SELECT id FROM user_custom_roles WHERE user_id = $1 AND role_id = $2",
+        "SELECT id FROM user_roles WHERE user_id = $1 AND role_id = $2",
         target_user.id,
         role_id
     )
@@ -1176,7 +1176,7 @@ async fn test_get_user_roles(pool: PgPool) {
 
     let role_name = format!("Query Role {}", Uuid::new_v4());
     let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO custom_roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
+        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
         role_name,
         school.id
     )
@@ -1185,7 +1185,7 @@ async fn test_get_user_roles(pool: PgPool) {
     .unwrap();
 
     sqlx::query!(
-        "INSERT INTO user_custom_roles (user_id, role_id, assigned_by) VALUES ($1, $2, $3)",
+        "INSERT INTO user_roles (user_id, role_id, assigned_by) VALUES ($1, $2, $3)",
         target_user.id,
         role_id,
         admin.id
@@ -1241,7 +1241,7 @@ async fn test_get_user_permissions(pool: PgPool) {
 
     let role_name = format!("Perm Query Role {}", Uuid::new_v4());
     let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO custom_roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
+        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
         role_name,
         school.id
     )
@@ -1261,7 +1261,7 @@ async fn test_get_user_permissions(pool: PgPool) {
     .unwrap();
 
     sqlx::query!(
-        "INSERT INTO user_custom_roles (user_id, role_id, assigned_by) VALUES ($1, $2, $3)",
+        "INSERT INTO user_roles (user_id, role_id, assigned_by) VALUES ($1, $2, $3)",
         target_user.id,
         role_id,
         admin.id

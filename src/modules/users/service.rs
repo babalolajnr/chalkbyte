@@ -2,7 +2,7 @@ use crate::{
     metrics,
     modules::users::model::{
         ChangePasswordDto, CreateUserDto, PaginatedUsersResponse, School, UpdateProfileDto, User,
-        UserFilterParams, UserRole, UserWithSchool,
+        UserFilterParams, UserWithSchool,
     },
     utils::{
         errors::AppError,
@@ -18,28 +18,23 @@ use uuid::Uuid;
 pub struct UserService;
 
 impl UserService {
-    #[instrument(skip(db, dto), fields(user.email = %dto.email, user.role = ?dto.role))]
+    #[instrument(skip(db, dto), fields(user.email = %dto.email))]
     pub async fn create_user(db: &PgPool, dto: CreateUserDto) -> Result<User, AppError> {
-        let role = dto.role.unwrap_or_default();
-
-        debug!(email = %dto.email, role = ?role, "Creating new user");
+        debug!(email = %dto.email, "Creating new user");
 
         let password_hash = hash_password(&dto.password)?;
-
-        metrics::track_user_created(&role.to_string());
 
         let user = sqlx::query_as!(
             User,
             r#"
-            INSERT INTO users (first_name, last_name, email, password, role, school_id)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, first_name, last_name, email, role as "role: _", school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at
+            INSERT INTO users (first_name, last_name, email, password, school_id)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id, first_name, last_name, email, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at
             "#,
             dto.first_name,
             dto.last_name,
             dto.email,
             password_hash,
-            role as _,
             dto.school_id
         )
         .fetch_one(db)
@@ -57,7 +52,34 @@ impl UserService {
             AppError::database(anyhow::Error::new(e).context("Failed to insert user"))
         })?;
 
-        info!(user.id = %user.id, user.email = %user.email, user.role = ?user.role, "User created successfully");
+        // Assign roles if provided
+        if !dto.role_ids.is_empty() {
+            for role_id in &dto.role_ids {
+                sqlx::query(
+                    "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                )
+                .bind(user.id)
+                .bind(role_id)
+                .execute(db)
+                .await
+                .map_err(|e| {
+                    error!(error = %e, "Failed to assign role to user");
+                    AppError::database(anyhow::Error::new(e).context("Failed to assign role"))
+                })?;
+            }
+        }
+
+        // Track metrics based on first role assigned
+        let role_name = if let Some(first_role_id) = dto.role_ids.first() {
+            crate::modules::users::model::system_roles::get_name(first_role_id)
+                .unwrap_or("custom")
+                .to_lowercase()
+        } else {
+            "none".to_string()
+        };
+        metrics::track_user_created(&role_name);
+
+        info!(user.id = %user.id, user.email = %user.email, "User created successfully");
         Ok(user)
     }
 
@@ -82,14 +104,21 @@ impl UserService {
         let mut param_count = 0;
 
         let mut query = String::from(
-            r#"SELECT id, first_name, last_name, email, role::text as role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE 1=1"#,
+            r#"SELECT DISTINCT u.id, u.first_name, u.last_name, u.email, u.school_id, u.level_id, u.branch_id, u.date_of_birth, u.grade_level, u.created_at, u.updated_at FROM users u"#,
         );
+
+        // Join with user_roles if filtering by role
+        if filters.role_id.is_some() {
+            query.push_str(" INNER JOIN user_roles ur ON u.id = ur.user_id");
+        }
+
+        query.push_str(" WHERE 1=1");
 
         if let Some(ref first_name) = filters.first_name {
             param_count += 1;
             conditions.push((
                 param_count,
-                format!("first_name ILIKE ${}", param_count),
+                format!("u.first_name ILIKE ${}", param_count),
                 format!("%{}%", first_name),
             ));
         }
@@ -98,7 +127,7 @@ impl UserService {
             param_count += 1;
             conditions.push((
                 param_count,
-                format!("last_name ILIKE ${}", param_count),
+                format!("u.last_name ILIKE ${}", param_count),
                 format!("%{}%", last_name),
             ));
         }
@@ -107,17 +136,17 @@ impl UserService {
             param_count += 1;
             conditions.push((
                 param_count,
-                format!("email ILIKE ${}", param_count),
+                format!("u.email ILIKE ${}", param_count),
                 format!("%{}%", email),
             ));
         }
 
-        if let Some(ref role) = filters.role {
+        if let Some(role_id) = filters.role_id {
             param_count += 1;
             conditions.push((
                 param_count,
-                format!("role = ${}", param_count),
-                format!("{:?}", role).to_lowercase(),
+                format!("ur.role_id = ${}", param_count),
+                role_id.to_string(),
             ));
         }
 
@@ -125,7 +154,7 @@ impl UserService {
             param_count += 1;
             conditions.push((
                 param_count,
-                format!("school_id = ${}", param_count),
+                format!("u.school_id = ${}", param_count),
                 sid.to_string(),
             ));
         }
@@ -134,7 +163,7 @@ impl UserService {
             param_count += 1;
             conditions.push((
                 param_count,
-                format!("school_id = ${}", param_count),
+                format!("u.school_id = ${}", param_count),
                 sid.to_string(),
             ));
         }
@@ -143,13 +172,27 @@ impl UserService {
             query.push_str(&format!(" AND {}", condition));
         }
 
-        let count_query = query.replace(
-            r#"SELECT id, first_name, last_name, email, role::text as role, school_id FROM users"#,
-            "SELECT COUNT(*) as count FROM users",
-        );
+        // Build count query
+        let count_query = if filters.role_id.is_some() {
+            format!(
+                "SELECT COUNT(DISTINCT u.id) FROM users u INNER JOIN user_roles ur ON u.id = ur.user_id WHERE 1=1{}",
+                conditions
+                    .iter()
+                    .map(|(_, c, _)| format!(" AND {}", c))
+                    .collect::<String>()
+            )
+        } else {
+            format!(
+                "SELECT COUNT(*) FROM users u WHERE 1=1{}",
+                conditions
+                    .iter()
+                    .map(|(_, c, _)| format!(" AND {}", c))
+                    .collect::<String>()
+            )
+        };
 
         query.push_str(&format!(
-            " ORDER BY created_at DESC LIMIT ${} OFFSET ${}",
+            " ORDER BY u.created_at DESC LIMIT ${} OFFSET ${}",
             param_count + 1,
             param_count + 2
         ));
@@ -184,21 +227,6 @@ impl UserService {
         let users: Result<Vec<User>, AppError> = rows
             .iter()
             .map(|row| {
-                let role_str: String = row.try_get("role").map_err(|e| {
-                    AppError::database(anyhow::Error::new(e).context("Failed to get role"))
-                })?;
-                let role = match role_str.as_str() {
-                    "system_admin" => UserRole::SystemAdmin,
-                    "admin" => UserRole::Admin,
-                    "teacher" => UserRole::Teacher,
-                    "student" => UserRole::Student,
-                    _ => {
-                        return Err(AppError::database(anyhow::anyhow!(
-                            "Invalid role: {}",
-                            role_str
-                        )));
-                    }
-                };
                 Ok(User {
                     id: row.try_get("id").map_err(|e| {
                         AppError::database(anyhow::Error::new(e).context("Failed to get id"))
@@ -214,7 +242,6 @@ impl UserService {
                     email: row.try_get("email").map_err(|e| {
                         AppError::database(anyhow::Error::new(e).context("Failed to get email"))
                     })?,
-                    role,
                     school_id: row.try_get("school_id").map_err(|e| {
                         AppError::database(anyhow::Error::new(e).context("Failed to get school_id"))
                     })?,
@@ -283,25 +310,24 @@ impl UserService {
         let user = sqlx::query_as!(
             User,
             r#"
-            SELECT id, first_name, last_name, email, role as "role: _", school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at
-            FROM users
-            WHERE id = $1
+            SELECT id, first_name, last_name, email, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at
+            FROM users WHERE id = $1
             "#,
             id
         )
         .fetch_optional(db)
         .await
-        .context("Failed to fetch user by ID")
+        .context("Failed to fetch user")
         .map_err(|e| {
-            error!(user.id = %id, error = %e, "Database error fetching user");
+            error!(error = %e, "Database error fetching user");
             AppError::database(e)
         })?
         .ok_or_else(|| {
-            debug!(user.id = %id, "User not found");
-            AppError::not_found(anyhow::anyhow!("User with id {} not found", id))
+            warn!(user.id = %id, "User not found");
+            AppError::not_found(anyhow::anyhow!("User not found"))
         })?;
 
-        debug!(user.id = %user.id, user.email = %user.email, "User found");
+        debug!(user.email = %user.email, "User fetched successfully");
         Ok(user)
     }
 
@@ -309,70 +335,30 @@ impl UserService {
     pub async fn get_user_with_school(db: &PgPool, id: Uuid) -> Result<UserWithSchool, AppError> {
         debug!("Fetching user with school information");
 
-        let result = sqlx::query!(
-            r#"
-                SELECT
-                    users.id as user_id,
-                    users.first_name,
-                    users.last_name,
-                    users.email,
-                    users.role as "role: UserRole",
-                    users.school_id,
-                    users.level_id,
-                    users.branch_id,
-                    users.date_of_birth,
-                    users.grade_level,
-                    users.created_at,
-                    users.updated_at,
-                    s.id as "school_id_inner?",
-                    s.name as "school_name?",
-                    s.address as "school_address?"
-                FROM users
-                LEFT JOIN schools s ON users.school_id = s.id
-                WHERE users.id = $1
-                "#,
-            id
-        )
-        .fetch_optional(db)
-        .await
-        .context("Failed to fetch user with school by ID")
-        .map_err(|e| {
-            error!(user.id = %id, error = %e, "Database error fetching user with school");
-            AppError::database(e)
-        })?
-        .ok_or_else(|| {
-            debug!(user.id = %id, "User not found");
-            AppError::not_found(anyhow::anyhow!("User with id {} not found", id))
-        })?;
+        let user = Self::get_user(db, id).await?;
 
-        let user = User {
-            id: result.user_id,
-            first_name: result.first_name,
-            last_name: result.last_name,
-            email: result.email,
-            role: result.role,
-            school_id: result.school_id,
-            level_id: result.level_id,
-            branch_id: result.branch_id,
-            date_of_birth: result.date_of_birth,
-            grade_level: result.grade_level,
-            created_at: result.created_at,
-            updated_at: result.updated_at,
-        };
-
-        let school = if let (Some(school_id), Some(school_name)) =
-            (result.school_id_inner, result.school_name)
-        {
-            debug!(school.id = %school_id, school.name = %school_name, "User has associated school");
-            Some(School {
-                id: school_id,
-                name: school_name,
-                address: result.school_address,
-            })
+        let school = if let Some(school_id) = user.school_id {
+            sqlx::query_as!(
+                School,
+                r#"SELECT id, name, address FROM schools WHERE id = $1"#,
+                school_id
+            )
+            .fetch_optional(db)
+            .await
+            .context("Failed to fetch school")
+            .map_err(|e| {
+                error!(error = %e, "Database error fetching school");
+                AppError::database(e)
+            })?
         } else {
-            debug!("User has no associated school");
             None
         };
+
+        debug!(
+            user.email = %user.email,
+            has_school = school.is_some(),
+            "User with school fetched successfully"
+        );
 
         Ok(UserWithSchool { user, school })
     }
@@ -383,38 +369,53 @@ impl UserService {
         user_id: Uuid,
         dto: UpdateProfileDto,
     ) -> Result<User, AppError> {
-        debug!(
-            update_first_name = ?dto.first_name,
-            update_last_name = ?dto.last_name,
-            "Updating user profile"
+        debug!("Updating user profile");
+
+        // Build dynamic update query
+        let mut updates = vec![];
+        let mut param_count = 1; // $1 is user_id
+
+        if dto.first_name.is_some() {
+            param_count += 1;
+            updates.push(format!("first_name = ${}", param_count));
+        }
+
+        if dto.last_name.is_some() {
+            param_count += 1;
+            updates.push(format!("last_name = ${}", param_count));
+        }
+
+        if updates.is_empty() {
+            return Self::get_user(db, user_id).await;
+        }
+
+        updates.push("updated_at = NOW()".to_string());
+
+        let query = format!(
+            "UPDATE users SET {} WHERE id = $1 RETURNING id, first_name, last_name, email, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at",
+            updates.join(", ")
         );
 
-        let existing = Self::get_user(db, user_id).await?;
+        let mut query_builder = sqlx::query_as::<_, User>(&query).bind(user_id);
 
-        let first_name = dto.first_name.unwrap_or(existing.first_name);
-        let last_name = dto.last_name.unwrap_or(existing.last_name);
+        if let Some(ref first_name) = dto.first_name {
+            query_builder = query_builder.bind(first_name);
+        }
 
-        let user = sqlx::query_as!(
-            User,
-            r#"
-            UPDATE users
-            SET first_name = $1, last_name = $2, updated_at = NOW()
-            WHERE id = $3
-            RETURNING id, first_name, last_name, email, role as "role: _", school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at
-            "#,
-            first_name,
-            last_name,
-            user_id
-        )
-        .fetch_one(db)
-        .await
-        .context("Failed to update user profile")
-        .map_err(|e| {
-            error!(user.id = %user_id, error = %e, "Database error updating profile");
-            AppError::database(e)
-        })?;
+        if let Some(ref last_name) = dto.last_name {
+            query_builder = query_builder.bind(last_name);
+        }
 
-        info!(user.id = %user.id, "User profile updated successfully");
+        let user = query_builder
+            .fetch_one(db)
+            .await
+            .context("Failed to update profile")
+            .map_err(|e| {
+                error!(error = %e, "Database error updating profile");
+                AppError::database(e)
+            })?;
+
+        info!(user.id = %user.id, "Profile updated successfully");
         Ok(user)
     }
 
@@ -424,44 +425,128 @@ impl UserService {
         user_id: Uuid,
         dto: ChangePasswordDto,
     ) -> Result<(), AppError> {
-        debug!("Attempting password change");
+        debug!("Changing user password");
 
-        let password_hash =
-            sqlx::query_scalar::<_, String>("SELECT password FROM users WHERE id = $1")
-                .bind(user_id)
-                .fetch_optional(db)
-                .await
-                .context("Failed to fetch user password")
-                .map_err(|e| {
-                    error!(user.id = %user_id, error = %e, "Database error fetching password");
-                    AppError::database(e)
-                })?
-                .ok_or_else(|| {
-                    warn!(user.id = %user_id, "User not found during password change");
-                    AppError::not_found(anyhow::anyhow!("User not found"))
-                })?;
+        // Get current password hash
+        let current_hash: String = sqlx::query_scalar("SELECT password FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_one(db)
+            .await
+            .context("Failed to fetch current password")
+            .map_err(|e| {
+                error!(error = %e, "Database error fetching password");
+                AppError::database(e)
+            })?;
 
-        if !verify_password(&dto.current_password, &password_hash)? {
+        // Verify current password
+        if !verify_password(&dto.current_password, &current_hash)? {
             warn!(user.id = %user_id, "Invalid current password provided");
-            return Err(AppError::unprocessable(anyhow::anyhow!(
-                "Current password is incorrect"
-            )));
+            return Err(AppError::unauthorized(
+                "Current password is incorrect".to_string(),
+            ));
         }
 
-        let new_password_hash = hash_password(&dto.new_password)?;
+        // Hash and update new password
+        let new_hash = hash_password(&dto.new_password)?;
 
         sqlx::query("UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2")
-            .bind(&new_password_hash)
+            .bind(&new_hash)
             .bind(user_id)
             .execute(db)
             .await
             .context("Failed to update password")
             .map_err(|e| {
-                error!(user.id = %user_id, error = %e, "Database error updating password");
+                error!(error = %e, "Database error updating password");
                 AppError::database(e)
             })?;
 
         info!(user.id = %user_id, "Password changed successfully");
         Ok(())
+    }
+
+    /// Check if user has a specific system role
+    pub async fn user_has_system_role(
+        db: &PgPool,
+        user_id: Uuid,
+        role_id: Uuid,
+    ) -> Result<bool, AppError> {
+        let has_role = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM user_roles WHERE user_id = $1 AND role_id = $2)",
+        )
+        .bind(user_id)
+        .bind(role_id)
+        .fetch_one(db)
+        .await
+        .context("Failed to check user role")
+        .map_err(AppError::database)?;
+
+        Ok(has_role)
+    }
+
+    /// Get user's primary role (first assigned role, preferring system roles)
+    pub async fn get_user_primary_role(
+        db: &PgPool,
+        user_id: Uuid,
+    ) -> Result<Option<Uuid>, AppError> {
+        let role_id = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            SELECT ur.role_id
+            FROM user_roles ur
+            INNER JOIN roles r ON ur.role_id = r.id
+            WHERE ur.user_id = $1
+            ORDER BY r.is_system_role DESC, ur.assigned_at ASC
+            LIMIT 1
+            "#,
+        )
+        .bind(user_id)
+        .fetch_optional(db)
+        .await
+        .context("Failed to fetch primary role")
+        .map_err(AppError::database)?;
+
+        Ok(role_id)
+    }
+
+    /// Check if user is a system admin
+    pub async fn is_system_admin(db: &PgPool, user_id: Uuid) -> Result<bool, AppError> {
+        Self::user_has_system_role(
+            db,
+            user_id,
+            crate::modules::users::model::system_roles::SYSTEM_ADMIN,
+        )
+        .await
+    }
+
+    /// Check if user is an admin (school admin)
+    pub async fn is_admin(db: &PgPool, user_id: Uuid) -> Result<bool, AppError> {
+        Self::user_has_system_role(
+            db,
+            user_id,
+            crate::modules::users::model::system_roles::ADMIN,
+        )
+        .await
+    }
+
+    /// Check if user has any of the specified roles
+    pub async fn user_has_any_role(
+        db: &PgPool,
+        user_id: Uuid,
+        role_ids: &[Uuid],
+    ) -> Result<bool, AppError> {
+        if role_ids.is_empty() {
+            return Ok(false);
+        }
+
+        let has_role = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM user_roles WHERE user_id = $1 AND role_id = ANY($2))",
+        )
+        .bind(user_id)
+        .bind(role_ids)
+        .fetch_one(db)
+        .await
+        .context("Failed to check user roles")
+        .map_err(AppError::database)?;
+
+        Ok(has_role)
     }
 }

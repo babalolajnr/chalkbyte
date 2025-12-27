@@ -8,6 +8,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::middleware::auth::AuthUser;
+use crate::middleware::role::{get_user_id_from_auth, is_admin};
 use crate::modules::levels::model::{
     AssignStudentsToLevelDto, BulkAssignResponse, CreateLevelDto, Level, LevelFilterParams,
     LevelWithStats, MoveStudentToLevelDto, PaginatedLevelsResponse, UpdateLevelDto,
@@ -17,6 +18,19 @@ use crate::modules::users::model::User;
 use crate::state::AppState;
 use crate::utils::auth_helpers::get_admin_school_id;
 use crate::utils::errors::AppError;
+
+/// Helper to verify admin access
+async fn require_admin_access(db: &sqlx::PgPool, auth_user: &AuthUser) -> Result<Uuid, AppError> {
+    let user_id = get_user_id_from_auth(auth_user)?;
+
+    if !is_admin(db, user_id).await? {
+        return Err(AppError::forbidden(
+            "Only school admins can perform this action".to_string(),
+        ));
+    }
+
+    get_admin_school_id(db, auth_user).await
+}
 
 #[utoipa::path(
     post,
@@ -37,15 +51,9 @@ pub async fn create_level(
     auth_user: AuthUser,
     Json(dto): Json<CreateLevelDto>,
 ) -> Result<(StatusCode, Json<Level>), AppError> {
-    if auth_user.0.role != "admin" {
-        return Err(AppError::forbidden(
-            "Only school admins can create levels".to_string(),
-        ));
-    }
+    let school_id = require_admin_access(&state.db, &auth_user).await?;
 
     dto.validate()?;
-
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     let level = LevelService::create_level(&state.db, school_id, dto).await?;
 
@@ -70,13 +78,7 @@ pub async fn get_levels(
     auth_user: AuthUser,
     Query(filters): Query<LevelFilterParams>,
 ) -> Result<Json<PaginatedLevelsResponse>, AppError> {
-    if auth_user.0.role != "admin" {
-        return Err(AppError::forbidden(
-            "Only school admins can view levels".to_string(),
-        ));
-    }
-
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    let school_id = require_admin_access(&state.db, &auth_user).await?;
 
     let levels = LevelService::get_levels_by_school(&state.db, school_id, filters).await?;
 
@@ -104,13 +106,7 @@ pub async fn get_level_by_id(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<LevelWithStats>, AppError> {
-    if auth_user.0.role != "admin" {
-        return Err(AppError::forbidden(
-            "Only school admins can view levels".to_string(),
-        ));
-    }
-
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    let school_id = require_admin_access(&state.db, &auth_user).await?;
 
     let level = LevelService::get_level_by_id(&state.db, id, school_id).await?;
 
@@ -141,15 +137,9 @@ pub async fn update_level(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateLevelDto>,
 ) -> Result<Json<Level>, AppError> {
-    if auth_user.0.role != "admin" {
-        return Err(AppError::forbidden(
-            "Only school admins can update levels".to_string(),
-        ));
-    }
+    let school_id = require_admin_access(&state.db, &auth_user).await?;
 
     dto.validate()?;
-
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     let level = LevelService::update_level(&state.db, id, school_id, dto).await?;
 
@@ -177,13 +167,7 @@ pub async fn delete_level(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    if auth_user.0.role != "admin" {
-        return Err(AppError::forbidden(
-            "Only school admins can delete levels".to_string(),
-        ));
-    }
-
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    let school_id = require_admin_access(&state.db, &auth_user).await?;
 
     LevelService::delete_level(&state.db, id, school_id).await?;
 
@@ -214,15 +198,9 @@ pub async fn assign_students_to_level(
     Path(id): Path<Uuid>,
     Json(dto): Json<AssignStudentsToLevelDto>,
 ) -> Result<Json<BulkAssignResponse>, AppError> {
-    if auth_user.0.role != "admin" {
-        return Err(AppError::forbidden(
-            "Only school admins can assign students to levels".to_string(),
-        ));
-    }
+    let school_id = require_admin_access(&state.db, &auth_user).await?;
 
     dto.validate()?;
-
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     let response = LevelService::assign_students_to_level(&state.db, id, school_id, dto).await?;
 
@@ -250,13 +228,7 @@ pub async fn get_students_in_level(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<User>>, AppError> {
-    if auth_user.0.role != "admin" {
-        return Err(AppError::forbidden(
-            "Only school admins can view students in levels".to_string(),
-        ));
-    }
-
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    let school_id = require_admin_access(&state.db, &auth_user).await?;
 
     let students = LevelService::get_students_in_level(&state.db, id, school_id).await?;
 
@@ -287,15 +259,9 @@ pub async fn move_student_to_level(
     Path(student_id): Path<Uuid>,
     Json(dto): Json<MoveStudentToLevelDto>,
 ) -> Result<StatusCode, AppError> {
-    if auth_user.0.role != "admin" {
-        return Err(AppError::forbidden(
-            "Only school admins can move students between levels".to_string(),
-        ));
-    }
+    let school_id = require_admin_access(&state.db, &auth_user).await?;
 
     dto.validate()?;
-
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     LevelService::move_student_to_level(&state.db, student_id, school_id, dto).await?;
 
@@ -323,13 +289,7 @@ pub async fn remove_student_from_level(
     auth_user: AuthUser,
     Path(student_id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    if auth_user.0.role != "admin" {
-        return Err(AppError::forbidden(
-            "Only school admins can remove students from levels".to_string(),
-        ));
-    }
-
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    let school_id = require_admin_access(&state.db, &auth_user).await?;
 
     LevelService::remove_student_from_level(&state.db, student_id, school_id).await?;
 

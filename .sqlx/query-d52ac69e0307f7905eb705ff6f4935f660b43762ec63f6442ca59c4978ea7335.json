@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM users u\n        WHERE u.email LIKE '%@example.com'\n        AND NOT EXISTS (\n            SELECT 1 FROM user_roles ur\n            WHERE ur.user_id = u.id\n            AND ur.role_id = $1\n        )",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d52ac69e0307f7905eb705ff6f4935f660b43762ec63f6442ca59c4978ea7335"
+}

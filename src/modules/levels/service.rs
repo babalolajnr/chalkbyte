@@ -6,7 +6,7 @@ use crate::modules::levels::model::{
     AssignStudentsToLevelDto, BulkAssignResponse, CreateLevelDto, Level, LevelFilterParams,
     LevelWithStats, MoveStudentToLevelDto, PaginatedLevelsResponse, UpdateLevelDto,
 };
-use crate::modules::users::model::UserRole;
+use crate::modules::users::model::system_roles;
 use crate::utils::errors::AppError;
 use crate::utils::pagination::PaginationMeta;
 
@@ -69,6 +69,7 @@ impl LevelService {
         }
         let total = count_sql.fetch_one(db).await?;
 
+        let student_role_id = system_roles::STUDENT;
         let mut data_query = String::from(
             r#"SELECT
                 l.id,
@@ -77,11 +78,13 @@ impl LevelService {
                 l.school_id,
                 l.created_at,
                 l.updated_at,
-                COUNT(u.id) as student_count
+                COUNT(DISTINCT u.id) as student_count
                FROM levels l
-               LEFT JOIN users u ON u.level_id = l.id AND u.role = 'student'
-               WHERE l.school_id = $1"#,
+               LEFT JOIN users u ON u.level_id = l.id
+               LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role_id = '"#,
         );
+        data_query.push_str(&student_role_id.to_string());
+        data_query.push_str("' WHERE l.school_id = $1");
         data_query.push_str(&where_clause);
         data_query.push_str(
             " GROUP BY l.id, l.name, l.description, l.school_id, l.created_at, l.updated_at",
@@ -115,6 +118,7 @@ impl LevelService {
         level_id: Uuid,
         school_id: Uuid,
     ) -> Result<LevelWithStats, AppError> {
+        let student_role_id = system_roles::STUDENT;
         let level = sqlx::query_as::<_, LevelWithStats>(
             r#"SELECT
                 l.id,
@@ -123,14 +127,16 @@ impl LevelService {
                 l.school_id,
                 l.created_at,
                 l.updated_at,
-                COUNT(u.id) as student_count
+                COUNT(DISTINCT u.id) as student_count
                FROM levels l
-               LEFT JOIN users u ON u.level_id = l.id AND u.role = 'student'
+               LEFT JOIN users u ON u.level_id = l.id
+               LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role_id = $3
                WHERE l.id = $1 AND l.school_id = $2
                GROUP BY l.id, l.name, l.description, l.school_id, l.created_at, l.updated_at"#,
         )
         .bind(level_id)
         .bind(school_id)
+        .bind(student_role_id)
         .fetch_optional(db)
         .await?
         .ok_or_else(|| AppError::not_found(anyhow::anyhow!("Level not found")))?;
@@ -228,16 +234,31 @@ impl LevelService {
         let mut assigned_count = 0;
         let mut failed_ids = Vec::new();
 
+        let student_role_id = system_roles::STUDENT;
         for student_id in dto.student_ids {
+            // First check if user is a student (has student role)
+            let is_student = sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS(SELECT 1 FROM user_roles WHERE user_id = $1 AND role_id = $2)",
+            )
+            .bind(student_id)
+            .bind(student_role_id)
+            .fetch_one(db)
+            .await
+            .unwrap_or(false);
+
+            if !is_student {
+                failed_ids.push(student_id);
+                continue;
+            }
+
             let result = sqlx::query(
                 r#"UPDATE users
                    SET level_id = $1, updated_at = NOW()
-                   WHERE id = $2 AND school_id = $3 AND role = $4"#,
+                   WHERE id = $2 AND school_id = $3"#,
             )
             .bind(level_id)
             .bind(student_id)
             .bind(school_id)
-            .bind(UserRole::Student)
             .execute(db)
             .await;
 
@@ -274,15 +295,30 @@ impl LevelService {
             }
         }
 
+        // Check if user is a student
+        let student_role_id = system_roles::STUDENT;
+        let is_student = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM user_roles WHERE user_id = $1 AND role_id = $2)",
+        )
+        .bind(student_id)
+        .bind(student_role_id)
+        .fetch_one(db)
+        .await?;
+
+        if !is_student {
+            return Err(AppError::not_found(anyhow::anyhow!(
+                "Student not found or not in this school"
+            )));
+        }
+
         let result = sqlx::query(
             r#"UPDATE users
                SET level_id = $1, updated_at = NOW()
-               WHERE id = $2 AND school_id = $3 AND role = $4"#,
+               WHERE id = $2 AND school_id = $3"#,
         )
         .bind(dto.level_id)
         .bind(student_id)
         .bind(school_id)
-        .bind(UserRole::Student)
         .execute(db)
         .await?;
 
@@ -313,15 +349,17 @@ impl LevelService {
             return Err(AppError::not_found(anyhow::anyhow!("Level not found")));
         }
 
+        let student_role_id = system_roles::STUDENT;
         let students = sqlx::query_as::<_, crate::modules::users::model::User>(
-            r#"SELECT id, first_name, last_name, email, role, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at
-               FROM users
-               WHERE level_id = $1 AND school_id = $2 AND role = $3
-               ORDER BY last_name, first_name"#,
+            r#"SELECT u.id, u.first_name, u.last_name, u.email, u.school_id, u.level_id, u.branch_id, u.date_of_birth, u.grade_level, u.created_at, u.updated_at
+               FROM users u
+               INNER JOIN user_roles ur ON ur.user_id = u.id AND ur.role_id = $3
+               WHERE u.level_id = $1 AND u.school_id = $2
+               ORDER BY u.last_name, u.first_name"#,
         )
         .bind(level_id)
         .bind(school_id)
-        .bind(UserRole::Student)
+        .bind(student_role_id)
         .fetch_all(db)
         .await?;
 
@@ -334,14 +372,29 @@ impl LevelService {
         student_id: Uuid,
         school_id: Uuid,
     ) -> Result<(), AppError> {
+        // Check if user is a student
+        let student_role_id = system_roles::STUDENT;
+        let is_student = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM user_roles WHERE user_id = $1 AND role_id = $2)",
+        )
+        .bind(student_id)
+        .bind(student_role_id)
+        .fetch_one(db)
+        .await?;
+
+        if !is_student {
+            return Err(AppError::not_found(anyhow::anyhow!(
+                "Student not found or not in this school"
+            )));
+        }
+
         let result = sqlx::query(
             r#"UPDATE users
                SET level_id = NULL, updated_at = NOW()
-               WHERE id = $1 AND school_id = $2 AND role = $3"#,
+               WHERE id = $1 AND school_id = $2"#,
         )
         .bind(student_id)
         .bind(school_id)
-        .bind(UserRole::Student)
         .execute(db)
         .await?;
 
@@ -373,15 +426,27 @@ mod tests {
     }
 
     async fn create_test_student(pool: &PgPool, school_id: Uuid, email: &str) -> Uuid {
-        sqlx::query_scalar!(
-            r#"INSERT INTO users (first_name, last_name, email, password, role, school_id)
-               VALUES ('Test', 'Student', $1, 'hashed', 'student', $2) RETURNING id"#,
+        let user_id = sqlx::query_scalar!(
+            r#"INSERT INTO users (first_name, last_name, email, password, school_id)
+               VALUES ('Test', 'Student', $1, 'hashed', $2) RETURNING id"#,
             email,
             school_id
         )
         .fetch_one(pool)
         .await
-        .unwrap()
+        .unwrap();
+
+        // Assign student role
+        sqlx::query!(
+            "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)",
+            user_id,
+            crate::modules::users::model::system_roles::STUDENT
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+
+        user_id
     }
 
     #[sqlx::test(migrations = "./migrations")]

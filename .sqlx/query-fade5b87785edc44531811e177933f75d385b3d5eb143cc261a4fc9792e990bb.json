@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE users\n            SET branch_id = NULL, updated_at = NOW()\n            WHERE id = $1 AND school_id = $2\n            AND EXISTS (\n                SELECT 1 FROM user_roles ur\n                WHERE ur.user_id = $1 AND ur.role_id = '00000000-0000-0000-0000-000000000004'::uuid\n            )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fade5b87785edc44531811e177933f75d385b3d5eb143cc261a4fc9792e990bb"
+}
