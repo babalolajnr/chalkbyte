@@ -1,7 +1,7 @@
 use lettre::message::{MultiPart, SinglePart, header};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{Message, SmtpTransport, Transport};
-use tracing::instrument;
+use tracing::{debug, info, instrument};
 
 use crate::config::email::EmailConfig;
 use crate::utils::errors::AppError;
@@ -22,6 +22,15 @@ impl EmailService {
         to_name: &str,
         reset_token: &str,
     ) -> Result<(), AppError> {
+        if !self.config.enabled {
+            info!(
+                email = %to_email,
+                token = %reset_token,
+                "SMTP disabled - password reset token generated (not sent)"
+            );
+            return Ok(());
+        }
+
         let reset_link = format!(
             "{}/reset-password?token={}",
             self.config.frontend_url, reset_token
@@ -50,6 +59,14 @@ impl EmailService {
         to_email: &str,
         to_name: &str,
     ) -> Result<(), AppError> {
+        if !self.config.enabled {
+            info!(
+                email = %to_email,
+                "SMTP disabled - password reset confirmation (not sent)"
+            );
+            return Ok(());
+        }
+
         let html_body = self.password_reset_confirmation_template(to_name);
         let text_body = format!(
             "Hi {},\n\n\
@@ -103,11 +120,34 @@ impl EmailService {
             )
             .map_err(|e| AppError::internal_error(format!("Failed to build email: {}", e)))?;
 
-        let mailer = if self.config.smtp_username.is_empty() {
-            SmtpTransport::builder_dangerous(&self.config.smtp_host)
-                .port(self.config.smtp_port)
-                .build()
+        debug!(
+            smtp_host = %self.config.smtp_host,
+            smtp_port = %self.config.smtp_port,
+            has_username = !self.config.smtp_username.is_empty(),
+            "Building SMTP transport"
+        );
+
+        // Use dangerous (no TLS) for local development (localhost/127.0.0.1)
+        // or when no credentials are provided
+        let is_local = self.config.smtp_host == "localhost" || self.config.smtp_host == "127.0.0.1";
+        let has_credentials = !self.config.smtp_username.is_empty();
+
+        let mailer = if is_local || !has_credentials {
+            debug!("Using SMTP transport without TLS (local or no credentials)");
+            let mut builder = SmtpTransport::builder_dangerous(&self.config.smtp_host)
+                .port(self.config.smtp_port);
+
+            if has_credentials {
+                let creds = Credentials::new(
+                    self.config.smtp_username.clone(),
+                    self.config.smtp_password.clone(),
+                );
+                builder = builder.credentials(creds);
+            }
+
+            builder.build()
         } else {
+            debug!("Using SMTP transport with TLS");
             let creds = Credentials::new(
                 self.config.smtp_username.clone(),
                 self.config.smtp_password.clone(),

@@ -1,3 +1,5 @@
+use std::net::SocketAddr;
+
 use crate::router::init_router;
 use crate::state::init_app_state;
 use dotenvy::dotenv;
@@ -33,10 +35,13 @@ async fn start_main_server(state: state::AppState, port: u16) {
         println!("🛑 Shutting down main server gracefully...");
     };
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal)
-        .await
-        .unwrap();
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal)
+    .await
+    .unwrap();
 }
 
 async fn start_metrics_server(

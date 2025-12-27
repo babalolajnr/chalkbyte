@@ -2,6 +2,7 @@ use std::env;
 
 #[derive(Clone, Debug)]
 pub struct EmailConfig {
+    pub enabled: bool,
     pub smtp_host: String,
     pub smtp_port: u16,
     pub smtp_username: String,
@@ -14,6 +15,9 @@ pub struct EmailConfig {
 impl EmailConfig {
     pub fn from_env() -> Self {
         Self {
+            enabled: env::var("SMTP_ENABLED")
+                .map(|v| v.to_lowercase() == "true" || v == "1")
+                .unwrap_or(false),
             smtp_host: env::var("SMTP_HOST").unwrap_or_else(|_| "localhost".to_string()),
             smtp_port: env::var("SMTP_PORT")
                 .ok()

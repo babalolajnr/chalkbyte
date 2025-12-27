@@ -1,6 +1,6 @@
 services:
   chalkbyte:
-    profiles: ["app"]
+    profiles: ["app", "all"]
     build:
       context: .
       dockerfile: Dockerfile
@@ -23,6 +23,7 @@ services:
       - chalkbyte-network
 
   postgres:
+    profiles: ["all", "dev"]
     image: postgres:17-alpine
     environment:
       - POSTGRES_USER=chalkbyte
@@ -42,6 +43,7 @@ services:
       - chalkbyte-network
 
   mailpit:
+    profiles: ["all", "dev"]
     image: axllent/mailpit:latest
     container_name: chalkbyte-api-mailpit
     ports:
@@ -58,7 +60,7 @@ services:
 
   # OpenTelemetry Collector - receives traces, metrics, and logs
   otel-collector:
-    profiles: ["observability"]
+    profiles: ["observability", "all", "dev"]
     image: otel/opentelemetry-collector-contrib:0.91.0
     container_name: chalkbyte-otel-collector
     volumes:
@@ -80,7 +82,7 @@ services:
 
   # Tempo - distributed tracing backend
   tempo:
-    profiles: ["observability"]
+    profiles: ["observability", "all", "dev"]
     image: grafana/tempo:latest
     container_name: chalkbyte-tempo
     command: ["-config.file=/etc/tempo.yaml"]
@@ -98,7 +100,7 @@ services:
 
   # Loki - log aggregation system
   loki:
-    profiles: ["observability"]
+    profiles: ["observability", "all", "dev"]
     image: grafana/loki:latest
     container_name: chalkbyte-loki
     command: -config.file=/etc/loki/local-config.yaml
@@ -113,7 +115,7 @@ services:
 
   # Promtail - log shipper for Loki
   promtail:
-    profiles: ["observability"]
+    profiles: ["observability", "all", "dev"]
     image: grafana/promtail:latest
     container_name: chalkbyte-promtail
     command: -config.file=/etc/promtail/config.yaml
@@ -128,7 +130,7 @@ services:
 
   # Prometheus - metrics storage and querying
   prometheus:
-    profiles: ["observability"]
+    profiles: ["observability", "all", "dev"]
     image: prom/prometheus:latest
     container_name: chalkbyte-prometheus
     entrypoint: ["/bin/sh", "/usr/local/bin/prometheus-entrypoint.sh"]
@@ -153,7 +155,7 @@ services:
 
   # Grafana - visualization and dashboards
   grafana:
-    profiles: ["observability"]
+    profiles: ["observability", "all", "dev"]
     image: grafana/grafana:latest
     container_name: chalkbyte-grafana
     environment:
@@ -180,7 +182,7 @@ services:
 
   # Node Exporter - hardware and OS metrics
   node-exporter:
-    profiles: ["observability"]
+    profiles: ["observability", "all", "dev"]
     image: prom/node-exporter:latest
     container_name: chalkbyte-node-exporter
     command:

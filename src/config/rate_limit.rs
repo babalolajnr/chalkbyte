@@ -1,5 +1,5 @@
 use tower_governor::governor::{GovernorConfig, GovernorConfigBuilder};
-use tower_governor::key_extractor::SmartIpKeyExtractor;
+use tower_governor::key_extractor::PeerIpKeyExtractor;
 
 /// Rate limit configuration for the API
 #[derive(Clone, Debug)]
@@ -50,11 +50,11 @@ impl RateLimitConfig {
     /// Create GovernorConfig for general API endpoints
     pub fn general_governor_config(
         &self,
-    ) -> GovernorConfig<SmartIpKeyExtractor, ::governor::middleware::NoOpMiddleware> {
+    ) -> GovernorConfig<PeerIpKeyExtractor, ::governor::middleware::NoOpMiddleware> {
         GovernorConfigBuilder::default()
             .per_second(self.general_per_second)
             .burst_size(self.general_burst_size)
-            .key_extractor(SmartIpKeyExtractor)
+            .key_extractor(PeerIpKeyExtractor)
             .finish()
             .expect("Failed to build general rate limiter config")
     }
@@ -62,11 +62,11 @@ impl RateLimitConfig {
     /// Create GovernorConfig for auth endpoints (stricter limits)
     pub fn auth_governor_config(
         &self,
-    ) -> GovernorConfig<SmartIpKeyExtractor, ::governor::middleware::NoOpMiddleware> {
+    ) -> GovernorConfig<PeerIpKeyExtractor, ::governor::middleware::NoOpMiddleware> {
         GovernorConfigBuilder::default()
             .per_second(self.auth_per_second)
             .burst_size(self.auth_burst_size)
-            .key_extractor(SmartIpKeyExtractor)
+            .key_extractor(PeerIpKeyExtractor)
             .finish()
             .expect("Failed to build auth rate limiter config")
     }
