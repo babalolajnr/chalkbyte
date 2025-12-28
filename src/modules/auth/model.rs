@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use validator::Validate;
 
-use crate::modules::roles::model::{CustomRoleWithPermissions, Permission};
+use crate::modules::roles::model::{Permission, RoleWithPermissions};
 use crate::modules::users::model::User;
 
 // JWT Claims structure
@@ -49,7 +49,7 @@ pub struct LoginResponse {
     pub access_token: String,
     pub refresh_token: String,
     pub user: User,
-    pub roles: Vec<CustomRoleWithPermissions>,
+    pub roles: Vec<RoleWithPermissions>,
     pub permissions: Vec<Permission>,
 }
 

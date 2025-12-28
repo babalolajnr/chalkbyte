@@ -15,7 +15,7 @@ pub struct Permission {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
-pub struct CustomRole {
+pub struct Role {
     pub id: Uuid,
     pub name: String,
     pub description: Option<String>,
@@ -26,9 +26,9 @@ pub struct CustomRole {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct CustomRoleWithPermissions {
+pub struct RoleWithPermissions {
     #[serde(flatten)]
-    pub role: CustomRole,
+    pub role: Role,
     pub permissions: Vec<Permission>,
 }
 
@@ -41,7 +41,7 @@ pub struct RolePermission {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
-pub struct UserCustomRole {
+pub struct UserRole {
     pub id: Uuid,
     pub user_id: Uuid,
     pub role_id: Uuid,
@@ -50,15 +50,15 @@ pub struct UserCustomRole {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct UserWithCustomRoles {
+pub struct UserWithRoles {
     pub user_id: Uuid,
-    pub roles: Vec<CustomRoleWithPermissions>,
+    pub roles: Vec<RoleWithPermissions>,
 }
 
 // DTOs
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
-pub struct CreateCustomRoleDto {
+pub struct CreateRoleDto {
     #[validate(length(
         min = 1,
         max = 100,
@@ -74,7 +74,7 @@ pub struct CreateCustomRoleDto {
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
-pub struct UpdateCustomRoleDto {
+pub struct UpdateRoleDto {
     #[validate(length(
         min = 1,
         max = 100,
@@ -117,7 +117,7 @@ pub struct PermissionFilterParams {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PaginatedRolesResponse {
-    pub data: Vec<CustomRoleWithPermissions>,
+    pub data: Vec<RoleWithPermissions>,
     pub meta: crate::utils::pagination::PaginationMeta,
 }
 

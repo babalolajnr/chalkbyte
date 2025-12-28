@@ -12,9 +12,9 @@ use crate::utils::errors::AppError;
 use crate::validator::ValidatedJson;
 
 use super::model::{
-    AssignPermissionsDto, AssignRoleToUserDto, CreateCustomRoleDto, CustomRoleWithPermissions,
-    PaginatedPermissionsResponse, PaginatedRolesResponse, Permission, PermissionFilterParams,
-    RoleAssignmentResponse, RoleFilterParams, UpdateCustomRoleDto,
+    AssignPermissionsDto, AssignRoleToUserDto, CreateRoleDto, PaginatedPermissionsResponse,
+    PaginatedRolesResponse, Permission, PermissionFilterParams, RoleAssignmentResponse,
+    RoleFilterParams, RoleWithPermissions, UpdateRoleDto,
 };
 use super::service;
 
@@ -68,14 +68,14 @@ pub async fn get_permission_by_id(
     Ok(Json(permission))
 }
 
-// ============ Custom Role Endpoints ============
+// ============ Role Endpoints ============
 
 #[utoipa::path(
     post,
     path = "/api/roles",
-    request_body = CreateCustomRoleDto,
+    request_body = CreateRoleDto,
     responses(
-        (status = 201, description = "Role created successfully", body = CustomRoleWithPermissions),
+        (status = 201, description = "Role created successfully", body = RoleWithPermissions),
         (status = 400, description = "Invalid request"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden")
@@ -86,8 +86,8 @@ pub async fn get_permission_by_id(
 pub async fn create_role(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    ValidatedJson(dto): ValidatedJson<CreateCustomRoleDto>,
-) -> Result<Json<CustomRoleWithPermissions>, AppError> {
+    ValidatedJson(dto): ValidatedJson<CreateRoleDto>,
+) -> Result<Json<RoleWithPermissions>, AppError> {
     let user_id = get_user_id_from_auth(&auth_user)?;
     let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
 
@@ -96,7 +96,7 @@ pub async fn create_role(
         .fetch_one(&state.db)
         .await?;
 
-    let role = service::create_custom_role(
+    let role = service::create_role(
         &state.db,
         dto,
         requester.school_id,
@@ -139,8 +139,7 @@ pub async fn get_roles(
         .await?;
 
     let result =
-        service::get_custom_roles(&state.db, params, requester.school_id, user_is_system_admin)
-            .await?;
+        service::get_roles(&state.db, params, requester.school_id, user_is_system_admin).await?;
 
     Ok(Json(result))
 }
@@ -152,7 +151,7 @@ pub async fn get_roles(
         ("id" = Uuid, Path, description = "Role ID")
     ),
     responses(
-        (status = 200, description = "Role details with permissions", body = CustomRoleWithPermissions),
+        (status = 200, description = "Role details with permissions", body = RoleWithPermissions),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Role not found")
@@ -164,7 +163,7 @@ pub async fn get_role_by_id(
     State(state): State<AppState>,
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
-) -> Result<Json<CustomRoleWithPermissions>, AppError> {
+) -> Result<Json<RoleWithPermissions>, AppError> {
     let user_id = get_user_id_from_auth(&auth_user)?;
     let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
 
@@ -173,8 +172,7 @@ pub async fn get_role_by_id(
         .await?;
 
     let role =
-        service::get_custom_role_by_id(&state.db, id, requester.school_id, user_is_system_admin)
-            .await?;
+        service::get_role_by_id(&state.db, id, requester.school_id, user_is_system_admin).await?;
 
     Ok(Json(role))
 }
@@ -185,9 +183,9 @@ pub async fn get_role_by_id(
     params(
         ("id" = Uuid, Path, description = "Role ID")
     ),
-    request_body = UpdateCustomRoleDto,
+    request_body = UpdateRoleDto,
     responses(
-        (status = 200, description = "Role updated successfully", body = CustomRoleWithPermissions),
+        (status = 200, description = "Role updated successfully", body = RoleWithPermissions),
         (status = 400, description = "Invalid request"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
@@ -200,8 +198,8 @@ pub async fn update_role(
     State(state): State<AppState>,
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
-    ValidatedJson(dto): ValidatedJson<UpdateCustomRoleDto>,
-) -> Result<Json<CustomRoleWithPermissions>, AppError> {
+    ValidatedJson(dto): ValidatedJson<UpdateRoleDto>,
+) -> Result<Json<RoleWithPermissions>, AppError> {
     let user_id = get_user_id_from_auth(&auth_user)?;
     let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
 
@@ -211,15 +209,14 @@ pub async fn update_role(
 
     // Cannot update system roles unless you're a system admin
     let role =
-        service::get_custom_role_by_id(&state.db, id, requester.school_id, user_is_system_admin)
-            .await?;
+        service::get_role_by_id(&state.db, id, requester.school_id, user_is_system_admin).await?;
     if role.role.is_system_role && !user_is_system_admin {
         return Err(AppError::forbidden(
             "Only system admins can update system roles".to_string(),
         ));
     }
 
-    let updated_role = service::update_custom_role(
+    let updated_role = service::update_role(
         &state.db,
         id,
         dto,
@@ -265,7 +262,7 @@ pub async fn delete_role(
         .fetch_one(&state.db)
         .await?;
 
-    service::delete_custom_role(&state.db, id, requester.school_id, user_is_system_admin).await?;
+    service::delete_role(&state.db, id, requester.school_id, user_is_system_admin).await?;
 
     Ok(())
 }
@@ -278,7 +275,7 @@ pub async fn delete_role(
     ),
     request_body = AssignPermissionsDto,
     responses(
-        (status = 200, description = "Permissions assigned successfully", body = CustomRoleWithPermissions),
+        (status = 200, description = "Permissions assigned successfully", body = RoleWithPermissions),
         (status = 400, description = "Invalid request"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
@@ -292,7 +289,7 @@ pub async fn assign_permissions(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
     Json(dto): Json<AssignPermissionsDto>,
-) -> Result<Json<CustomRoleWithPermissions>, AppError> {
+) -> Result<Json<RoleWithPermissions>, AppError> {
     let user_id = get_user_id_from_auth(&auth_user)?;
     let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
 
@@ -302,8 +299,7 @@ pub async fn assign_permissions(
 
     // Check if user can modify this role
     let role =
-        service::get_custom_role_by_id(&state.db, id, requester.school_id, user_is_system_admin)
-            .await?;
+        service::get_role_by_id(&state.db, id, requester.school_id, user_is_system_admin).await?;
     if role.role.is_system_role && !user_is_system_admin {
         return Err(AppError::forbidden(
             "Only system admins can modify system role permissions".to_string(),
@@ -330,7 +326,7 @@ pub async fn assign_permissions(
         ("permission_id" = Uuid, Path, description = "Permission ID")
     ),
     responses(
-        (status = 200, description = "Permission removed successfully", body = CustomRoleWithPermissions),
+        (status = 200, description = "Permission removed successfully", body = RoleWithPermissions),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Role or permission not found")
@@ -342,7 +338,7 @@ pub async fn remove_permission(
     State(state): State<AppState>,
     auth_user: AuthUser,
     Path((role_id, permission_id)): Path<(Uuid, Uuid)>,
-) -> Result<Json<CustomRoleWithPermissions>, AppError> {
+) -> Result<Json<RoleWithPermissions>, AppError> {
     let user_id = get_user_id_from_auth(&auth_user)?;
     let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
 
@@ -351,7 +347,7 @@ pub async fn remove_permission(
         .await?;
 
     // Check if user can modify this role
-    let role = service::get_custom_role_by_id(
+    let role = service::get_role_by_id(
         &state.db,
         role_id,
         requester.school_id,
@@ -511,7 +507,7 @@ pub async fn remove_role_from_user(
         ("user_id" = Uuid, Path, description = "User ID")
     ),
     responses(
-        (status = 200, description = "User's roles", body = Vec<CustomRoleWithPermissions>),
+        (status = 200, description = "User's roles", body = Vec<RoleWithPermissions>),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "User not found")
@@ -523,7 +519,7 @@ pub async fn get_user_roles(
     State(state): State<AppState>,
     auth_user: AuthUser,
     Path(target_user_id): Path<Uuid>,
-) -> Result<Json<Vec<CustomRoleWithPermissions>>, AppError> {
+) -> Result<Json<Vec<RoleWithPermissions>>, AppError> {
     let requester_id = get_user_id_from_auth(&auth_user)?;
     let user_is_system_admin = is_system_admin(&state.db, requester_id).await?;
     let user_is_admin = is_admin(&state.db, requester_id).await?;

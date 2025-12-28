@@ -177,7 +177,7 @@ async fn test_create_system_role_as_system_admin(pool: PgPool) {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    // CustomRoleWithPermissions uses #[serde(flatten)] so role fields are at top level
+    // RoleWithPermissions uses #[serde(flatten)] so role fields are at top level
     assert_eq!(body["name"], role_name);
     assert_eq!(body["is_system_role"], true);
     assert!(body["school_id"].is_null());
@@ -1214,7 +1214,7 @@ async fn test_get_user_roles(pool: PgPool) {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    // Response is Vec<CustomRoleWithPermissions> with flattened role fields
+    // Response is Vec<RoleWithPermissions> with flattened role fields
     let roles = body.as_array().unwrap();
     assert!(roles.iter().any(|r| r["name"] == role_name));
 }

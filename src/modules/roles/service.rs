@@ -7,9 +7,9 @@ use crate::utils::errors::AppError;
 use crate::utils::pagination::PaginationMeta;
 
 use super::model::{
-    CreateCustomRoleDto, CustomRole, CustomRoleWithPermissions, PaginatedPermissionsResponse,
-    PaginatedRolesResponse, Permission, PermissionFilterParams, RoleAssignmentResponse,
-    RoleFilterParams, UpdateCustomRoleDto,
+    CreateRoleDto, PaginatedPermissionsResponse, PaginatedRolesResponse, Permission,
+    PermissionFilterParams, Role, RoleAssignmentResponse, RoleFilterParams, RoleWithPermissions,
+    UpdateRoleDto,
 };
 
 // ============ Permission Services ============
@@ -86,16 +86,16 @@ pub async fn get_permissions_by_ids(
     Ok(permissions)
 }
 
-// ============ Custom Role Services ============
+// ============ Role Services ============
 
 #[instrument(skip(db))]
-pub async fn create_custom_role(
+pub async fn create_role(
     db: &PgPool,
-    dto: CreateCustomRoleDto,
+    dto: CreateRoleDto,
     requester_school_id: Option<Uuid>,
     is_system_admin: bool,
     _created_by: Uuid,
-) -> Result<CustomRoleWithPermissions, AppError> {
+) -> Result<RoleWithPermissions, AppError> {
     // Determine if this is a system role
     let is_system_role = is_system_admin && dto.school_id.is_none();
 
@@ -115,7 +115,7 @@ pub async fn create_custom_role(
 
     // Create the role
     let role = sqlx::query_as!(
-        CustomRole,
+        Role,
         r#"INSERT INTO roles (name, description, school_id, is_system_role)
         VALUES ($1, $2, $3, $4)
         RETURNING id, name, description, school_id, is_system_role, created_at, updated_at"#,
@@ -144,11 +144,11 @@ pub async fn create_custom_role(
         vec![]
     };
 
-    Ok(CustomRoleWithPermissions { role, permissions })
+    Ok(RoleWithPermissions { role, permissions })
 }
 
 #[instrument(skip(db))]
-pub async fn get_custom_roles(
+pub async fn get_roles(
     db: &PgPool,
     params: RoleFilterParams,
     requester_school_id: Option<Uuid>,
@@ -158,12 +158,12 @@ pub async fn get_custom_roles(
     let offset = params.pagination.offset();
 
     // Build dynamic query based on filters and requester permissions
-    let roles: Vec<CustomRole> = if is_system_admin {
+    let roles: Vec<Role> = if is_system_admin {
         // System admin can see all roles
         if let Some(is_system) = params.is_system_role {
             if is_system {
                 sqlx::query_as!(
-                    CustomRole,
+                    Role,
                     r#"SELECT id, name, description, school_id, is_system_role, created_at, updated_at
                     FROM roles WHERE is_system_role = true
                     ORDER BY name LIMIT $1 OFFSET $2"#,
@@ -174,7 +174,7 @@ pub async fn get_custom_roles(
                 .await?
             } else if let Some(school_id) = params.school_id {
                 sqlx::query_as!(
-                    CustomRole,
+                    Role,
                     r#"SELECT id, name, description, school_id, is_system_role, created_at, updated_at
                     FROM roles WHERE school_id = $1
                     ORDER BY name LIMIT $2 OFFSET $3"#,
@@ -186,7 +186,7 @@ pub async fn get_custom_roles(
                 .await?
             } else {
                 sqlx::query_as!(
-                    CustomRole,
+                    Role,
                     r#"SELECT id, name, description, school_id, is_system_role, created_at, updated_at
                     FROM roles WHERE is_system_role = false
                     ORDER BY name LIMIT $1 OFFSET $2"#,
@@ -198,7 +198,7 @@ pub async fn get_custom_roles(
             }
         } else if let Some(school_id) = params.school_id {
             sqlx::query_as!(
-                CustomRole,
+                Role,
                 r#"SELECT id, name, description, school_id, is_system_role, created_at, updated_at
                 FROM roles WHERE school_id = $1
                 ORDER BY name LIMIT $2 OFFSET $3"#,
@@ -210,7 +210,7 @@ pub async fn get_custom_roles(
             .await?
         } else {
             sqlx::query_as!(
-                CustomRole,
+                Role,
                 r#"SELECT id, name, description, school_id, is_system_role, created_at, updated_at
                 FROM roles ORDER BY name LIMIT $1 OFFSET $2"#,
                 limit,
@@ -225,7 +225,7 @@ pub async fn get_custom_roles(
             .ok_or_else(|| AppError::bad_request(anyhow!("School admin must have a school_id")))?;
 
         sqlx::query_as!(
-            CustomRole,
+            Role,
             r#"SELECT id, name, description, school_id, is_system_role, created_at, updated_at
             FROM roles WHERE school_id = $1
             ORDER BY name LIMIT $2 OFFSET $3"#,
@@ -279,7 +279,7 @@ pub async fn get_custom_roles(
     let mut roles_with_permissions = Vec::new();
     for role in roles.iter() {
         let permissions = get_role_permissions(db, role.id).await?;
-        roles_with_permissions.push(CustomRoleWithPermissions {
+        roles_with_permissions.push(RoleWithPermissions {
             role: role.clone(),
             permissions,
         });
@@ -302,14 +302,14 @@ pub async fn get_custom_roles(
 }
 
 #[instrument(skip(db))]
-pub async fn get_custom_role_by_id(
+pub async fn get_role_by_id(
     db: &PgPool,
     id: Uuid,
     requester_school_id: Option<Uuid>,
     is_system_admin: bool,
-) -> Result<CustomRoleWithPermissions, AppError> {
+) -> Result<RoleWithPermissions, AppError> {
     let role = sqlx::query_as!(
-        CustomRole,
+        Role,
         r#"SELECT id, name, description, school_id, is_system_role, created_at, updated_at
         FROM roles WHERE id = $1"#,
         id
@@ -334,25 +334,25 @@ pub async fn get_custom_role_by_id(
 
     let permissions = get_role_permissions(db, role.id).await?;
 
-    Ok(CustomRoleWithPermissions { role, permissions })
+    Ok(RoleWithPermissions { role, permissions })
 }
 
 #[instrument(skip(db))]
-pub async fn update_custom_role(
+pub async fn update_role(
     db: &PgPool,
     id: Uuid,
-    dto: UpdateCustomRoleDto,
+    dto: UpdateRoleDto,
     requester_school_id: Option<Uuid>,
     is_system_admin: bool,
-) -> Result<CustomRoleWithPermissions, AppError> {
+) -> Result<RoleWithPermissions, AppError> {
     // First verify the role exists and user has access
-    let existing = get_custom_role_by_id(db, id, requester_school_id, is_system_admin).await?;
+    let existing = get_role_by_id(db, id, requester_school_id, is_system_admin).await?;
 
     let name = dto.name.unwrap_or(existing.role.name);
     let description = dto.description.or(existing.role.description);
 
     let role = sqlx::query_as!(
-        CustomRole,
+        Role,
         r#"UPDATE roles SET name = $1, description = $2, updated_at = NOW()
         WHERE id = $3
         RETURNING id, name, description, school_id, is_system_role, created_at, updated_at"#,
@@ -375,18 +375,18 @@ pub async fn update_custom_role(
 
     let permissions = get_role_permissions(db, role.id).await?;
 
-    Ok(CustomRoleWithPermissions { role, permissions })
+    Ok(RoleWithPermissions { role, permissions })
 }
 
 #[instrument(skip(db))]
-pub async fn delete_custom_role(
+pub async fn delete_role(
     db: &PgPool,
     id: Uuid,
     requester_school_id: Option<Uuid>,
     is_system_admin: bool,
 ) -> Result<(), AppError> {
     // First verify the role exists and user has access
-    let _ = get_custom_role_by_id(db, id, requester_school_id, is_system_admin).await?;
+    let _ = get_role_by_id(db, id, requester_school_id, is_system_admin).await?;
 
     sqlx::query!("DELETE FROM roles WHERE id = $1", id)
         .execute(db)
@@ -442,9 +442,9 @@ pub async fn assign_permissions_to_role(
     permission_ids: Vec<Uuid>,
     requester_school_id: Option<Uuid>,
     is_system_admin: bool,
-) -> Result<CustomRoleWithPermissions, AppError> {
+) -> Result<RoleWithPermissions, AppError> {
     // Verify role exists and user has access
-    let role = get_custom_role_by_id(db, role_id, requester_school_id, is_system_admin).await?;
+    let role = get_role_by_id(db, role_id, requester_school_id, is_system_admin).await?;
 
     // Verify all permission IDs exist
     let existing_permissions = get_permissions_by_ids(db, &permission_ids).await?;
@@ -456,7 +456,7 @@ pub async fn assign_permissions_to_role(
 
     let permissions = assign_permissions_to_role_internal(db, role_id, &permission_ids).await?;
 
-    Ok(CustomRoleWithPermissions {
+    Ok(RoleWithPermissions {
         role: role.role,
         permissions,
     })
@@ -469,9 +469,9 @@ pub async fn remove_permission_from_role(
     permission_id: Uuid,
     requester_school_id: Option<Uuid>,
     is_system_admin: bool,
-) -> Result<CustomRoleWithPermissions, AppError> {
+) -> Result<RoleWithPermissions, AppError> {
     // Verify role exists and user has access
-    let role = get_custom_role_by_id(db, role_id, requester_school_id, is_system_admin).await?;
+    let role = get_role_by_id(db, role_id, requester_school_id, is_system_admin).await?;
 
     sqlx::query!(
         "DELETE FROM role_permissions WHERE role_id = $1 AND permission_id = $2",
@@ -483,7 +483,7 @@ pub async fn remove_permission_from_role(
 
     let permissions = get_role_permissions(db, role_id).await?;
 
-    Ok(CustomRoleWithPermissions {
+    Ok(RoleWithPermissions {
         role: role.role,
         permissions,
     })
@@ -501,7 +501,7 @@ pub async fn assign_role_to_user(
     is_system_admin: bool,
 ) -> Result<RoleAssignmentResponse, AppError> {
     // Verify role exists and requester has access
-    let role = get_custom_role_by_id(db, role_id, requester_school_id, is_system_admin).await?;
+    let role = get_role_by_id(db, role_id, requester_school_id, is_system_admin).await?;
 
     // Verify the target user exists
     let target_user = sqlx::query!("SELECT id, school_id FROM users WHERE id = $1", user_id)
@@ -561,7 +561,7 @@ pub async fn remove_role_from_user(
     is_system_admin: bool,
 ) -> Result<(), AppError> {
     // Verify role exists and requester has access
-    let role = get_custom_role_by_id(db, role_id, requester_school_id, is_system_admin).await?;
+    let role = get_role_by_id(db, role_id, requester_school_id, is_system_admin).await?;
 
     // Verify the target user exists and is accessible
     let target_user = sqlx::query!("SELECT id, school_id FROM users WHERE id = $1", user_id)
@@ -606,9 +606,9 @@ pub async fn remove_role_from_user(
 pub async fn get_user_roles_internal(
     db: &PgPool,
     user_id: Uuid,
-) -> Result<Vec<CustomRoleWithPermissions>, AppError> {
+) -> Result<Vec<RoleWithPermissions>, AppError> {
     let roles = sqlx::query_as!(
-        CustomRole,
+        Role,
         r#"SELECT r.id, r.name, r.description, r.school_id, r.is_system_role, r.created_at, r.updated_at
         FROM roles r
         INNER JOIN user_roles ur ON r.id = ur.role_id
@@ -622,7 +622,7 @@ pub async fn get_user_roles_internal(
     let mut roles_with_permissions = Vec::new();
     for role in roles {
         let permissions = get_role_permissions(db, role.id).await?;
-        roles_with_permissions.push(CustomRoleWithPermissions { role, permissions });
+        roles_with_permissions.push(RoleWithPermissions { role, permissions });
     }
 
     Ok(roles_with_permissions)
@@ -632,9 +632,9 @@ pub async fn get_user_roles_internal(
 pub async fn get_user_roles(
     db: &PgPool,
     user_id: Uuid,
-) -> Result<Vec<CustomRoleWithPermissions>, AppError> {
+) -> Result<Vec<RoleWithPermissions>, AppError> {
     let roles = sqlx::query_as!(
-        CustomRole,
+        Role,
         r#"SELECT r.id, r.name, r.description, r.school_id, r.is_system_role, r.created_at, r.updated_at
         FROM roles r
         INNER JOIN user_roles ur ON r.id = ur.role_id
@@ -648,7 +648,7 @@ pub async fn get_user_roles(
     let mut roles_with_permissions = Vec::new();
     for role in roles {
         let permissions = get_role_permissions(db, role.id).await?;
-        roles_with_permissions.push(CustomRoleWithPermissions { role, permissions });
+        roles_with_permissions.push(RoleWithPermissions { role, permissions });
     }
 
     Ok(roles_with_permissions)

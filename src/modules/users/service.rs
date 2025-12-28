@@ -2,7 +2,7 @@ use crate::{
     metrics,
     modules::users::model::{
         ChangePasswordDto, CreateUserDto, PaginatedUsersResponse, School, UpdateProfileDto, User,
-        UserFilterParams, UserWithSchool,
+        UserFilterParams, UserWithSchool, system_roles,
     },
     utils::{
         errors::AppError,
@@ -71,7 +71,7 @@ impl UserService {
 
         // Track metrics based on first role assigned
         let role_name = if let Some(first_role_id) = dto.role_ids.first() {
-            crate::modules::users::model::system_roles::get_name(first_role_id)
+            system_roles::get_name(first_role_id)
                 .unwrap_or("custom")
                 .to_lowercase()
         } else {
@@ -509,22 +509,12 @@ impl UserService {
 
     /// Check if user is a system admin
     pub async fn is_system_admin(db: &PgPool, user_id: Uuid) -> Result<bool, AppError> {
-        Self::user_has_system_role(
-            db,
-            user_id,
-            crate::modules::users::model::system_roles::SYSTEM_ADMIN,
-        )
-        .await
+        Self::user_has_system_role(db, user_id, system_roles::SYSTEM_ADMIN).await
     }
 
     /// Check if user is an admin (school admin)
     pub async fn is_admin(db: &PgPool, user_id: Uuid) -> Result<bool, AppError> {
-        Self::user_has_system_role(
-            db,
-            user_id,
-            crate::modules::users::model::system_roles::ADMIN,
-        )
-        .await
+        Self::user_has_system_role(db, user_id, system_roles::ADMIN).await
     }
 
     /// Check if user has any of the specified roles

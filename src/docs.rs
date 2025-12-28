@@ -19,10 +19,9 @@ use crate::modules::mfa::model::{
     VerifyMfaRequest,
 };
 use crate::modules::roles::model::{
-    AssignPermissionsDto, AssignRoleToUserDto, CreateCustomRoleDto, CustomRole,
-    CustomRoleWithPermissions, PaginatedPermissionsResponse, PaginatedRolesResponse, Permission,
-    PermissionFilterParams, RoleAssignmentResponse, RoleFilterParams, UpdateCustomRoleDto,
-    UserCustomRole,
+    AssignPermissionsDto, AssignRoleToUserDto, CreateRoleDto, PaginatedPermissionsResponse,
+    PaginatedRolesResponse, Permission, PermissionFilterParams, Role, RoleAssignmentResponse,
+    RoleFilterParams, RoleWithPermissions, UpdateRoleDto, UserRole,
 };
 use crate::modules::students::model::{CreateStudentDto, Student, UpdateStudentDto};
 use crate::modules::users::controller::ProfileResponse;
@@ -149,11 +148,11 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
             BranchFilterParams,
             PaginatedBranchesResponse,
             Permission,
-            CustomRole,
-            CustomRoleWithPermissions,
-            UserCustomRole,
-            CreateCustomRoleDto,
-            UpdateCustomRoleDto,
+            Role,
+            RoleWithPermissions,
+            UserRole,
+            CreateRoleDto,
+            UpdateRoleDto,
             AssignPermissionsDto,
             AssignRoleToUserDto,
             RoleFilterParams,
