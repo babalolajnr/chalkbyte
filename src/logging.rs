@@ -3,6 +3,14 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+
+/// Check if observability stack is enabled via environment variable
+/// Defaults to true if not set
+pub fn is_observability_enabled() -> bool {
+    std::env::var("OBSERVABILITY_ENABLED")
+        .map(|v| !matches!(v.to_lowercase().as_str(), "false" | "0" | "no" | "off"))
+        .unwrap_or(true)
+}
 use opentelemetry::{KeyValue, global, trace::TraceError};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
@@ -269,13 +277,12 @@ pub fn init_tracing() {
     use std::fs::OpenOptions;
     use tracing_subscriber::fmt;
 
-    let log_dir = std::env::var("LOG_DIR").unwrap_or_else(|_| "storage/logs".to_string());
-    std::fs::create_dir_all(&log_dir).expect("Failed to create logs directory");
+    let observability_enabled = is_observability_enabled();
 
     // Determine log level from environment
     let log_level = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string());
 
-    // Console layer with filtering
+    // Console layer with filtering (always enabled)
     let console_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         EnvFilter::new(format!(
             "{}={},tower_http=warn,hyper=warn,tonic=warn,h2=warn,sqlx=warn",
@@ -293,6 +300,18 @@ pub fn init_tracing() {
         .with_level(true)
         .compact()
         .with_filter(console_filter);
+
+    // If observability is disabled, only use console logging
+    if !observability_enabled {
+        tracing_subscriber::registry().with(console_layer).init();
+        eprintln!(
+            "ℹ️  Observability disabled - console logging only (OBSERVABILITY_ENABLED=false)"
+        );
+        return;
+    }
+
+    let log_dir = std::env::var("LOG_DIR").unwrap_or_else(|_| "storage/logs".to_string());
+    std::fs::create_dir_all(&log_dir).expect("Failed to create logs directory");
 
     // Plain text log file with non-blocking writer
     let log_file = OpenOptions::new()
@@ -394,6 +413,11 @@ pub fn init_tracing() {
 }
 
 pub async fn shutdown_tracer() {
+    // Skip shutdown if observability is disabled
+    if !is_observability_enabled() {
+        return;
+    }
+
     info!("Shutting down OpenTelemetry tracer...");
 
     // Shutdown the global tracer provider with timeout

@@ -1,4 +1,5 @@
 use crate::docs::ApiDoc;
+use crate::logging::is_observability_enabled;
 use crate::logging::logging_middleware;
 use crate::metrics::metrics_middleware;
 use crate::middleware::role::{require_admin, require_system_admin};
@@ -44,7 +45,7 @@ pub fn init_router(state: AppState) -> Router {
     let auth_governor_config = state.rate_limit_config.auth_governor_config();
     let mfa_governor_config = state.rate_limit_config.auth_governor_config();
 
-    Router::new()
+    let router = Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .merge(Scalar::with_url("/scalar", ApiDoc::openapi()))
         .route("/health", axum::routing::get(health_handler))
@@ -139,15 +140,22 @@ pub fn init_router(state: AppState) -> Router {
                         .latency_unit(LatencyUnit::Millis)
                         .include_headers(true),
                 ),
-        )
-        .layer(middleware::from_fn(metrics_middleware))
-        .layer(middleware::from_fn(logging_middleware))
+        );
+
+    // Conditionally apply observability middleware
+    if is_observability_enabled() {
+        router
+            .layer(middleware::from_fn(metrics_middleware))
+            .layer(middleware::from_fn(logging_middleware))
+    } else {
+        router
+    }
 }
 
 /// Initialize router without rate limiting (for tests)
 #[cfg(feature = "test-utils")]
 pub fn init_router(state: AppState) -> Router {
-    Router::new()
+    let router = Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .merge(Scalar::with_url("/scalar", ApiDoc::openapi()))
         .route("/health", axum::routing::get(health_handler))
@@ -231,7 +239,14 @@ pub fn init_router(state: AppState) -> Router {
                         .latency_unit(LatencyUnit::Millis)
                         .include_headers(true),
                 ),
-        )
-        .layer(middleware::from_fn(metrics_middleware))
-        .layer(middleware::from_fn(logging_middleware))
+        );
+
+    // Conditionally apply observability middleware
+    if is_observability_enabled() {
+        router
+            .layer(middleware::from_fn(metrics_middleware))
+            .layer(middleware::from_fn(logging_middleware))
+    } else {
+        router
+    }
 }

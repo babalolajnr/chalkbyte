@@ -75,10 +75,21 @@ async fn start_metrics_server(
 async fn main() {
     dotenv().ok();
 
-    logging::init_tracing();
+    // Check if observability is enabled (default: true)
+    let observability_enabled = std::env::var("OBSERVABILITY_ENABLED")
+        .map(|v| v.to_lowercase() != "false" && v != "0")
+        .unwrap_or(true);
 
-    // Initialize metrics
-    let metrics_handle = metrics::init_metrics();
+    if observability_enabled {
+        logging::init_tracing();
+    }
+
+    // Initialize metrics only if observability is enabled
+    let metrics_handle = if observability_enabled {
+        metrics::init_metrics()
+    } else {
+        None
+    };
 
     let state = init_app_state().await;
 
@@ -94,13 +105,19 @@ async fn main() {
         .and_then(|p| p.parse::<u16>().ok())
         .unwrap_or(3001);
 
-    // Start both servers concurrently
-    // The metrics endpoint runs on a separate port and should not be publicly exposed
-    let (_main, _metrics) = tokio::join!(
-        start_main_server(state, port),
-        start_metrics_server(metrics_handle, metrics_port)
-    );
+    // Start servers based on observability configuration
+    if let Some(handle) = metrics_handle {
+        // Start both servers concurrently
+        // The metrics endpoint runs on a separate port and should not be publicly exposed
+        let (_main, _metrics) = tokio::join!(
+            start_main_server(state, port),
+            start_metrics_server(handle, metrics_port)
+        );
 
-    // Shutdown tracing
-    logging::shutdown_tracer().await;
+        // Shutdown tracing
+        logging::shutdown_tracer().await;
+    } else {
+        println!("📴 Observability disabled (OBSERVABILITY_ENABLED=false)");
+        start_main_server(state, port).await;
+    }
 }

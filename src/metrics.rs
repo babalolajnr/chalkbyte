@@ -7,10 +7,27 @@ use axum::{
 };
 use metrics::{counter, gauge, histogram};
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
+static OBSERVABILITY_ENABLED: OnceLock<bool> = OnceLock::new();
+
+/// Check if observability is enabled via OBSERVABILITY_ENABLED env var
+pub fn is_observability_enabled() -> bool {
+    *OBSERVABILITY_ENABLED.get_or_init(|| {
+        std::env::var("OBSERVABILITY_ENABLED")
+            .map(|v| v.to_lowercase() != "false" && v != "0")
+            .unwrap_or(true) // Enabled by default
+    })
+}
+
 /// Initialize Prometheus metrics exporter with upkeep task
-pub fn init_metrics() -> PrometheusHandle {
+/// Returns None if observability is disabled
+pub fn init_metrics() -> Option<PrometheusHandle> {
+    if !is_observability_enabled() {
+        return None;
+    }
+
     let handle = PrometheusBuilder::new()
         .set_buckets_for_metric(
             Matcher::Full("http_request_duration_seconds".to_string()),
@@ -32,11 +49,15 @@ pub fn init_metrics() -> PrometheusHandle {
         }
     });
 
-    handle
+    Some(handle)
 }
 
 /// Metrics middleware to track HTTP requests
 pub async fn metrics_middleware(req: Request, next: Next) -> Response {
+    if !is_observability_enabled() {
+        return next.run(req).await;
+    }
+
     let start = Instant::now();
     let method = req.method().clone();
     let uri = req.uri().clone();
@@ -84,68 +105,110 @@ pub fn metrics_app(handle: PrometheusHandle) -> Router {
 
 /// Increment user-related metrics
 pub fn track_user_created(role: &str) {
+    if !is_observability_enabled() {
+        return;
+    }
     counter!("users_created_total", "role" => role.to_string()).increment(1);
 }
 
 pub fn track_user_login_success(role: &str) {
+    if !is_observability_enabled() {
+        return;
+    }
     counter!("user_logins_total", "role" => role.to_string(), "status" => "success").increment(1);
 }
 
 pub fn track_user_login_failure(reason: &str) {
+    if !is_observability_enabled() {
+        return;
+    }
     counter!("user_logins_total", "role" => "unknown", "status" => "failure", "reason" => reason.to_string()).increment(1);
 }
 
 /// Track database operations
 pub fn track_db_query(operation: &str, success: bool) {
+    if !is_observability_enabled() {
+        return;
+    }
     let status = if success { "success" } else { "error" };
     counter!("database_queries_total", "operation" => operation.to_string(), "status" => status)
         .increment(1);
 }
 
 pub fn track_db_query_duration(operation: &str, duration_secs: f64) {
+    if !is_observability_enabled() {
+        return;
+    }
     histogram!("database_query_duration_seconds", "operation" => operation.to_string())
         .record(duration_secs);
 }
 
 /// Track school operations
 pub fn track_school_created() {
+    if !is_observability_enabled() {
+        return;
+    }
     counter!("schools_created_total").increment(1);
 }
 
 pub fn track_school_operation(operation: &str) {
+    if !is_observability_enabled() {
+        return;
+    }
     counter!("school_operations_total", "operation" => operation.to_string()).increment(1);
 }
 
 /// Set gauge metrics for current state
 pub fn set_active_users(count: i64) {
+    if !is_observability_enabled() {
+        return;
+    }
     gauge!("active_users_total").set(count as f64);
 }
 
 pub fn set_total_schools(count: i64) {
+    if !is_observability_enabled() {
+        return;
+    }
     gauge!("schools_total").set(count as f64);
 }
 
 pub fn set_total_users_by_role(role: &str, count: i64) {
+    if !is_observability_enabled() {
+        return;
+    }
     gauge!("users_by_role_total", "role" => role.to_string()).set(count as f64);
 }
 
 /// Track authentication events
 pub fn track_jwt_issued() {
+    if !is_observability_enabled() {
+        return;
+    }
     counter!("jwt_tokens_issued_total").increment(1);
 }
 
 pub fn track_jwt_validation(success: bool) {
+    if !is_observability_enabled() {
+        return;
+    }
     let status = if success { "valid" } else { "invalid" };
     counter!("jwt_validations_total", "status" => status).increment(1);
 }
 
 /// Track API errors
 pub fn track_api_error(error_type: &str, endpoint: &str) {
+    if !is_observability_enabled() {
+        return;
+    }
     counter!("api_errors_total", "error_type" => error_type.to_string(), "endpoint" => endpoint.to_string()).increment(1);
 }
 
 /// Track authorization events
 pub fn track_authorization_check(allowed: bool, role: &str) {
+    if !is_observability_enabled() {
+        return;
+    }
     let status = if allowed { "allowed" } else { "denied" };
     counter!("authorization_checks_total", "role" => role.to_string(), "status" => status)
         .increment(1);
