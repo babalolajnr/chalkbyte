@@ -1,3 +1,4 @@
+use crate::utils::serde::deserialize_optional_uuid;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
@@ -76,7 +77,9 @@ pub struct UserFilterParams {
     pub last_name: Option<String>,
     pub email: Option<String>,
     /// Filter by role ID
+    #[serde(default, deserialize_with = "deserialize_optional_uuid")]
     pub role_id: Option<Uuid>,
+    #[serde(default, deserialize_with = "deserialize_optional_uuid")]
     pub school_id: Option<Uuid>,
     #[serde(flatten)]
     pub pagination: crate::utils::pagination::PaginationParams,

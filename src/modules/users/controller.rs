@@ -11,7 +11,7 @@ use crate::utils::auth_helpers::get_admin_school_id;
 use crate::utils::errors::AppError;
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::{Query, State, rejection::QueryRejection},
 };
 use serde::Serialize;
 use tracing::{debug, info, instrument, warn};
@@ -124,8 +124,9 @@ pub async fn create_user(
 pub async fn get_users(
     State(state): State<AppState>,
     RequireUsersRead(auth_user): RequireUsersRead,
-    Query(filters): Query<UserFilterParams>,
+    filters: Result<Query<UserFilterParams>, QueryRejection>,
 ) -> Result<Json<PaginatedUsersResponse>, AppError> {
+    let Query(filters) = filters.map_err(AppError::query_rejection)?;
     debug!(filters = ?filters, "Fetching users with filters");
 
     let is_sys_admin = is_system_admin_jwt(&auth_user);
