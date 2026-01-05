@@ -1,5 +1,5 @@
-use crate::middleware::auth::AuthUser;
-use crate::middleware::role::{get_user_id_from_auth, is_admin, is_system_admin};
+use crate::middleware::auth::{AuthUser, RequireUsersCreate, RequireUsersRead};
+use crate::middleware::role::is_system_admin_jwt;
 use crate::modules::auth::controller::ErrorResponse;
 use crate::modules::users::model::{
     ChangePasswordDto, CreateUserDto, PaginatedUsersResponse, UpdateProfileDto, User,
@@ -7,6 +7,7 @@ use crate::modules::users::model::{
 };
 use crate::modules::users::service::UserService;
 use crate::state::AppState;
+use crate::utils::auth_helpers::get_admin_school_id;
 use crate::utils::errors::AppError;
 use axum::{
     Json,
@@ -23,7 +24,7 @@ pub struct ProfileResponse {
     pub info: UserWithSchool,
 }
 
-/// Create a new user (requires admin or system_admin role)
+/// Create a new user (requires users:create permission)
 #[utoipa::path(
     post,
     path = "/api/users",
@@ -32,7 +33,7 @@ pub struct ProfileResponse {
         (status = 200, description = "User created successfully", body = User),
         (status = 400, description = "Bad request", body = ErrorResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
-        (status = 403, description = "Forbidden - Admin or System Admin only", body = ErrorResponse),
+        (status = 403, description = "Forbidden - requires users:create permission", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     security(
@@ -46,39 +47,20 @@ pub struct ProfileResponse {
 ))]
 pub async fn create_user(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireUsersCreate(auth_user): RequireUsersCreate,
     Json(mut dto): Json<CreateUserDto>,
 ) -> Result<Json<User>, AppError> {
     debug!(email = %dto.email, "Processing user creation request");
-
-    let user_id = get_user_id_from_auth(&auth_user)?;
 
     // Validate DTO
     dto.validate()
         .map_err(|e| AppError::unprocessable(anyhow::anyhow!("Validation error: {}", e)))?;
 
-    // Check if requester is an admin (system admin or school admin)
-    let is_sys_admin = is_system_admin(&state.db, user_id).await?;
-    let is_any_admin = is_admin(&state.db, user_id).await?;
-
-    if !is_any_admin {
-        warn!(
-            user.id = %auth_user.0.sub,
-            "Unauthorized attempt to create user"
-        );
-        return Err(AppError::forbidden(
-            "Only admins can create users".to_string(),
-        ));
-    }
+    let is_sys_admin = is_system_admin_jwt(&auth_user);
 
     // School admins can only create users for their school
     if !is_sys_admin {
-        // Get requester's school_id from database
-        let requester = UserService::get_user(&state.db, user_id).await?;
-
-        let requester_school_id = requester
-            .school_id
-            .ok_or_else(|| AppError::forbidden("Admin must be assigned to a school".to_string()))?;
+        let requester_school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
         // Ensure the new user is assigned to the same school
         dto.school_id = Some(requester_school_id);
@@ -112,7 +94,7 @@ pub async fn create_user(
     Ok(Json(user))
 }
 
-/// Get all users with pagination and filtering (system admins see all, school admins see their school)
+/// Get all users with pagination and filtering (requires users:read permission)
 #[utoipa::path(
     get,
     path = "/api/users",
@@ -128,7 +110,7 @@ pub async fn create_user(
     responses(
         (status = 200, description = "Paginated list of users", body = PaginatedUsersResponse),
         (status = 401, description = "Unauthorized - missing or invalid token", body = ErrorResponse),
-        (status = 403, description = "Forbidden - Only admins can list users", body = ErrorResponse),
+        (status = 403, description = "Forbidden - requires users:read permission", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     security(
@@ -141,37 +123,17 @@ pub async fn create_user(
 ))]
 pub async fn get_users(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireUsersRead(auth_user): RequireUsersRead,
     Query(filters): Query<UserFilterParams>,
 ) -> Result<Json<PaginatedUsersResponse>, AppError> {
     debug!(filters = ?filters, "Fetching users with filters");
 
-    let user_id = get_user_id_from_auth(&auth_user)?;
-
-    // Check if requester is an admin
-    let is_sys_admin = is_system_admin(&state.db, user_id).await?;
-    let is_any_admin = is_admin(&state.db, user_id).await?;
-
-    if !is_any_admin {
-        warn!(
-            user.id = %auth_user.0.sub,
-            "Unauthorized role attempted to list users"
-        );
-        return Err(AppError::forbidden(
-            "Only admins can list users".to_string(),
-        ));
-    }
+    let is_sys_admin = is_system_admin_jwt(&auth_user);
 
     let school_id_filter = if is_sys_admin {
         None
     } else {
-        let requester = UserService::get_user(&state.db, user_id).await?;
-
-        let school_id = requester
-            .school_id
-            .ok_or_else(|| AppError::forbidden("Admin must be assigned to a school".to_string()))?;
-
-        Some(school_id)
+        Some(get_admin_school_id(&state.db, &auth_user).await?)
     };
 
     let response = UserService::get_users_paginated(&state.db, filters, school_id_filter).await?;

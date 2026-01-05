@@ -1,13 +1,15 @@
-use crate::middleware::auth::AuthUser;
-use crate::middleware::role::{get_user_id_from_auth, is_admin};
+use crate::middleware::auth::{
+    RequireStudentsCreate, RequireStudentsDelete, RequireStudentsRead, RequireStudentsUpdate,
+};
+use crate::middleware::role::is_system_admin_jwt;
 use crate::modules::auth::controller::ErrorResponse;
 use crate::modules::students::model::{
     CreateStudentDto, PaginatedStudentsResponse, PaginationMeta, QueryParams, Student,
     UpdateStudentDto,
 };
 use crate::modules::students::service::StudentService;
-use crate::modules::users::service::UserService;
 use crate::state::AppState;
+use crate::utils::auth_helpers::get_admin_school_id;
 use crate::utils::errors::AppError;
 use axum::{
     Json,
@@ -26,7 +28,7 @@ use validator::Validate;
         (status = 200, description = "Student created successfully", body = Student),
         (status = 400, description = "Bad request", body = ErrorResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
-        (status = 403, description = "Forbidden - School Admin only", body = ErrorResponse),
+        (status = 403, description = "Forbidden - requires students:create permission", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     security(
@@ -34,27 +36,16 @@ use validator::Validate;
     ),
     tag = "Students"
 )]
-#[instrument]
+#[instrument(skip(state))]
 pub async fn create_student(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireStudentsCreate(auth_user): RequireStudentsCreate,
     Json(dto): Json<CreateStudentDto>,
 ) -> Result<Json<Student>, AppError> {
-    let user_id = get_user_id_from_auth(&auth_user)?;
-
-    if !is_admin(&state.db, user_id).await? {
-        return Err(AppError::forbidden(
-            "Only school admins can create students".to_string(),
-        ));
-    }
-
     dto.validate()
         .map_err(|e| AppError::unprocessable(anyhow::anyhow!("Validation failed: {}", e)))?;
 
-    let requester = UserService::get_user(&state.db, user_id).await?;
-    let school_id = requester
-        .school_id
-        .ok_or_else(|| AppError::forbidden("Admin must be assigned to a school".to_string()))?;
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     let student = StudentService::create_student(&state.db, dto, school_id).await?;
     Ok(Json(student))
@@ -69,7 +60,7 @@ pub async fn create_student(
     responses(
         (status = 200, description = "List of students", body = PaginatedStudentsResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
-        (status = 403, description = "Forbidden - School Admin only", body = ErrorResponse),
+        (status = 403, description = "Forbidden - requires students:read permission", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     security(
@@ -77,24 +68,13 @@ pub async fn create_student(
     ),
     tag = "Students"
 )]
-#[instrument]
+#[instrument(skip(state))]
 pub async fn get_students(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireStudentsRead(auth_user): RequireStudentsRead,
     Query(params): Query<QueryParams>,
 ) -> Result<Json<PaginatedStudentsResponse>, AppError> {
-    let user_id = get_user_id_from_auth(&auth_user)?;
-
-    if !is_admin(&state.db, user_id).await? {
-        return Err(AppError::forbidden(
-            "Only school admins can list students".to_string(),
-        ));
-    }
-
-    let requester = UserService::get_user(&state.db, user_id).await?;
-    let school_id = requester
-        .school_id
-        .ok_or_else(|| AppError::forbidden("Admin must be assigned to a school".to_string()))?;
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     let limit = params.limit();
     let offset = params.offset();
@@ -127,7 +107,7 @@ pub async fn get_students(
     responses(
         (status = 200, description = "Student details", body = Student),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
-        (status = 403, description = "Forbidden - School Admin only", body = ErrorResponse),
+        (status = 403, description = "Forbidden - requires students:read permission", body = ErrorResponse),
         (status = 404, description = "Student not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
@@ -136,24 +116,19 @@ pub async fn get_students(
     ),
     tag = "Students"
 )]
-#[instrument]
+#[instrument(skip(state))]
 pub async fn get_student(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireStudentsRead(auth_user): RequireStudentsRead,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Student>, AppError> {
-    let user_id = get_user_id_from_auth(&auth_user)?;
-
-    if !is_admin(&state.db, user_id).await? {
-        return Err(AppError::forbidden(
-            "Only school admins can view students".to_string(),
-        ));
+    // System admins can access any student
+    if is_system_admin_jwt(&auth_user) {
+        let student = StudentService::get_student_by_id_no_school_filter(&state.db, id).await?;
+        return Ok(Json(student));
     }
 
-    let requester = UserService::get_user(&state.db, user_id).await?;
-    let school_id = requester
-        .school_id
-        .ok_or_else(|| AppError::forbidden("Admin must be assigned to a school".to_string()))?;
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     let student = StudentService::get_student_by_id(&state.db, id, school_id).await?;
     Ok(Json(student))
@@ -170,7 +145,7 @@ pub async fn get_student(
         (status = 200, description = "Student updated successfully", body = Student),
         (status = 400, description = "Bad request", body = ErrorResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
-        (status = 403, description = "Forbidden - School Admin only", body = ErrorResponse),
+        (status = 403, description = "Forbidden - requires students:update permission", body = ErrorResponse),
         (status = 404, description = "Student not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
@@ -179,28 +154,23 @@ pub async fn get_student(
     ),
     tag = "Students"
 )]
-#[instrument]
+#[instrument(skip(state))]
 pub async fn update_student(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireStudentsUpdate(auth_user): RequireStudentsUpdate,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateStudentDto>,
 ) -> Result<Json<Student>, AppError> {
-    let user_id = get_user_id_from_auth(&auth_user)?;
-
-    if !is_admin(&state.db, user_id).await? {
-        return Err(AppError::forbidden(
-            "Only school admins can update students".to_string(),
-        ));
-    }
-
     dto.validate()
         .map_err(|e| AppError::unprocessable(anyhow::anyhow!("Validation failed: {}", e)))?;
 
-    let requester = UserService::get_user(&state.db, user_id).await?;
-    let school_id = requester
-        .school_id
-        .ok_or_else(|| AppError::forbidden("Admin must be assigned to a school".to_string()))?;
+    // System admins can update any student
+    if is_system_admin_jwt(&auth_user) {
+        let student = StudentService::update_student_no_school_filter(&state.db, id, dto).await?;
+        return Ok(Json(student));
+    }
+
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     let student = StudentService::update_student(&state.db, id, school_id, dto).await?;
     Ok(Json(student))
@@ -215,7 +185,7 @@ pub async fn update_student(
     responses(
         (status = 200, description = "Student deleted successfully"),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
-        (status = 403, description = "Forbidden - School Admin only", body = ErrorResponse),
+        (status = 403, description = "Forbidden - requires students:delete permission", body = ErrorResponse),
         (status = 404, description = "Student not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
@@ -224,24 +194,19 @@ pub async fn update_student(
     ),
     tag = "Students"
 )]
-#[instrument]
+#[instrument(skip(state))]
 pub async fn delete_student(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireStudentsDelete(auth_user): RequireStudentsDelete,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let user_id = get_user_id_from_auth(&auth_user)?;
-
-    if !is_admin(&state.db, user_id).await? {
-        return Err(AppError::forbidden(
-            "Only school admins can delete students".to_string(),
-        ));
+    // System admins can delete any student
+    if is_system_admin_jwt(&auth_user) {
+        StudentService::delete_student_no_school_filter(&state.db, id).await?;
+        return Ok(Json(json!({"message": "Student deleted successfully"})));
     }
 
-    let requester = UserService::get_user(&state.db, user_id).await?;
-    let school_id = requester
-        .school_id
-        .ok_or_else(|| AppError::forbidden("Admin must be assigned to a school".to_string()))?;
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     StudentService::delete_student(&state.db, id, school_id).await?;
     Ok(Json(json!({"message": "Student deleted successfully"})))

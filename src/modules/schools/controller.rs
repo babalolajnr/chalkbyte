@@ -4,10 +4,10 @@ use axum::{
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
-use crate::middleware::auth::AuthUser;
-use crate::middleware::role::{
-    get_admin_school_id, get_user_id_from_auth, is_admin, is_system_admin,
+use crate::middleware::auth::{
+    AuthUser, RequireSchoolsCreate, RequireSchoolsDelete, RequireSchoolsRead,
 };
+use crate::middleware::role::is_system_admin_jwt;
 use crate::modules::branches::model::{BranchFilterParams, PaginatedBranchesResponse};
 use crate::modules::branches::service::BranchService;
 use crate::modules::levels::model::{LevelFilterParams, PaginatedLevelsResponse};
@@ -16,8 +16,8 @@ use crate::modules::users::model::{
     CreateSchoolDto, PaginatedSchoolsResponse, PaginatedUsersResponse, School, SchoolFilterParams,
     SchoolFullInfo, UserFilterParams,
 };
-use crate::modules::users::service::UserService;
 use crate::state::AppState;
+use crate::utils::auth_helpers::get_admin_school_id;
 use crate::utils::errors::AppError;
 
 use super::service::SchoolService;
@@ -29,32 +29,17 @@ use super::service::SchoolService;
     responses(
         (status = 201, description = "School created successfully", body = School),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden - System admin only")
+        (status = 403, description = "Forbidden - requires schools:create permission")
     ),
     tag = "Schools",
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, auth_user, dto), fields(
-    user.id = %auth_user.0.sub,
-    school.name = %dto.name
-))]
+#[instrument(skip(state), fields(school.name = %dto.name))]
 pub async fn create_school(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireSchoolsCreate(_auth_user): RequireSchoolsCreate,
     Json(dto): Json<CreateSchoolDto>,
 ) -> Result<Json<School>, AppError> {
-    let user_id = get_user_id_from_auth(&auth_user)?;
-
-    if !is_system_admin(&state.db, user_id).await? {
-        warn!(
-            user.id = %auth_user.0.sub,
-            "Unauthorized attempt to create school"
-        );
-        return Err(AppError::forbidden(
-            "Only system admins can create schools".to_string(),
-        ));
-    }
-
     debug!(school.name = %dto.name, "Creating new school");
 
     let school = SchoolService::create_school(&state.db, dto).await?;
@@ -80,33 +65,19 @@ pub async fn create_school(
     responses(
         (status = 200, description = "Paginated list of schools", body = PaginatedSchoolsResponse),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden - System admin only")
+        (status = 403, description = "Forbidden - requires schools:read permission")
     ),
     tag = "Schools",
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, auth_user, filters), fields(
-    user.id = %auth_user.0.sub
-))]
+#[instrument(skip(state, filters))]
 pub async fn get_all_schools(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireSchoolsRead(_auth_user): RequireSchoolsRead,
     filters: Result<Query<SchoolFilterParams>, QueryRejection>,
 ) -> Result<Json<PaginatedSchoolsResponse>, AppError> {
     let Query(filters) = filters
         .map_err(|e| AppError::bad_request(anyhow::anyhow!("Invalid query parameters: {}", e)))?;
-
-    let user_id = get_user_id_from_auth(&auth_user)?;
-
-    if !is_system_admin(&state.db, user_id).await? {
-        warn!(
-            user.id = %auth_user.0.sub,
-            "Unauthorized attempt to list all schools"
-        );
-        return Err(AppError::forbidden(
-            "Only system admins can view all schools".to_string(),
-        ));
-    }
 
     debug!(
         filter.name = ?filters.name,
@@ -139,10 +110,7 @@ pub async fn get_all_schools(
     tag = "Schools",
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, _auth_user), fields(
-    user.id = %_auth_user.0.sub,
-    school.id = %id
-))]
+#[instrument(skip(state), fields(school.id = %id))]
 pub async fn get_school(
     State(state): State<AppState>,
     _auth_user: AuthUser,
@@ -166,34 +134,18 @@ pub async fn get_school(
     responses(
         (status = 204, description = "School deleted successfully"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden - System admin only"),
+        (status = 403, description = "Forbidden - requires schools:delete permission"),
         (status = 404, description = "School not found")
     ),
     tag = "Schools",
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, auth_user), fields(
-    user.id = %auth_user.0.sub,
-    school.id = %id
-))]
+#[instrument(skip(state), fields(school.id = %id))]
 pub async fn delete_school(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireSchoolsDelete(_auth_user): RequireSchoolsDelete,
     Path(id): Path<Uuid>,
 ) -> Result<(), AppError> {
-    let user_id = get_user_id_from_auth(&auth_user)?;
-
-    if !is_system_admin(&state.db, user_id).await? {
-        warn!(
-            user.id = %auth_user.0.sub,
-            school.id = %id,
-            "Unauthorized attempt to delete school"
-        );
-        return Err(AppError::forbidden(
-            "Only system admins can delete schools".to_string(),
-        ));
-    }
-
     debug!("Deleting school");
 
     SchoolService::delete_school(&state.db, id).await?;
@@ -217,34 +169,27 @@ pub async fn delete_school(
     responses(
         (status = 200, description = "Paginated list of students", body = PaginatedUsersResponse),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires schools:read permission"),
         (status = 404, description = "School not found")
     ),
     tag = "Schools",
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, auth_user, filters), fields(
-    user.id = %auth_user.0.sub,
-    school.id = %school_id
-))]
+#[instrument(skip(state, filters), fields(school.id = %school_id))]
 pub async fn get_school_students(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireSchoolsRead(auth_user): RequireSchoolsRead,
     Path(school_id): Path<Uuid>,
     filters: Result<Query<UserFilterParams>, QueryRejection>,
 ) -> Result<Json<PaginatedUsersResponse>, AppError> {
     let Query(filters) = filters
         .map_err(|e| AppError::bad_request(anyhow::anyhow!("Invalid query parameters: {}", e)))?;
 
-    let user_id = get_user_id_from_auth(&auth_user)?;
-    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
-    let user_is_admin = is_admin(&state.db, user_id).await?;
-
-    if user_is_admin && !user_is_system_admin {
+    // School admins can only view students from their own school
+    if !is_system_admin_jwt(&auth_user) {
         let admin_school_id = get_admin_school_id(&state.db, &auth_user).await?;
         if admin_school_id != school_id {
             warn!(
-                user.id = %auth_user.0.sub,
                 user.school_id = %admin_school_id,
                 requested.school_id = %school_id,
                 "Admin attempted to access students from different school"
@@ -253,14 +198,6 @@ pub async fn get_school_students(
                 "You can only view students from your own school".to_string(),
             ));
         }
-    } else if !user_is_system_admin && !user_is_admin {
-        warn!(
-            user.id = %auth_user.0.sub,
-            "Unauthorized role attempted to view students"
-        );
-        return Err(AppError::forbidden(
-            "Only admins can view students".to_string(),
-        ));
     }
 
     debug!("Fetching students for school");
@@ -290,33 +227,25 @@ pub async fn get_school_students(
     responses(
         (status = 200, description = "Paginated list of admins", body = PaginatedUsersResponse),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden - System admin only"),
+        (status = 403, description = "Forbidden - requires schools:read permission (system admin only)"),
         (status = 404, description = "School not found")
     ),
     tag = "Schools",
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, auth_user, filters), fields(
-    user.id = %auth_user.0.sub,
-    school.id = %school_id
-))]
+#[instrument(skip(state, filters), fields(school.id = %school_id))]
 pub async fn get_school_admins(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireSchoolsRead(auth_user): RequireSchoolsRead,
     Path(school_id): Path<Uuid>,
     filters: Result<Query<UserFilterParams>, QueryRejection>,
 ) -> Result<Json<PaginatedUsersResponse>, AppError> {
     let Query(filters) = filters
         .map_err(|e| AppError::bad_request(anyhow::anyhow!("Invalid query parameters: {}", e)))?;
 
-    let user_id = get_user_id_from_auth(&auth_user)?;
-
-    if !is_system_admin(&state.db, user_id).await? {
-        warn!(
-            user.id = %auth_user.0.sub,
-            school.id = %school_id,
-            "Unauthorized attempt to view school admins"
-        );
+    // Only system admins can view school admins
+    if !is_system_admin_jwt(&auth_user) {
+        warn!("Non-system admin attempted to view school admins");
         return Err(AppError::forbidden(
             "Only system admins can view school admins".to_string(),
         ));
@@ -344,30 +273,23 @@ pub async fn get_school_admins(
     responses(
         (status = 200, description = "School full information with statistics", body = SchoolFullInfo),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires schools:read permission"),
         (status = 404, description = "School not found")
     ),
     tag = "Schools",
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, auth_user), fields(
-    user.id = %auth_user.0.sub,
-    school.id = %school_id
-))]
+#[instrument(skip(state), fields(school.id = %school_id))]
 pub async fn get_school_full_info(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireSchoolsRead(auth_user): RequireSchoolsRead,
     Path(school_id): Path<Uuid>,
 ) -> Result<Json<SchoolFullInfo>, AppError> {
-    let user_id = get_user_id_from_auth(&auth_user)?;
-    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
-    let user_is_admin = is_admin(&state.db, user_id).await?;
-
-    if user_is_admin && !user_is_system_admin {
+    // School admins can only view full info for their own school
+    if !is_system_admin_jwt(&auth_user) {
         let admin_school_id = get_admin_school_id(&state.db, &auth_user).await?;
         if admin_school_id != school_id {
             warn!(
-                user.id = %auth_user.0.sub,
                 user.school_id = %admin_school_id,
                 requested.school_id = %school_id,
                 "Admin attempted to access info from different school"
@@ -376,14 +298,6 @@ pub async fn get_school_full_info(
                 "You can only view information for your own school".to_string(),
             ));
         }
-    } else if !user_is_system_admin {
-        warn!(
-            user.id = %auth_user.0.sub,
-            "Unauthorized role attempted to view school full info"
-        );
-        return Err(AppError::forbidden(
-            "Only system admins and school admins can view full school info".to_string(),
-        ));
     }
 
     debug!("Fetching full school information");
@@ -413,35 +327,27 @@ pub async fn get_school_full_info(
     responses(
         (status = 200, description = "Paginated list of levels", body = PaginatedLevelsResponse),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires schools:read permission"),
         (status = 404, description = "School not found")
     ),
     tag = "Schools",
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, auth_user, filters), fields(
-    user.id = %auth_user.0.sub,
-    school.id = %school_id
-))]
+#[instrument(skip(state, filters), fields(school.id = %school_id))]
 pub async fn get_school_levels(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireSchoolsRead(auth_user): RequireSchoolsRead,
     Path(school_id): Path<Uuid>,
     filters: Result<Query<LevelFilterParams>, QueryRejection>,
 ) -> Result<Json<PaginatedLevelsResponse>, AppError> {
     let Query(filters) = filters
         .map_err(|e| AppError::bad_request(anyhow::anyhow!("Invalid query parameters: {}", e)))?;
 
-    let user_id = get_user_id_from_auth(&auth_user)?;
-    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
-    let user_is_admin = is_admin(&state.db, user_id).await?;
-
-    // Do not allow admin users to access levels from a different school
-    if user_is_admin && !user_is_system_admin {
+    // School admins can only view levels from their own school
+    if !is_system_admin_jwt(&auth_user) {
         let admin_school_id = get_admin_school_id(&state.db, &auth_user).await?;
         if admin_school_id != school_id {
             warn!(
-                user.id = %auth_user.0.sub,
                 user.school_id = %admin_school_id,
                 requested.school_id = %school_id,
                 "Admin attempted to access levels from different school"
@@ -450,15 +356,6 @@ pub async fn get_school_levels(
                 "You can only view levels from your own school".to_string(),
             ));
         }
-    } else if !user_is_system_admin && !user_is_admin {
-        // Only admins can view levels
-        warn!(
-            user.id = %auth_user.0.sub,
-            "Unauthorized role attempted to view levels"
-        );
-        return Err(AppError::forbidden(
-            "Only admins can view levels".to_string(),
-        ));
     }
 
     // Verify school exists
@@ -490,35 +387,27 @@ pub async fn get_school_levels(
     responses(
         (status = 200, description = "Paginated list of branches", body = PaginatedBranchesResponse),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires schools:read permission"),
         (status = 404, description = "School or level not found")
     ),
     tag = "Schools",
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, auth_user, filters), fields(
-    user.id = %auth_user.0.sub,
-    school.id = %school_id,
-    level.id = %level_id
-))]
+#[instrument(skip(state, filters), fields(school.id = %school_id, level.id = %level_id))]
 pub async fn get_school_level_branches(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireSchoolsRead(auth_user): RequireSchoolsRead,
     Path((school_id, level_id)): Path<(Uuid, Uuid)>,
     filters: Result<Query<BranchFilterParams>, QueryRejection>,
 ) -> Result<Json<PaginatedBranchesResponse>, AppError> {
     let Query(filters) = filters
         .map_err(|e| AppError::bad_request(anyhow::anyhow!("Invalid query parameters: {}", e)))?;
 
-    let user_id = get_user_id_from_auth(&auth_user)?;
-    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
-    let user_is_admin = is_admin(&state.db, user_id).await?;
-
-    if user_is_admin && !user_is_system_admin {
+    // School admins can only view branches from their own school
+    if !is_system_admin_jwt(&auth_user) {
         let admin_school_id = get_admin_school_id(&state.db, &auth_user).await?;
         if admin_school_id != school_id {
             warn!(
-                user.id = %auth_user.0.sub,
                 user.school_id = %admin_school_id,
                 requested.school_id = %school_id,
                 "Admin attempted to access branches from different school"
@@ -527,14 +416,6 @@ pub async fn get_school_level_branches(
                 "You can only view branches from your own school".to_string(),
             ));
         }
-    } else if !user_is_system_admin && !user_is_admin {
-        warn!(
-            user.id = %auth_user.0.sub,
-            "Unauthorized role attempted to view branches"
-        );
-        return Err(AppError::forbidden(
-            "Only admins can view branches".to_string(),
-        ));
     }
 
     // Verify school exists

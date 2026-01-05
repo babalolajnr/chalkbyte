@@ -4,10 +4,14 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::middleware::auth::AuthUser;
-use crate::middleware::role::{get_user_id_from_auth, is_admin, is_system_admin};
+use crate::middleware::auth::{
+    RequireRolesAssign, RequireRolesCreate, RequireRolesDelete, RequireRolesRead,
+    RequireRolesUpdate,
+};
+use crate::middleware::role::is_system_admin_jwt;
 use crate::modules::users::model::system_roles;
 use crate::state::AppState;
+use crate::utils::auth_helpers::get_admin_school_id;
 use crate::utils::errors::AppError;
 use crate::validator::ValidatedJson;
 
@@ -31,14 +35,14 @@ use super::service;
     responses(
         (status = 200, description = "List of permissions", body = PaginatedPermissionsResponse),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
+        (status = 403, description = "Forbidden - requires roles:read permission")
     ),
     tag = "Roles",
     security(("bearer_auth" = []))
 )]
 pub async fn get_permissions(
     State(state): State<AppState>,
-    _auth_user: AuthUser,
+    RequireRolesRead(_auth_user): RequireRolesRead,
     Query(params): Query<PermissionFilterParams>,
 ) -> Result<Json<PaginatedPermissionsResponse>, AppError> {
     let result = service::get_all_permissions(&state.db, params).await?;
@@ -54,6 +58,7 @@ pub async fn get_permissions(
     responses(
         (status = 200, description = "Permission details", body = Permission),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - requires roles:read permission"),
         (status = 404, description = "Permission not found")
     ),
     tag = "Roles",
@@ -61,7 +66,7 @@ pub async fn get_permissions(
 )]
 pub async fn get_permission_by_id(
     State(state): State<AppState>,
-    _auth_user: AuthUser,
+    RequireRolesRead(_auth_user): RequireRolesRead,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Permission>, AppError> {
     let permission = service::get_permission_by_id(&state.db, id).await?;
@@ -78,32 +83,26 @@ pub async fn get_permission_by_id(
         (status = 201, description = "Role created successfully", body = RoleWithPermissions),
         (status = 400, description = "Invalid request"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
+        (status = 403, description = "Forbidden - requires roles:create permission")
     ),
     tag = "Roles",
     security(("bearer_auth" = []))
 )]
 pub async fn create_role(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireRolesCreate(auth_user): RequireRolesCreate,
     ValidatedJson(dto): ValidatedJson<CreateRoleDto>,
 ) -> Result<Json<RoleWithPermissions>, AppError> {
-    let user_id = get_user_id_from_auth(&auth_user)?;
-    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
+    let user_id = auth_user.user_id()?;
+    let is_sys_admin = is_system_admin_jwt(&auth_user);
 
-    // Get requester's school_id
-    let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", user_id)
-        .fetch_one(&state.db)
-        .await?;
+    let school_id = if is_sys_admin {
+        None
+    } else {
+        Some(get_admin_school_id(&state.db, &auth_user).await?)
+    };
 
-    let role = service::create_role(
-        &state.db,
-        dto,
-        requester.school_id,
-        user_is_system_admin,
-        user_id,
-    )
-    .await?;
+    let role = service::create_role(&state.db, dto, school_id, is_sys_admin, user_id).await?;
 
     Ok(Json(role))
 }
@@ -121,25 +120,25 @@ pub async fn create_role(
     responses(
         (status = 200, description = "List of roles", body = PaginatedRolesResponse),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
+        (status = 403, description = "Forbidden - requires roles:read permission")
     ),
     tag = "Roles",
     security(("bearer_auth" = []))
 )]
 pub async fn get_roles(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireRolesRead(auth_user): RequireRolesRead,
     Query(params): Query<RoleFilterParams>,
 ) -> Result<Json<PaginatedRolesResponse>, AppError> {
-    let user_id = get_user_id_from_auth(&auth_user)?;
-    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
+    let is_sys_admin = is_system_admin_jwt(&auth_user);
 
-    let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", user_id)
-        .fetch_one(&state.db)
-        .await?;
+    let school_id = if is_sys_admin {
+        None
+    } else {
+        Some(get_admin_school_id(&state.db, &auth_user).await?)
+    };
 
-    let result =
-        service::get_roles(&state.db, params, requester.school_id, user_is_system_admin).await?;
+    let result = service::get_roles(&state.db, params, school_id, is_sys_admin).await?;
 
     Ok(Json(result))
 }
@@ -153,7 +152,7 @@ pub async fn get_roles(
     responses(
         (status = 200, description = "Role details with permissions", body = RoleWithPermissions),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires roles:read permission"),
         (status = 404, description = "Role not found")
     ),
     tag = "Roles",
@@ -161,18 +160,18 @@ pub async fn get_roles(
 )]
 pub async fn get_role_by_id(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireRolesRead(auth_user): RequireRolesRead,
     Path(id): Path<Uuid>,
 ) -> Result<Json<RoleWithPermissions>, AppError> {
-    let user_id = get_user_id_from_auth(&auth_user)?;
-    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
+    let is_sys_admin = is_system_admin_jwt(&auth_user);
 
-    let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", user_id)
-        .fetch_one(&state.db)
-        .await?;
+    let school_id = if is_sys_admin {
+        None
+    } else {
+        Some(get_admin_school_id(&state.db, &auth_user).await?)
+    };
 
-    let role =
-        service::get_role_by_id(&state.db, id, requester.school_id, user_is_system_admin).await?;
+    let role = service::get_role_by_id(&state.db, id, school_id, is_sys_admin).await?;
 
     Ok(Json(role))
 }
@@ -188,7 +187,7 @@ pub async fn get_role_by_id(
         (status = 200, description = "Role updated successfully", body = RoleWithPermissions),
         (status = 400, description = "Invalid request"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires roles:update permission"),
         (status = 404, description = "Role not found")
     ),
     tag = "Roles",
@@ -196,34 +195,27 @@ pub async fn get_role_by_id(
 )]
 pub async fn update_role(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireRolesUpdate(auth_user): RequireRolesUpdate,
     Path(id): Path<Uuid>,
     ValidatedJson(dto): ValidatedJson<UpdateRoleDto>,
 ) -> Result<Json<RoleWithPermissions>, AppError> {
-    let user_id = get_user_id_from_auth(&auth_user)?;
-    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
+    let is_sys_admin = is_system_admin_jwt(&auth_user);
 
-    let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", user_id)
-        .fetch_one(&state.db)
-        .await?;
+    let school_id = if is_sys_admin {
+        None
+    } else {
+        Some(get_admin_school_id(&state.db, &auth_user).await?)
+    };
 
     // Cannot update system roles unless you're a system admin
-    let role =
-        service::get_role_by_id(&state.db, id, requester.school_id, user_is_system_admin).await?;
-    if role.role.is_system_role && !user_is_system_admin {
+    let role = service::get_role_by_id(&state.db, id, school_id, is_sys_admin).await?;
+    if role.role.is_system_role && !is_sys_admin {
         return Err(AppError::forbidden(
             "Only system admins can update system roles".to_string(),
         ));
     }
 
-    let updated_role = service::update_role(
-        &state.db,
-        id,
-        dto,
-        requester.school_id,
-        user_is_system_admin,
-    )
-    .await?;
+    let updated_role = service::update_role(&state.db, id, dto, school_id, is_sys_admin).await?;
 
     Ok(Json(updated_role))
 }
@@ -237,7 +229,7 @@ pub async fn update_role(
     responses(
         (status = 204, description = "Role deleted successfully"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires roles:delete permission"),
         (status = 404, description = "Role not found")
     ),
     tag = "Roles",
@@ -245,11 +237,10 @@ pub async fn update_role(
 )]
 pub async fn delete_role(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireRolesDelete(auth_user): RequireRolesDelete,
     Path(id): Path<Uuid>,
 ) -> Result<(), AppError> {
-    let user_id = get_user_id_from_auth(&auth_user)?;
-    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
+    let is_sys_admin = is_system_admin_jwt(&auth_user);
 
     // Cannot delete system roles
     if system_roles::is_system_role(&id) {
@@ -258,11 +249,13 @@ pub async fn delete_role(
         ));
     }
 
-    let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", user_id)
-        .fetch_one(&state.db)
-        .await?;
+    let school_id = if is_sys_admin {
+        None
+    } else {
+        Some(get_admin_school_id(&state.db, &auth_user).await?)
+    };
 
-    service::delete_role(&state.db, id, requester.school_id, user_is_system_admin).await?;
+    service::delete_role(&state.db, id, school_id, is_sys_admin).await?;
 
     Ok(())
 }
@@ -278,7 +271,7 @@ pub async fn delete_role(
         (status = 200, description = "Permissions assigned successfully", body = RoleWithPermissions),
         (status = 400, description = "Invalid request"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires roles:update permission"),
         (status = 404, description = "Role not found")
     ),
     tag = "Roles",
@@ -286,21 +279,21 @@ pub async fn delete_role(
 )]
 pub async fn assign_permissions(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireRolesUpdate(auth_user): RequireRolesUpdate,
     Path(id): Path<Uuid>,
     Json(dto): Json<AssignPermissionsDto>,
 ) -> Result<Json<RoleWithPermissions>, AppError> {
-    let user_id = get_user_id_from_auth(&auth_user)?;
-    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
+    let is_sys_admin = is_system_admin_jwt(&auth_user);
 
-    let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", user_id)
-        .fetch_one(&state.db)
-        .await?;
+    let school_id = if is_sys_admin {
+        None
+    } else {
+        Some(get_admin_school_id(&state.db, &auth_user).await?)
+    };
 
     // Check if user can modify this role
-    let role =
-        service::get_role_by_id(&state.db, id, requester.school_id, user_is_system_admin).await?;
-    if role.role.is_system_role && !user_is_system_admin {
+    let role = service::get_role_by_id(&state.db, id, school_id, is_sys_admin).await?;
+    if role.role.is_system_role && !is_sys_admin {
         return Err(AppError::forbidden(
             "Only system admins can modify system role permissions".to_string(),
         ));
@@ -310,8 +303,8 @@ pub async fn assign_permissions(
         &state.db,
         id,
         dto.permission_ids,
-        requester.school_id,
-        user_is_system_admin,
+        school_id,
+        is_sys_admin,
     )
     .await?;
 
@@ -328,7 +321,7 @@ pub async fn assign_permissions(
     responses(
         (status = 200, description = "Permission removed successfully", body = RoleWithPermissions),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires roles:update permission"),
         (status = 404, description = "Role or permission not found")
     ),
     tag = "Roles",
@@ -336,25 +329,20 @@ pub async fn assign_permissions(
 )]
 pub async fn remove_permission(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireRolesUpdate(auth_user): RequireRolesUpdate,
     Path((role_id, permission_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<RoleWithPermissions>, AppError> {
-    let user_id = get_user_id_from_auth(&auth_user)?;
-    let user_is_system_admin = is_system_admin(&state.db, user_id).await?;
+    let is_sys_admin = is_system_admin_jwt(&auth_user);
 
-    let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", user_id)
-        .fetch_one(&state.db)
-        .await?;
+    let school_id = if is_sys_admin {
+        None
+    } else {
+        Some(get_admin_school_id(&state.db, &auth_user).await?)
+    };
 
     // Check if user can modify this role
-    let role = service::get_role_by_id(
-        &state.db,
-        role_id,
-        requester.school_id,
-        user_is_system_admin,
-    )
-    .await?;
-    if role.role.is_system_role && !user_is_system_admin {
+    let role = service::get_role_by_id(&state.db, role_id, school_id, is_sys_admin).await?;
+    if role.role.is_system_role && !is_sys_admin {
         return Err(AppError::forbidden(
             "Only system admins can modify system role permissions".to_string(),
         ));
@@ -364,8 +352,8 @@ pub async fn remove_permission(
         &state.db,
         role_id,
         permission_id,
-        requester.school_id,
-        user_is_system_admin,
+        school_id,
+        is_sys_admin,
     )
     .await?;
 
@@ -385,7 +373,7 @@ pub async fn remove_permission(
         (status = 200, description = "Role assigned to user", body = RoleAssignmentResponse),
         (status = 400, description = "Invalid request"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires roles:assign permission"),
         (status = 404, description = "User or role not found")
     ),
     tag = "Roles",
@@ -393,39 +381,33 @@ pub async fn remove_permission(
 )]
 pub async fn assign_role_to_user(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireRolesAssign(auth_user): RequireRolesAssign,
     Path(target_user_id): Path<Uuid>,
     Json(dto): Json<AssignRoleToUserDto>,
 ) -> Result<Json<RoleAssignmentResponse>, AppError> {
-    let requester_id = get_user_id_from_auth(&auth_user)?;
-    let user_is_system_admin = is_system_admin(&state.db, requester_id).await?;
-    let user_is_admin = is_admin(&state.db, requester_id).await?;
+    let requester_id = auth_user.user_id()?;
+    let is_sys_admin = is_system_admin_jwt(&auth_user);
 
-    // Only admins can assign roles
-    if !user_is_admin {
-        return Err(AppError::forbidden(
-            "Only admins can assign roles to users".to_string(),
-        ));
-    }
-
-    let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", requester_id)
-        .fetch_one(&state.db)
-        .await?;
+    let school_id = if is_sys_admin {
+        None
+    } else {
+        Some(get_admin_school_id(&state.db, &auth_user).await?)
+    };
 
     // Check if trying to assign a system role
-    if system_roles::is_system_role(&dto.role_id) && !user_is_system_admin {
+    if system_roles::is_system_role(&dto.role_id) && !is_sys_admin {
         return Err(AppError::forbidden(
             "Only system admins can assign system roles".to_string(),
         ));
     }
 
     // Verify target user is in the same school (unless system admin)
-    if !user_is_system_admin {
+    if !is_sys_admin {
         let target_user = sqlx::query!("SELECT school_id FROM users WHERE id = $1", target_user_id)
             .fetch_one(&state.db)
             .await?;
 
-        if target_user.school_id != requester.school_id {
+        if target_user.school_id != school_id {
             return Err(AppError::forbidden(
                 "You can only assign roles to users in your school".to_string(),
             ));
@@ -437,8 +419,8 @@ pub async fn assign_role_to_user(
         target_user_id,
         dto.role_id,
         requester_id,
-        requester.school_id,
-        user_is_system_admin,
+        school_id,
+        is_sys_admin,
     )
     .await?;
 
@@ -455,7 +437,7 @@ pub async fn assign_role_to_user(
     responses(
         (status = 204, description = "Role removed from user"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires roles:assign permission"),
         (status = 404, description = "User or role assignment not found")
     ),
     tag = "Roles",
@@ -463,39 +445,26 @@ pub async fn assign_role_to_user(
 )]
 pub async fn remove_role_from_user(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireRolesAssign(auth_user): RequireRolesAssign,
     Path((target_user_id, role_id)): Path<(Uuid, Uuid)>,
 ) -> Result<(), AppError> {
-    let requester_id = get_user_id_from_auth(&auth_user)?;
-    let user_is_system_admin = is_system_admin(&state.db, requester_id).await?;
-    let user_is_admin = is_admin(&state.db, requester_id).await?;
+    let is_sys_admin = is_system_admin_jwt(&auth_user);
 
-    // Only admins can remove roles
-    if !user_is_admin {
-        return Err(AppError::forbidden(
-            "Only admins can remove roles from users".to_string(),
-        ));
-    }
-
-    let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", requester_id)
-        .fetch_one(&state.db)
-        .await?;
+    let school_id = if is_sys_admin {
+        None
+    } else {
+        Some(get_admin_school_id(&state.db, &auth_user).await?)
+    };
 
     // Check if trying to remove a system role
-    if system_roles::is_system_role(&role_id) && !user_is_system_admin {
+    if system_roles::is_system_role(&role_id) && !is_sys_admin {
         return Err(AppError::forbidden(
             "Only system admins can remove system roles".to_string(),
         ));
     }
 
-    service::remove_role_from_user(
-        &state.db,
-        target_user_id,
-        role_id,
-        requester.school_id,
-        user_is_system_admin,
-    )
-    .await?;
+    service::remove_role_from_user(&state.db, target_user_id, role_id, school_id, is_sys_admin)
+        .await?;
 
     Ok(())
 }
@@ -509,7 +478,7 @@ pub async fn remove_role_from_user(
     responses(
         (status = 200, description = "User's roles", body = Vec<RoleWithPermissions>),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires roles:read permission"),
         (status = 404, description = "User not found")
     ),
     tag = "Roles",
@@ -517,31 +486,21 @@ pub async fn remove_role_from_user(
 )]
 pub async fn get_user_roles(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireRolesRead(auth_user): RequireRolesRead,
     Path(target_user_id): Path<Uuid>,
 ) -> Result<Json<Vec<RoleWithPermissions>>, AppError> {
-    let requester_id = get_user_id_from_auth(&auth_user)?;
-    let user_is_system_admin = is_system_admin(&state.db, requester_id).await?;
-    let user_is_admin = is_admin(&state.db, requester_id).await?;
+    let requester_id = auth_user.user_id()?;
+    let is_sys_admin = is_system_admin_jwt(&auth_user);
 
-    // Users can view their own roles, admins can view any user's roles in their school
-    if requester_id != target_user_id && !user_is_admin {
-        return Err(AppError::forbidden(
-            "You can only view your own roles".to_string(),
-        ));
-    }
-
-    // If not system admin, verify target is in same school
-    if !user_is_system_admin && requester_id != target_user_id {
-        let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", requester_id)
-            .fetch_one(&state.db)
-            .await?;
+    // Users can view their own roles without additional checks
+    if requester_id != target_user_id && !is_sys_admin {
+        let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
         let target_user = sqlx::query!("SELECT school_id FROM users WHERE id = $1", target_user_id)
             .fetch_one(&state.db)
             .await?;
 
-        if target_user.school_id != requester.school_id {
+        if target_user.school_id != Some(school_id) {
             return Err(AppError::forbidden(
                 "You can only view roles for users in your school".to_string(),
             ));
@@ -562,7 +521,7 @@ pub async fn get_user_roles(
     responses(
         (status = 200, description = "User's permissions from all roles", body = Vec<Permission>),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires roles:read permission"),
         (status = 404, description = "User not found")
     ),
     tag = "Roles",
@@ -570,31 +529,21 @@ pub async fn get_user_roles(
 )]
 pub async fn get_user_permissions(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireRolesRead(auth_user): RequireRolesRead,
     Path(target_user_id): Path<Uuid>,
 ) -> Result<Json<Vec<Permission>>, AppError> {
-    let requester_id = get_user_id_from_auth(&auth_user)?;
-    let user_is_system_admin = is_system_admin(&state.db, requester_id).await?;
-    let user_is_admin = is_admin(&state.db, requester_id).await?;
+    let requester_id = auth_user.user_id()?;
+    let is_sys_admin = is_system_admin_jwt(&auth_user);
 
-    // Users can view their own permissions, admins can view any user's permissions
-    if requester_id != target_user_id && !user_is_admin {
-        return Err(AppError::forbidden(
-            "You can only view your own permissions".to_string(),
-        ));
-    }
-
-    // If not system admin, verify target is in same school
-    if !user_is_system_admin && requester_id != target_user_id {
-        let requester = sqlx::query!("SELECT school_id FROM users WHERE id = $1", requester_id)
-            .fetch_one(&state.db)
-            .await?;
+    // Users can view their own permissions without additional checks
+    if requester_id != target_user_id && !is_sys_admin {
+        let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
         let target_user = sqlx::query!("SELECT school_id FROM users WHERE id = $1", target_user_id)
             .fetch_one(&state.db)
             .await?;
 
-        if target_user.school_id != requester.school_id {
+        if target_user.school_id != Some(school_id) {
             return Err(AppError::forbidden(
                 "You can only view permissions for users in your school".to_string(),
             ));
