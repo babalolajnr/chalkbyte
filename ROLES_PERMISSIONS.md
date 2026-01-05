@@ -8,6 +8,15 @@ The roles and permissions system allows:
 - **System Admins**: Create system-wide roles for backoffice platform management
 - **School Admins**: Create custom roles scoped to their school for managing school users
 
+### JWT-Embedded Permissions
+
+As of the latest update, user roles and permissions are **embedded directly in JWT tokens** during login. This provides:
+- **Fast authorization** - No database queries for most permission checks
+- **Granular control** - Fine-grained permissions like `users:create`, `levels:read`
+- **Type-safe extractors** - Compile-time verified permission requirements in Rust
+
+See [docs/PERMISSION_BASED_ACCESS.md](docs/PERMISSION_BASED_ACCESS.md) for implementation details.
+
 ## Database Schema
 
 ### Tables
@@ -286,13 +295,54 @@ curl -X GET "http://localhost:3000/api/users/{user_id}/permissions" \
 
 ## Permission Checking in Code
 
-The service provides utility functions for permission checking:
+### Using Permission Extractors (Recommended)
+
+Use type-safe permission extractors in controllers:
 
 ```rust
-// Check if user has a specific permission
+use crate::middleware::auth::{RequireLevelsCreate, RequireLevelsRead};
+
+// Requires "levels:create" permission - checked from JWT (no DB query)
+pub async fn create_level(
+    State(state): State<AppState>,
+    RequireLevelsCreate(auth_user): RequireLevelsCreate,
+    Json(dto): Json<CreateLevelDto>,
+) -> Result<(StatusCode, Json<Level>), AppError> {
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    // ...
+}
+```
+
+### JWT-Based Checks (Fast, No DB)
+
+```rust
+use crate::middleware::auth::AuthUser;
+
+// Check permission from JWT claims
+if auth_user.has_permission("users:create") {
+    // Has permission
+}
+
+// Check any of multiple permissions
+if auth_user.has_any_permission(&["admin:full", "users:delete"]) {
+    // Has at least one
+}
+
+// Check role from JWT
+if auth_user.has_role(&system_roles::SYSTEM_ADMIN) {
+    // Is system admin
+}
+```
+
+### Database-Backed Checks (Fresh Data)
+
+When you need to verify against the latest database state:
+
+```rust
+// Check if user has a specific permission (DB query)
 let has_permission = service::user_has_permission(&db, user_id, "users:create").await?;
 
-// Get all permissions for a user
+// Get all permissions for a user (DB query)
 let permissions = service::get_user_permissions(&db, user_id).await?;
 ```
 
@@ -304,3 +354,5 @@ let permissions = service::get_user_permissions(&db, user_id).await?;
 - Role names must be unique within their scope (per school or system-wide)
 - System roles can only be assigned to users without a school_id
 - School roles can only be assigned to users belonging to that school
+- **JWT tokens include role_ids and permissions** - changes take effect on next login/token refresh
+- For immediate permission changes, revoke user's refresh tokens to force re-authentication

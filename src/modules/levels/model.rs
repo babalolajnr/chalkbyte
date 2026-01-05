@@ -31,6 +31,8 @@ pub struct CreateLevelDto {
     #[validate(length(min = 1, max = 100))]
     pub name: String,
     pub description: Option<String>,
+    /// School ID - required for system admins, ignored for school admins
+    pub school_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
@@ -43,6 +45,8 @@ pub struct UpdateLevelDto {
 #[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
 pub struct LevelFilterParams {
     pub name: Option<String>,
+    /// School ID - required for system admins to scope the query
+    pub school_id: Option<Uuid>,
     #[serde(flatten)]
     pub pagination: crate::utils::pagination::PaginationParams,
 }

@@ -5,7 +5,9 @@ use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
 use crate::middleware::auth::AuthUser;
-use crate::middleware::role::{get_user_id_from_auth, is_admin, is_system_admin};
+use crate::middleware::role::{
+    get_admin_school_id, get_user_id_from_auth, is_admin, is_system_admin,
+};
 use crate::modules::branches::model::{BranchFilterParams, PaginatedBranchesResponse};
 use crate::modules::branches::service::BranchService;
 use crate::modules::levels::model::{LevelFilterParams, PaginatedLevelsResponse};
@@ -19,19 +21,6 @@ use crate::state::AppState;
 use crate::utils::errors::AppError;
 
 use super::service::SchoolService;
-
-#[instrument(skip(db, auth_user), fields(user.id = %auth_user.0.sub))]
-async fn get_admin_school_id(db: &sqlx::PgPool, auth_user: &AuthUser) -> Result<Uuid, AppError> {
-    let user_id = Uuid::parse_str(&auth_user.0.sub)
-        .map_err(|_| AppError::bad_request(anyhow::anyhow!("Invalid user ID")))?;
-
-    let user = UserService::get_user(db, user_id).await?;
-
-    user.school_id.ok_or_else(|| {
-        warn!(user.id = %user_id, "Admin user has no assigned school");
-        AppError::forbidden("Admin must be assigned to a school".to_string())
-    })
-}
 
 #[utoipa::path(
     post,

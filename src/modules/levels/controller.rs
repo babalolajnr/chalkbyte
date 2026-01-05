@@ -7,8 +7,11 @@ use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::middleware::auth::AuthUser;
-use crate::middleware::role::{get_user_id_from_auth, is_admin};
+use crate::middleware::auth::{
+    RequireLevelsAssignStudents, RequireLevelsCreate, RequireLevelsDelete, RequireLevelsRead,
+    RequireLevelsUpdate,
+};
+use crate::middleware::role::is_system_admin_jwt;
 use crate::modules::levels::model::{
     AssignStudentsToLevelDto, BulkAssignResponse, CreateLevelDto, Level, LevelFilterParams,
     LevelWithStats, MoveStudentToLevelDto, PaginatedLevelsResponse, UpdateLevelDto,
@@ -16,21 +19,8 @@ use crate::modules::levels::model::{
 use crate::modules::levels::service::LevelService;
 use crate::modules::users::model::User;
 use crate::state::AppState;
-use crate::utils::auth_helpers::get_admin_school_id;
+use crate::utils::auth_helpers::{get_admin_school_id, get_school_id_for_scoped_operation};
 use crate::utils::errors::AppError;
-
-/// Helper to verify admin access
-async fn require_admin_access(db: &sqlx::PgPool, auth_user: &AuthUser) -> Result<Uuid, AppError> {
-    let user_id = get_user_id_from_auth(auth_user)?;
-
-    if !is_admin(db, user_id).await? {
-        return Err(AppError::forbidden(
-            "Only school admins can perform this action".to_string(),
-        ));
-    }
-
-    get_admin_school_id(db, auth_user).await
-}
 
 #[utoipa::path(
     post,
@@ -38,9 +28,9 @@ async fn require_admin_access(db: &sqlx::PgPool, auth_user: &AuthUser) -> Result
     request_body = CreateLevelDto,
     responses(
         (status = 201, description = "Level created successfully", body = Level),
-        (status = 400, description = "Invalid input"),
+        (status = 400, description = "Invalid input or missing school_id for system admin"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
+        (status = 403, description = "Forbidden - requires levels:create permission")
     ),
     tag = "Levels",
     security(("bearer_auth" = []))
@@ -48,10 +38,12 @@ async fn require_admin_access(db: &sqlx::PgPool, auth_user: &AuthUser) -> Result
 #[instrument(skip(state))]
 pub async fn create_level(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireLevelsCreate(auth_user): RequireLevelsCreate,
     Json(dto): Json<CreateLevelDto>,
 ) -> Result<(StatusCode, Json<Level>), AppError> {
-    let school_id = require_admin_access(&state.db, &auth_user).await?;
+    // Creating requires school_id - system admins must specify it in the DTO
+    let school_id =
+        get_school_id_for_scoped_operation(&state.db, &auth_user, dto.school_id).await?;
 
     dto.validate()?;
 
@@ -66,8 +58,9 @@ pub async fn create_level(
     params(LevelFilterParams),
     responses(
         (status = 200, description = "List of levels", body = PaginatedLevelsResponse),
+        (status = 400, description = "Missing school_id for system admin"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
+        (status = 403, description = "Forbidden - requires levels:read permission")
     ),
     tag = "Levels",
     security(("bearer_auth" = []))
@@ -75,10 +68,12 @@ pub async fn create_level(
 #[instrument(skip(state))]
 pub async fn get_levels(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireLevelsRead(auth_user): RequireLevelsRead,
     Query(filters): Query<LevelFilterParams>,
 ) -> Result<Json<PaginatedLevelsResponse>, AppError> {
-    let school_id = require_admin_access(&state.db, &auth_user).await?;
+    // Listing requires school_id - system admins must specify it in query params
+    let school_id =
+        get_school_id_for_scoped_operation(&state.db, &auth_user, filters.school_id).await?;
 
     let levels = LevelService::get_levels_by_school(&state.db, school_id, filters).await?;
 
@@ -94,7 +89,7 @@ pub async fn get_levels(
     responses(
         (status = 200, description = "Level details", body = LevelWithStats),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires levels:read permission"),
         (status = 404, description = "Level not found")
     ),
     tag = "Levels",
@@ -103,11 +98,16 @@ pub async fn get_levels(
 #[instrument(skip(state))]
 pub async fn get_level_by_id(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireLevelsRead(auth_user): RequireLevelsRead,
     Path(id): Path<Uuid>,
 ) -> Result<Json<LevelWithStats>, AppError> {
-    let school_id = require_admin_access(&state.db, &auth_user).await?;
+    // For resource operations, system admins don't need school_id
+    if is_system_admin_jwt(&auth_user) {
+        let level = LevelService::get_level_by_id_no_school_filter(&state.db, id).await?;
+        return Ok(Json(level));
+    }
 
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
     let level = LevelService::get_level_by_id(&state.db, id, school_id).await?;
 
     Ok(Json(level))
@@ -124,7 +124,7 @@ pub async fn get_level_by_id(
         (status = 200, description = "Level updated successfully", body = Level),
         (status = 400, description = "Invalid input"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires levels:update permission"),
         (status = 404, description = "Level not found")
     ),
     tag = "Levels",
@@ -133,14 +133,19 @@ pub async fn get_level_by_id(
 #[instrument(skip(state))]
 pub async fn update_level(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireLevelsUpdate(auth_user): RequireLevelsUpdate,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateLevelDto>,
 ) -> Result<Json<Level>, AppError> {
-    let school_id = require_admin_access(&state.db, &auth_user).await?;
-
     dto.validate()?;
 
+    // For resource operations, system admins don't need school_id
+    if is_system_admin_jwt(&auth_user) {
+        let level = LevelService::update_level_no_school_filter(&state.db, id, dto).await?;
+        return Ok(Json(level));
+    }
+
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
     let level = LevelService::update_level(&state.db, id, school_id, dto).await?;
 
     Ok(Json(level))
@@ -155,7 +160,7 @@ pub async fn update_level(
     responses(
         (status = 204, description = "Level deleted successfully"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires levels:delete permission"),
         (status = 404, description = "Level not found")
     ),
     tag = "Levels",
@@ -164,11 +169,16 @@ pub async fn update_level(
 #[instrument(skip(state))]
 pub async fn delete_level(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireLevelsDelete(auth_user): RequireLevelsDelete,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let school_id = require_admin_access(&state.db, &auth_user).await?;
+    // For resource operations, system admins don't need school_id
+    if is_system_admin_jwt(&auth_user) {
+        LevelService::delete_level_no_school_filter(&state.db, id).await?;
+        return Ok(StatusCode::NO_CONTENT);
+    }
 
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
     LevelService::delete_level(&state.db, id, school_id).await?;
 
     Ok(StatusCode::NO_CONTENT)
@@ -185,7 +195,7 @@ pub async fn delete_level(
         (status = 200, description = "Students assigned to level", body = BulkAssignResponse),
         (status = 400, description = "Invalid input"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires levels:assign_students permission"),
         (status = 404, description = "Level not found")
     ),
     tag = "Levels",
@@ -194,14 +204,20 @@ pub async fn delete_level(
 #[instrument(skip(state))]
 pub async fn assign_students_to_level(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireLevelsAssignStudents(auth_user): RequireLevelsAssignStudents,
     Path(id): Path<Uuid>,
     Json(dto): Json<AssignStudentsToLevelDto>,
 ) -> Result<Json<BulkAssignResponse>, AppError> {
-    let school_id = require_admin_access(&state.db, &auth_user).await?;
-
     dto.validate()?;
 
+    // For resource operations, system admins don't need school_id
+    if is_system_admin_jwt(&auth_user) {
+        let response =
+            LevelService::assign_students_to_level_no_school_filter(&state.db, id, dto).await?;
+        return Ok(Json(response));
+    }
+
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
     let response = LevelService::assign_students_to_level(&state.db, id, school_id, dto).await?;
 
     Ok(Json(response))
@@ -216,7 +232,7 @@ pub async fn assign_students_to_level(
     responses(
         (status = 200, description = "List of students in level", body = Vec<User>),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires levels:read permission"),
         (status = 404, description = "Level not found")
     ),
     tag = "Levels",
@@ -225,11 +241,16 @@ pub async fn assign_students_to_level(
 #[instrument(skip(state))]
 pub async fn get_students_in_level(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireLevelsRead(auth_user): RequireLevelsRead,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<User>>, AppError> {
-    let school_id = require_admin_access(&state.db, &auth_user).await?;
+    // For resource operations, system admins don't need school_id
+    if is_system_admin_jwt(&auth_user) {
+        let students = LevelService::get_students_in_level_no_school_filter(&state.db, id).await?;
+        return Ok(Json(students));
+    }
 
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
     let students = LevelService::get_students_in_level(&state.db, id, school_id).await?;
 
     Ok(Json(students))
@@ -246,7 +267,7 @@ pub async fn get_students_in_level(
         (status = 204, description = "Student moved successfully"),
         (status = 400, description = "Invalid input"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires levels:assign_students permission"),
         (status = 404, description = "Student or level not found")
     ),
     tag = "Levels",
@@ -255,14 +276,19 @@ pub async fn get_students_in_level(
 #[instrument(skip(state))]
 pub async fn move_student_to_level(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireLevelsAssignStudents(auth_user): RequireLevelsAssignStudents,
     Path(student_id): Path<Uuid>,
     Json(dto): Json<MoveStudentToLevelDto>,
 ) -> Result<StatusCode, AppError> {
-    let school_id = require_admin_access(&state.db, &auth_user).await?;
-
     dto.validate()?;
 
+    // For resource operations, system admins don't need school_id
+    if is_system_admin_jwt(&auth_user) {
+        LevelService::move_student_to_level_no_school_filter(&state.db, student_id, dto).await?;
+        return Ok(StatusCode::NO_CONTENT);
+    }
+
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
     LevelService::move_student_to_level(&state.db, student_id, school_id, dto).await?;
 
     Ok(StatusCode::NO_CONTENT)
@@ -277,7 +303,7 @@ pub async fn move_student_to_level(
     responses(
         (status = 204, description = "Student removed from level"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires levels:assign_students permission"),
         (status = 404, description = "Student not found")
     ),
     tag = "Levels",
@@ -286,11 +312,16 @@ pub async fn move_student_to_level(
 #[instrument(skip(state))]
 pub async fn remove_student_from_level(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireLevelsAssignStudents(auth_user): RequireLevelsAssignStudents,
     Path(student_id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let school_id = require_admin_access(&state.db, &auth_user).await?;
+    // For resource operations, system admins don't need school_id
+    if is_system_admin_jwt(&auth_user) {
+        LevelService::remove_student_from_level_no_school_filter(&state.db, student_id).await?;
+        return Ok(StatusCode::NO_CONTENT);
+    }
 
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
     LevelService::remove_student_from_level(&state.db, student_id, school_id).await?;
 
     Ok(StatusCode::NO_CONTENT)

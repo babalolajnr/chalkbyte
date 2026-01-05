@@ -7,8 +7,11 @@ use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::middleware::auth::AuthUser;
-use crate::middleware::role::{get_user_id_from_auth, is_admin};
+use crate::middleware::auth::{
+    RequireBranchesAssignStudents, RequireBranchesCreate, RequireBranchesDelete,
+    RequireBranchesRead, RequireBranchesUpdate,
+};
+use crate::middleware::role::get_admin_school_id;
 use crate::modules::branches::model::{
     AssignStudentsToBranchDto, Branch, BranchFilterParams, BranchWithStats, BulkAssignResponse,
     CreateBranchDto, MoveStudentToBranchDto, PaginatedBranchesResponse, UpdateBranchDto,
@@ -16,21 +19,7 @@ use crate::modules::branches::model::{
 use crate::modules::branches::service::BranchService;
 use crate::modules::users::model::User;
 use crate::state::AppState;
-use crate::utils::auth_helpers::get_admin_school_id;
 use crate::utils::errors::AppError;
-
-/// Helper to verify admin access
-async fn require_admin_access(db: &sqlx::PgPool, auth_user: &AuthUser) -> Result<Uuid, AppError> {
-    let user_id = get_user_id_from_auth(auth_user)?;
-
-    if !is_admin(db, user_id).await? {
-        return Err(AppError::forbidden(
-            "Only school admins can perform this action".to_string(),
-        ));
-    }
-
-    get_admin_school_id(db, auth_user).await
-}
 
 #[utoipa::path(
     post,
@@ -43,7 +32,7 @@ async fn require_admin_access(db: &sqlx::PgPool, auth_user: &AuthUser) -> Result
         (status = 201, description = "Branch created successfully", body = Branch),
         (status = 400, description = "Invalid input"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
+        (status = 403, description = "Forbidden - requires branches:create permission")
     ),
     tag = "Branches",
     security(("bearer_auth" = []))
@@ -51,11 +40,11 @@ async fn require_admin_access(db: &sqlx::PgPool, auth_user: &AuthUser) -> Result
 #[instrument(skip(state))]
 pub async fn create_branch(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireBranchesCreate(auth_user): RequireBranchesCreate,
     Path(level_id): Path<Uuid>,
     Json(dto): Json<CreateBranchDto>,
 ) -> Result<(StatusCode, Json<Branch>), AppError> {
-    let school_id = require_admin_access(&state.db, &auth_user).await?;
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     dto.validate()?;
 
@@ -74,7 +63,7 @@ pub async fn create_branch(
     responses(
         (status = 200, description = "List of branches", body = PaginatedBranchesResponse),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
+        (status = 403, description = "Forbidden - requires branches:read permission")
     ),
     tag = "Branches",
     security(("bearer_auth" = []))
@@ -82,11 +71,11 @@ pub async fn create_branch(
 #[instrument(skip(state))]
 pub async fn get_branches(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireBranchesRead(auth_user): RequireBranchesRead,
     Path(level_id): Path<Uuid>,
     Query(filters): Query<BranchFilterParams>,
 ) -> Result<Json<PaginatedBranchesResponse>, AppError> {
-    let school_id = require_admin_access(&state.db, &auth_user).await?;
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     let branches =
         BranchService::get_branches_by_level(&state.db, level_id, school_id, filters).await?;
@@ -103,7 +92,7 @@ pub async fn get_branches(
     responses(
         (status = 200, description = "Branch details", body = BranchWithStats),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires branches:read permission"),
         (status = 404, description = "Branch not found")
     ),
     tag = "Branches",
@@ -112,10 +101,10 @@ pub async fn get_branches(
 #[instrument(skip(state))]
 pub async fn get_branch_by_id(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireBranchesRead(auth_user): RequireBranchesRead,
     Path(id): Path<Uuid>,
 ) -> Result<Json<BranchWithStats>, AppError> {
-    let school_id = require_admin_access(&state.db, &auth_user).await?;
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     let branch = BranchService::get_branch_by_id(&state.db, id, school_id).await?;
 
@@ -133,7 +122,7 @@ pub async fn get_branch_by_id(
         (status = 200, description = "Branch updated successfully", body = Branch),
         (status = 400, description = "Invalid input"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires branches:update permission"),
         (status = 404, description = "Branch not found")
     ),
     tag = "Branches",
@@ -142,11 +131,11 @@ pub async fn get_branch_by_id(
 #[instrument(skip(state))]
 pub async fn update_branch(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireBranchesUpdate(auth_user): RequireBranchesUpdate,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateBranchDto>,
 ) -> Result<Json<Branch>, AppError> {
-    let school_id = require_admin_access(&state.db, &auth_user).await?;
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     dto.validate()?;
 
@@ -164,7 +153,7 @@ pub async fn update_branch(
     responses(
         (status = 204, description = "Branch deleted successfully"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires branches:delete permission"),
         (status = 404, description = "Branch not found")
     ),
     tag = "Branches",
@@ -173,10 +162,10 @@ pub async fn update_branch(
 #[instrument(skip(state))]
 pub async fn delete_branch(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireBranchesDelete(auth_user): RequireBranchesDelete,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let school_id = require_admin_access(&state.db, &auth_user).await?;
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     BranchService::delete_branch(&state.db, id, school_id).await?;
 
@@ -194,7 +183,7 @@ pub async fn delete_branch(
         (status = 200, description = "Students assigned to branch", body = BulkAssignResponse),
         (status = 400, description = "Invalid input"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires branches:assign_students permission"),
         (status = 404, description = "Branch not found")
     ),
     tag = "Branches",
@@ -203,11 +192,11 @@ pub async fn delete_branch(
 #[instrument(skip(state))]
 pub async fn assign_students_to_branch(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireBranchesAssignStudents(auth_user): RequireBranchesAssignStudents,
     Path(id): Path<Uuid>,
     Json(dto): Json<AssignStudentsToBranchDto>,
 ) -> Result<Json<BulkAssignResponse>, AppError> {
-    let school_id = require_admin_access(&state.db, &auth_user).await?;
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     dto.validate()?;
 
@@ -225,7 +214,7 @@ pub async fn assign_students_to_branch(
     responses(
         (status = 200, description = "List of students in branch", body = Vec<User>),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires branches:read permission"),
         (status = 404, description = "Branch not found")
     ),
     tag = "Branches",
@@ -234,10 +223,10 @@ pub async fn assign_students_to_branch(
 #[instrument(skip(state))]
 pub async fn get_students_in_branch(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireBranchesRead(auth_user): RequireBranchesRead,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<User>>, AppError> {
-    let school_id = require_admin_access(&state.db, &auth_user).await?;
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     let students = BranchService::get_students_in_branch(&state.db, id, school_id).await?;
 
@@ -255,7 +244,7 @@ pub async fn get_students_in_branch(
         (status = 204, description = "Student moved successfully"),
         (status = 400, description = "Invalid input"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires branches:assign_students permission"),
         (status = 404, description = "Student or branch not found")
     ),
     tag = "Branches",
@@ -264,11 +253,11 @@ pub async fn get_students_in_branch(
 #[instrument(skip(state))]
 pub async fn move_student_to_branch(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireBranchesAssignStudents(auth_user): RequireBranchesAssignStudents,
     Path(student_id): Path<Uuid>,
     Json(dto): Json<MoveStudentToBranchDto>,
 ) -> Result<StatusCode, AppError> {
-    let school_id = require_admin_access(&state.db, &auth_user).await?;
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     dto.validate()?;
 
@@ -286,7 +275,7 @@ pub async fn move_student_to_branch(
     responses(
         (status = 204, description = "Student removed from branch"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
+        (status = 403, description = "Forbidden - requires branches:assign_students permission"),
         (status = 404, description = "Student not found")
     ),
     tag = "Branches",
@@ -295,10 +284,10 @@ pub async fn move_student_to_branch(
 #[instrument(skip(state))]
 pub async fn remove_student_from_branch(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    RequireBranchesAssignStudents(auth_user): RequireBranchesAssignStudents,
     Path(student_id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let school_id = require_admin_access(&state.db, &auth_user).await?;
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
     BranchService::remove_student_from_branch(&state.db, student_id, school_id).await?;
 

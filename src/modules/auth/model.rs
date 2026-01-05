@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+use uuid::Uuid;
 use validator::Validate;
 
 use crate::modules::roles::model::{Permission, RoleWithPermissions};
@@ -10,6 +11,12 @@ use crate::modules::users::model::User;
 pub struct Claims {
     pub sub: String, // user_id
     pub email: String,
+    /// User's school_id for scoping (None for system admins)
+    pub school_id: Option<Uuid>,
+    /// Role IDs assigned to the user
+    pub role_ids: Vec<Uuid>,
+    /// Permission names granted to the user (derived from roles)
+    pub permissions: Vec<String>,
     pub exp: usize,
     pub iat: usize,
 }
@@ -122,6 +129,9 @@ mod tests {
         let claims = Claims {
             sub: "user-id-123".to_string(),
             email: "test@example.com".to_string(),
+            school_id: None,
+            role_ids: vec![],
+            permissions: vec!["users:read".to_string()],
             exp: 1234567890,
             iat: 1234567800,
         };
@@ -132,8 +142,7 @@ mod tests {
 
     #[test]
     fn test_claims_deserialize() {
-        let json =
-            r#"{"sub":"user-id-456","email":"user@test.com","exp":9999999999,"iat":9999999900}"#;
+        let json = r#"{"sub":"user-id-456","email":"user@test.com","school_id":null,"role_ids":[],"permissions":[],"exp":9999999999,"iat":9999999900}"#;
         let claims: Claims = serde_json::from_str(json).unwrap();
         assert_eq!(claims.sub, "user-id-456");
         assert_eq!(claims.email, "user@test.com");
@@ -146,6 +155,9 @@ mod tests {
         let claims = Claims {
             sub: "user-id-789".to_string(),
             email: "clone@example.com".to_string(),
+            school_id: None,
+            role_ids: vec![],
+            permissions: vec![],
             exp: 1234567890,
             iat: 1234567800,
         };

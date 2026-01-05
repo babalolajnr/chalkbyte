@@ -83,8 +83,22 @@ impl AuthService {
         }
 
         // No MFA, proceed with normal login
-        let access_token =
-            create_access_token(user_with_password.id, &user_with_password.email, jwt_config)?;
+        // Fetch roles and permissions first (needed for JWT)
+        let roles = roles_service::get_user_roles_internal(db, user_with_password.id).await?;
+        let permissions = roles_service::get_user_permissions(db, user_with_password.id).await?;
+
+        // Extract role IDs and permission names for JWT
+        let role_ids: Vec<Uuid> = roles.iter().map(|r| r.role.id).collect();
+        let permission_names: Vec<String> = permissions.iter().map(|p| p.name.clone()).collect();
+
+        let access_token = create_access_token(
+            user_with_password.id,
+            &user_with_password.email,
+            user_with_password.school_id,
+            role_ids,
+            permission_names,
+            jwt_config,
+        )?;
 
         let refresh_token =
             create_refresh_token(user_with_password.id, &user_with_password.email, jwt_config)?;
@@ -92,8 +106,7 @@ impl AuthService {
         // Track metrics
         metrics::track_jwt_issued();
 
-        // Fetch roles to determine primary role for metrics
-        let roles = roles_service::get_user_roles_internal(db, user_with_password.id).await?;
+        // Determine primary role for metrics
         let primary_role = roles
             .first()
             .map(|r| r.role.name.as_str())
@@ -122,9 +135,6 @@ impl AuthService {
             created_at: user_with_password.created_at,
             updated_at: user_with_password.updated_at,
         };
-
-        // Fetch custom roles and permissions
-        let permissions = roles_service::get_user_permissions(db, user.id).await?;
 
         Ok(Ok(LoginResponse {
             access_token,
@@ -166,8 +176,23 @@ impl AuthService {
         .fetch_one(db)
         .await?;
 
-        // Generate final access token
-        let access_token = create_access_token(user_id, &user.email, jwt_config)?;
+        // Fetch roles and permissions for JWT
+        let roles = roles_service::get_user_roles_internal(db, user.id).await?;
+        let permissions = roles_service::get_user_permissions(db, user.id).await?;
+
+        // Extract role IDs and permission names for JWT
+        let role_ids: Vec<Uuid> = roles.iter().map(|r| r.role.id).collect();
+        let permission_names: Vec<String> = permissions.iter().map(|p| p.name.clone()).collect();
+
+        // Generate final access token with roles and permissions
+        let access_token = create_access_token(
+            user_id,
+            &user.email,
+            user.school_id,
+            role_ids,
+            permission_names,
+            jwt_config,
+        )?;
 
         let refresh_token = create_refresh_token(user_id, &user.email, jwt_config)?;
 
@@ -179,10 +204,6 @@ impl AuthService {
             .bind(expires_at)
             .execute(db)
             .await?;
-
-        // Fetch custom roles and permissions
-        let roles = roles_service::get_user_roles_internal(db, user.id).await?;
-        let permissions = roles_service::get_user_permissions(db, user.id).await?;
 
         Ok(LoginResponse {
             access_token,
@@ -226,8 +247,23 @@ impl AuthService {
         .fetch_one(db)
         .await?;
 
-        // Generate final access token
-        let access_token = create_access_token(user_id, &user.email, jwt_config)?;
+        // Fetch roles and permissions for JWT
+        let roles = roles_service::get_user_roles_internal(db, user.id).await?;
+        let permissions = roles_service::get_user_permissions(db, user.id).await?;
+
+        // Extract role IDs and permission names for JWT
+        let role_ids: Vec<Uuid> = roles.iter().map(|r| r.role.id).collect();
+        let permission_names: Vec<String> = permissions.iter().map(|p| p.name.clone()).collect();
+
+        // Generate final access token with roles and permissions
+        let access_token = create_access_token(
+            user_id,
+            &user.email,
+            user.school_id,
+            role_ids,
+            permission_names,
+            jwt_config,
+        )?;
 
         let refresh_token = create_refresh_token(user_id, &user.email, jwt_config)?;
 
@@ -239,10 +275,6 @@ impl AuthService {
             .bind(expires_at)
             .execute(db)
             .await?;
-
-        // Fetch custom roles and permissions
-        let roles = roles_service::get_user_roles_internal(db, user.id).await?;
-        let permissions = roles_service::get_user_permissions(db, user.id).await?;
 
         Ok(LoginResponse {
             access_token,
@@ -418,8 +450,23 @@ impl AuthService {
         .fetch_one(db)
         .await?;
 
-        // Generate new access token
-        let access_token = create_access_token(user_id, &user.email, jwt_config)?;
+        // Fetch roles and permissions for new access token
+        let roles = roles_service::get_user_roles_internal(db, user.id).await?;
+        let permissions = roles_service::get_user_permissions(db, user.id).await?;
+
+        // Extract role IDs and permission names for JWT
+        let role_ids: Vec<Uuid> = roles.iter().map(|r| r.role.id).collect();
+        let permission_names: Vec<String> = permissions.iter().map(|p| p.name.clone()).collect();
+
+        // Generate new access token with roles and permissions
+        let access_token = create_access_token(
+            user_id,
+            &user.email,
+            user.school_id,
+            role_ids,
+            permission_names,
+            jwt_config,
+        )?;
 
         // Generate new refresh token (refresh token rotation)
         let new_refresh_token = create_refresh_token(user_id, &user.email, jwt_config)?;
@@ -440,10 +487,6 @@ impl AuthService {
             .bind(expires_at)
             .execute(db)
             .await?;
-
-        // Fetch custom roles and permissions
-        let roles = roles_service::get_user_roles_internal(db, user.id).await?;
-        let permissions = roles_service::get_user_permissions(db, user.id).await?;
 
         Ok(LoginResponse {
             access_token,
@@ -591,7 +634,7 @@ mod tests {
         };
 
         let result = AuthService::refresh_access_token(&db, refresh_dto, &jwt_config).await;
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "Refresh failed: {:?}", result.err());
 
         let response = result.unwrap();
         assert_eq!(response.user.email, email);

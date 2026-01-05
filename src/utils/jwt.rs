@@ -6,9 +6,21 @@ use crate::config::jwt::JwtConfig;
 use crate::modules::auth::model::{Claims, MfaTempClaims, RefreshTokenClaims};
 use crate::utils::errors::AppError;
 
+/// Creates an access token with embedded roles and permissions for permission-based access control.
+///
+/// # Arguments
+/// * `user_id` - The user's UUID
+/// * `email` - The user's email
+/// * `school_id` - Optional school ID for school-scoped users
+/// * `role_ids` - List of role IDs assigned to the user
+/// * `permissions` - List of permission names (e.g., "users:create", "schools:read")
+/// * `jwt_config` - JWT configuration
 pub fn create_access_token(
     user_id: Uuid,
     email: &str,
+    school_id: Option<Uuid>,
+    role_ids: Vec<Uuid>,
+    permissions: Vec<String>,
     jwt_config: &JwtConfig,
 ) -> Result<String, AppError> {
     let now = Utc::now().timestamp() as usize;
@@ -17,6 +29,9 @@ pub fn create_access_token(
     let claims = Claims {
         sub: user_id.to_string(),
         email: email.to_string(),
+        school_id,
+        role_ids,
+        permissions,
         exp,
         iat: now,
     };
@@ -134,8 +149,18 @@ mod tests {
         let jwt_config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
         let email = "test@example.com";
+        let school_id = Some(Uuid::new_v4());
+        let role_ids = vec![Uuid::new_v4()];
+        let permissions = vec!["users:read".to_string(), "users:create".to_string()];
 
-        let result = create_access_token(user_id, email, &jwt_config);
+        let result = create_access_token(
+            user_id,
+            email,
+            school_id,
+            role_ids.clone(),
+            permissions.clone(),
+            &jwt_config,
+        );
 
         assert!(result.is_ok());
         let token = result.unwrap();
@@ -147,14 +172,28 @@ mod tests {
         let jwt_config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
         let email = "test@example.com";
+        let school_id = Some(Uuid::new_v4());
+        let role_ids = vec![Uuid::new_v4()];
+        let permissions = vec!["users:read".to_string()];
 
-        let token = create_access_token(user_id, email, &jwt_config).unwrap();
+        let token = create_access_token(
+            user_id,
+            email,
+            school_id,
+            role_ids.clone(),
+            permissions.clone(),
+            &jwt_config,
+        )
+        .unwrap();
         let result = verify_token(&token, &jwt_config);
 
         assert!(result.is_ok());
         let claims = result.unwrap();
         assert_eq!(claims.email, email);
         assert_eq!(claims.sub, user_id.to_string());
+        assert_eq!(claims.school_id, school_id);
+        assert_eq!(claims.role_ids, role_ids);
+        assert_eq!(claims.permissions, permissions);
     }
 
     #[test]
@@ -173,7 +212,7 @@ mod tests {
         let user_id = Uuid::new_v4();
         let email = "test@example.com";
 
-        let token = create_access_token(user_id, email, &jwt_config).unwrap();
+        let token = create_access_token(user_id, email, None, vec![], vec![], &jwt_config).unwrap();
 
         let wrong_jwt_config = JwtConfig {
             secret: "different_secret_key".to_string(),
@@ -202,7 +241,7 @@ mod tests {
         let user_id = Uuid::new_v4();
         let email = "test@example.com";
 
-        let token = create_access_token(user_id, email, &jwt_config).unwrap();
+        let token = create_access_token(user_id, email, None, vec![], vec![], &jwt_config).unwrap();
         let claims = verify_token(&token, &jwt_config).unwrap();
 
         assert!(claims.exp > claims.iat);
@@ -218,7 +257,7 @@ mod tests {
         let user_id = Uuid::new_v4();
         let email = "test+special@example.co.uk";
 
-        let token = create_access_token(user_id, email, &jwt_config).unwrap();
+        let token = create_access_token(user_id, email, None, vec![], vec![], &jwt_config).unwrap();
         let claims = verify_token(&token, &jwt_config).unwrap();
 
         assert_eq!(claims.email, email);
@@ -249,8 +288,10 @@ mod tests {
         let email1 = "user1@example.com";
         let email2 = "user2@example.com";
 
-        let token1 = create_access_token(user_id1, email1, &jwt_config).unwrap();
-        let token2 = create_access_token(user_id2, email2, &jwt_config).unwrap();
+        let token1 =
+            create_access_token(user_id1, email1, None, vec![], vec![], &jwt_config).unwrap();
+        let token2 =
+            create_access_token(user_id2, email2, None, vec![], vec![], &jwt_config).unwrap();
 
         assert_ne!(token1, token2);
 
@@ -261,6 +302,40 @@ mod tests {
         assert_eq!(claims2.sub, user_id2.to_string());
         assert_eq!(claims1.email, email1);
         assert_eq!(claims2.email, email2);
+    }
+
+    #[test]
+    fn test_token_with_permissions() {
+        let jwt_config = get_test_jwt_config();
+        let user_id = Uuid::new_v4();
+        let email = "admin@example.com";
+        let school_id = Some(Uuid::new_v4());
+        let role_ids = vec![Uuid::new_v4(), Uuid::new_v4()];
+        let permissions = vec![
+            "users:create".to_string(),
+            "users:read".to_string(),
+            "users:update".to_string(),
+            "schools:read".to_string(),
+        ];
+
+        let token = create_access_token(
+            user_id,
+            email,
+            school_id,
+            role_ids.clone(),
+            permissions.clone(),
+            &jwt_config,
+        )
+        .unwrap();
+
+        let claims = verify_token(&token, &jwt_config).unwrap();
+
+        assert_eq!(claims.sub, user_id.to_string());
+        assert_eq!(claims.school_id, school_id);
+        assert_eq!(claims.role_ids.len(), 2);
+        assert_eq!(claims.permissions.len(), 4);
+        assert!(claims.permissions.contains(&"users:create".to_string()));
+        assert!(claims.permissions.contains(&"schools:read".to_string()));
     }
 
     #[test]
@@ -336,7 +411,8 @@ mod tests {
         let user_id = Uuid::new_v4();
         let email = "test@example.com";
 
-        let access_token = create_access_token(user_id, email, &jwt_config).unwrap();
+        let access_token =
+            create_access_token(user_id, email, None, vec![], vec![], &jwt_config).unwrap();
         let refresh_token = create_refresh_token(user_id, email, &jwt_config).unwrap();
 
         let access_claims = verify_token(&access_token, &jwt_config).unwrap();

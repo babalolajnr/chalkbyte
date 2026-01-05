@@ -1,9 +1,11 @@
 //! Role-based authorization middleware for Axum
 //!
-//! This module provides permission-based access control using the database
-//! to check user roles and permissions dynamically.
-
-#![allow(dead_code)]
+//! This module provides permission-based access control using JWT-embedded
+//! permissions. Since permissions are now embedded in the JWT token during login,
+//! most authorization checks can be done without database queries.
+//!
+//! For operations that require fresh permission data (e.g., after role changes),
+//! use the database-backed functions explicitly.
 
 use axum::{
     extract::{FromRequestParts, Request, State},
@@ -20,7 +22,67 @@ use crate::modules::users::service::UserService;
 use crate::state::AppState;
 use crate::utils::errors::AppError;
 
+// Re-export auth helpers for convenience
+pub use crate::utils::auth_helpers::{
+    get_admin_school_id, get_optional_school_id_for_resource_operation,
+    get_school_id_for_scoped_operation, get_school_id_with_override, verify_school_access,
+};
+
+// ============================================================================
+// JWT-Based Permission Checking (No DB queries - uses embedded permissions)
+// ============================================================================
+
+/// Middleware function that checks if the user has a specific permission from JWT claims.
+/// This is the preferred method as it doesn't require database queries.
+pub async fn require_permission_from_jwt(
+    State(state): State<AppState>,
+    mut req: Request,
+    next: Next,
+    permission_name: &str,
+) -> Result<Response, AppError> {
+    let (mut parts, body) = req.into_parts();
+
+    let auth_user = AuthUser::from_request_parts(&mut parts, &state).await?;
+
+    if !auth_user.has_permission(permission_name) {
+        return Err(AppError::forbidden(format!(
+            "Access denied. Missing required permission: {}",
+            permission_name
+        )));
+    }
+
+    req = Request::from_parts(parts, body);
+    Ok(next.run(req).await)
+}
+
+/// Middleware function that checks if the user has any of the specified permissions from JWT.
+pub async fn require_any_permission_from_jwt(
+    State(state): State<AppState>,
+    mut req: Request,
+    next: Next,
+    permissions: &[&str],
+) -> Result<Response, AppError> {
+    let (mut parts, body) = req.into_parts();
+
+    let auth_user = AuthUser::from_request_parts(&mut parts, &state).await?;
+
+    if !auth_user.has_any_permission(permissions) {
+        return Err(AppError::forbidden(format!(
+            "Access denied. Missing required permissions: {:?}",
+            permissions
+        )));
+    }
+
+    req = Request::from_parts(parts, body);
+    Ok(next.run(req).await)
+}
+
+// ============================================================================
+// Database-Backed Permission Checking (Fresh data, use when needed)
+// ============================================================================
+
 /// Middleware function that checks if the authenticated user has one of the required roles.
+/// Uses database to get fresh role data.
 pub async fn require_roles(
     State(state): State<AppState>,
     mut req: Request,
@@ -29,15 +91,11 @@ pub async fn require_roles(
 ) -> Result<Response, AppError> {
     let (mut parts, body) = req.into_parts();
 
-    let auth_user = match AuthUser::from_request_parts(&mut parts, &state).await {
-        Ok(user) => user,
-        Err(e) => return Err(e),
-    };
+    let auth_user = AuthUser::from_request_parts(&mut parts, &state).await?;
 
-    let user_id = Uuid::parse_str(&auth_user.0.sub)
-        .map_err(|_| AppError::unauthorized("Invalid user ID in token".to_string()))?;
+    let user_id = auth_user.user_id()?;
 
-    // Check if user has any of the allowed roles
+    // Check if user has any of the allowed roles (from database for fresh data)
     let has_role = UserService::user_has_any_role(&state.db, user_id, &allowed_role_ids).await?;
 
     if !has_role {
@@ -51,6 +109,7 @@ pub async fn require_roles(
 }
 
 /// Middleware function that checks if the user has a specific permission.
+/// Uses database for fresh permission data - use when permissions may have changed.
 pub async fn require_permission(
     State(state): State<AppState>,
     mut req: Request,
@@ -59,15 +118,11 @@ pub async fn require_permission(
 ) -> Result<Response, AppError> {
     let (mut parts, body) = req.into_parts();
 
-    let auth_user = match AuthUser::from_request_parts(&mut parts, &state).await {
-        Ok(user) => user,
-        Err(e) => return Err(e),
-    };
+    let auth_user = AuthUser::from_request_parts(&mut parts, &state).await?;
 
-    let user_id = Uuid::parse_str(&auth_user.0.sub)
-        .map_err(|_| AppError::unauthorized("Invalid user ID in token".to_string()))?;
+    let user_id = auth_user.user_id()?;
 
-    // Check if user has the permission
+    // Check permission from database for fresh data
     let has_permission =
         roles_service::user_has_permission(&state.db, user_id, permission_name).await?;
 
@@ -82,7 +137,11 @@ pub async fn require_permission(
     Ok(next.run(req).await)
 }
 
-/// Helper function to create a middleware closure for system admin only routes
+// ============================================================================
+// Role-Based Middleware Helpers (Database-backed for backward compatibility)
+// ============================================================================
+
+/// Helper function for system admin only routes
 pub async fn require_system_admin(
     State(state): State<AppState>,
     req: Request,
@@ -128,7 +187,12 @@ pub async fn require_teacher(State(state): State<AppState>, req: Request, next: 
     }
 }
 
-/// Simple role checker extractor for system admin requirement
+// ============================================================================
+// Extractors (Use JWT-embedded data by default)
+// ============================================================================
+
+/// Simple role checker extractor for system admin requirement.
+/// Uses JWT-embedded role_ids for fast checking.
 #[derive(Debug, Clone)]
 pub struct RequireSystemAdmin(pub Uuid);
 
@@ -140,9 +204,14 @@ impl FromRequestParts<AppState> for RequireSystemAdmin {
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
         let auth_user = AuthUser::from_request_parts(parts, state).await?;
-        let user_id = Uuid::parse_str(&auth_user.0.sub)
-            .map_err(|_| AppError::unauthorized("Invalid user ID in token".to_string()))?;
+        let user_id = auth_user.user_id()?;
 
+        // Check from JWT claims first (fast path)
+        if auth_user.has_role(&system_roles::SYSTEM_ADMIN) {
+            return Ok(RequireSystemAdmin(user_id));
+        }
+
+        // Fallback to database check for fresh data
         let is_sys_admin = UserService::is_system_admin(&state.db, user_id).await?;
 
         if !is_sys_admin {
@@ -155,7 +224,8 @@ impl FromRequestParts<AppState> for RequireSystemAdmin {
     }
 }
 
-/// Extractor for admin-level access (SystemAdmin or Admin)
+/// Extractor for admin-level access (SystemAdmin or Admin).
+/// Uses JWT-embedded role_ids for fast checking.
 #[derive(Debug, Clone)]
 pub struct RequireAdmin(pub Uuid);
 
@@ -167,9 +237,14 @@ impl FromRequestParts<AppState> for RequireAdmin {
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
         let auth_user = AuthUser::from_request_parts(parts, state).await?;
-        let user_id = Uuid::parse_str(&auth_user.0.sub)
-            .map_err(|_| AppError::unauthorized("Invalid user ID in token".to_string()))?;
+        let user_id = auth_user.user_id()?;
 
+        // Check from JWT claims first (fast path)
+        if auth_user.has_any_role(&[system_roles::SYSTEM_ADMIN, system_roles::ADMIN]) {
+            return Ok(RequireAdmin(user_id));
+        }
+
+        // Fallback to database check for fresh data
         let has_role = UserService::user_has_any_role(
             &state.db,
             user_id,
@@ -187,7 +262,8 @@ impl FromRequestParts<AppState> for RequireAdmin {
     }
 }
 
-/// Extractor for teacher-level access (SystemAdmin, Admin, or Teacher)
+/// Extractor for teacher-level access (SystemAdmin, Admin, or Teacher).
+/// Uses JWT-embedded role_ids for fast checking.
 #[derive(Debug, Clone)]
 pub struct RequireTeacher(pub Uuid);
 
@@ -199,9 +275,18 @@ impl FromRequestParts<AppState> for RequireTeacher {
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
         let auth_user = AuthUser::from_request_parts(parts, state).await?;
-        let user_id = Uuid::parse_str(&auth_user.0.sub)
-            .map_err(|_| AppError::unauthorized("Invalid user ID in token".to_string()))?;
+        let user_id = auth_user.user_id()?;
 
+        // Check from JWT claims first (fast path)
+        if auth_user.has_any_role(&[
+            system_roles::SYSTEM_ADMIN,
+            system_roles::ADMIN,
+            system_roles::TEACHER,
+        ]) {
+            return Ok(RequireTeacher(user_id));
+        }
+
+        // Fallback to database check for fresh data
         let has_role = UserService::user_has_any_role(
             &state.db,
             user_id,
@@ -223,11 +308,26 @@ impl FromRequestParts<AppState> for RequireTeacher {
     }
 }
 
-/// Extractor that checks for a specific permission
-#[derive(Debug, Clone)]
-pub struct RequirePermission<const N: usize>(pub Uuid);
+// ============================================================================
+// Helper Functions
+// ============================================================================
 
-/// Helper function to check if a user has any of the specified roles (async version)
+/// Get the user ID from auth claims
+pub fn get_user_id_from_auth(auth_user: &AuthUser) -> Result<Uuid, AppError> {
+    auth_user.user_id()
+}
+
+/// Check if user has any of the specified roles using JWT claims (fast, no DB)
+pub fn check_user_has_any_role_jwt(auth_user: &AuthUser, role_ids: &[Uuid]) -> bool {
+    auth_user.has_any_role(role_ids)
+}
+
+/// Check if user has a specific permission using JWT claims (fast, no DB)
+pub fn check_user_has_permission_jwt(auth_user: &AuthUser, permission_name: &str) -> bool {
+    auth_user.has_permission(permission_name)
+}
+
+/// Helper function to check if a user has any of the specified roles (database query)
 pub async fn check_user_has_any_role(
     db: &sqlx::PgPool,
     user_id: Uuid,
@@ -236,7 +336,7 @@ pub async fn check_user_has_any_role(
     UserService::user_has_any_role(db, user_id, role_ids).await
 }
 
-/// Helper function to check if a user has a specific permission (async version)
+/// Helper function to check if a user has a specific permission (database query)
 pub async fn check_user_has_permission(
     db: &sqlx::PgPool,
     user_id: Uuid,
@@ -245,12 +345,17 @@ pub async fn check_user_has_permission(
     roles_service::user_has_permission(db, user_id, permission_name).await
 }
 
-/// Check if user is a system admin
+/// Check if user is a system admin (database query)
 pub async fn is_system_admin(db: &sqlx::PgPool, user_id: Uuid) -> Result<bool, AppError> {
     UserService::is_system_admin(db, user_id).await
 }
 
-/// Check if user is an admin (school admin or system admin)
+/// Check if user is a system admin using JWT claims (fast, no DB)
+pub fn is_system_admin_jwt(auth_user: &AuthUser) -> bool {
+    auth_user.has_role(&system_roles::SYSTEM_ADMIN)
+}
+
+/// Check if user is an admin (school admin or system admin) using database
 pub async fn is_admin(db: &sqlx::PgPool, user_id: Uuid) -> Result<bool, AppError> {
     UserService::user_has_any_role(
         db,
@@ -260,7 +365,12 @@ pub async fn is_admin(db: &sqlx::PgPool, user_id: Uuid) -> Result<bool, AppError
     .await
 }
 
-/// Check if user is at least a teacher (teacher, admin, or system admin)
+/// Check if user is an admin using JWT claims (fast, no DB)
+pub fn is_admin_jwt(auth_user: &AuthUser) -> bool {
+    auth_user.has_any_role(&[system_roles::SYSTEM_ADMIN, system_roles::ADMIN])
+}
+
+/// Check if user is at least a teacher (teacher, admin, or system admin) using database
 pub async fn is_teacher_or_above(db: &sqlx::PgPool, user_id: Uuid) -> Result<bool, AppError> {
     UserService::user_has_any_role(
         db,
@@ -274,15 +384,36 @@ pub async fn is_teacher_or_above(db: &sqlx::PgPool, user_id: Uuid) -> Result<boo
     .await
 }
 
-/// Get the user ID from auth claims
-pub fn get_user_id_from_auth(auth_user: &AuthUser) -> Result<Uuid, AppError> {
-    Uuid::parse_str(&auth_user.0.sub)
-        .map_err(|_| AppError::unauthorized("Invalid user ID in token".to_string()))
+/// Check if user is at least a teacher using JWT claims (fast, no DB)
+pub fn is_teacher_or_above_jwt(auth_user: &AuthUser) -> bool {
+    auth_user.has_any_role(&[
+        system_roles::SYSTEM_ADMIN,
+        system_roles::ADMIN,
+        system_roles::TEACHER,
+    ])
+}
+
+/// Get the school_id from auth user (from JWT claims)
+pub fn get_school_id_from_auth(auth_user: &AuthUser) -> Option<Uuid> {
+    auth_user.school_id()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::auth::model::Claims;
+
+    fn create_test_auth_user(role_ids: Vec<Uuid>, permissions: Vec<String>) -> AuthUser {
+        AuthUser(Claims {
+            sub: Uuid::new_v4().to_string(),
+            email: "test@example.com".to_string(),
+            school_id: None,
+            role_ids,
+            permissions,
+            exp: 9999999999,
+            iat: 1234567890,
+        })
+    }
 
     #[test]
     fn test_system_role_ids() {
@@ -315,12 +446,13 @@ mod tests {
 
     #[test]
     fn test_get_user_id_from_auth() {
-        use crate::modules::auth::model::Claims;
-
         let user_id = Uuid::new_v4();
         let claims = Claims {
             sub: user_id.to_string(),
             email: "test@example.com".to_string(),
+            school_id: None,
+            role_ids: vec![],
+            permissions: vec![],
             exp: 9999999999,
             iat: 1234567890,
         };
@@ -333,11 +465,12 @@ mod tests {
 
     #[test]
     fn test_get_user_id_from_auth_invalid() {
-        use crate::modules::auth::model::Claims;
-
         let claims = Claims {
             sub: "not-a-uuid".to_string(),
             email: "test@example.com".to_string(),
+            school_id: None,
+            role_ids: vec![],
+            permissions: vec![],
             exp: 9999999999,
             iat: 1234567890,
         };
@@ -345,5 +478,100 @@ mod tests {
 
         let result = get_user_id_from_auth(&auth_user);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_is_system_admin_jwt() {
+        let auth_user = create_test_auth_user(vec![system_roles::SYSTEM_ADMIN], vec![]);
+        assert!(is_system_admin_jwt(&auth_user));
+
+        let non_admin = create_test_auth_user(vec![system_roles::TEACHER], vec![]);
+        assert!(!is_system_admin_jwt(&non_admin));
+    }
+
+    #[test]
+    fn test_is_admin_jwt() {
+        let sys_admin = create_test_auth_user(vec![system_roles::SYSTEM_ADMIN], vec![]);
+        assert!(is_admin_jwt(&sys_admin));
+
+        let admin = create_test_auth_user(vec![system_roles::ADMIN], vec![]);
+        assert!(is_admin_jwt(&admin));
+
+        let teacher = create_test_auth_user(vec![system_roles::TEACHER], vec![]);
+        assert!(!is_admin_jwt(&teacher));
+    }
+
+    #[test]
+    fn test_is_teacher_or_above_jwt() {
+        let sys_admin = create_test_auth_user(vec![system_roles::SYSTEM_ADMIN], vec![]);
+        assert!(is_teacher_or_above_jwt(&sys_admin));
+
+        let admin = create_test_auth_user(vec![system_roles::ADMIN], vec![]);
+        assert!(is_teacher_or_above_jwt(&admin));
+
+        let teacher = create_test_auth_user(vec![system_roles::TEACHER], vec![]);
+        assert!(is_teacher_or_above_jwt(&teacher));
+
+        let student = create_test_auth_user(vec![system_roles::STUDENT], vec![]);
+        assert!(!is_teacher_or_above_jwt(&student));
+    }
+
+    #[test]
+    fn test_check_user_has_permission_jwt() {
+        let auth_user = create_test_auth_user(
+            vec![],
+            vec!["users:read".to_string(), "users:create".to_string()],
+        );
+
+        assert!(check_user_has_permission_jwt(&auth_user, "users:read"));
+        assert!(check_user_has_permission_jwt(&auth_user, "users:create"));
+        assert!(!check_user_has_permission_jwt(&auth_user, "users:delete"));
+    }
+
+    #[test]
+    fn test_check_user_has_any_role_jwt() {
+        let auth_user = create_test_auth_user(vec![system_roles::ADMIN], vec![]);
+
+        assert!(check_user_has_any_role_jwt(
+            &auth_user,
+            &[system_roles::SYSTEM_ADMIN, system_roles::ADMIN]
+        ));
+        assert!(!check_user_has_any_role_jwt(
+            &auth_user,
+            &[system_roles::TEACHER, system_roles::STUDENT]
+        ));
+    }
+
+    #[test]
+    fn test_get_school_id_from_auth() {
+        let school_id = Uuid::new_v4();
+        let claims = Claims {
+            sub: Uuid::new_v4().to_string(),
+            email: "test@example.com".to_string(),
+            school_id: Some(school_id),
+            role_ids: vec![system_roles::ADMIN],
+            permissions: vec![],
+            exp: 9999999999,
+            iat: 1234567890,
+        };
+        let auth_user = AuthUser(claims);
+
+        assert_eq!(get_school_id_from_auth(&auth_user), Some(school_id));
+    }
+
+    #[test]
+    fn test_get_school_id_from_auth_system_admin() {
+        let claims = Claims {
+            sub: Uuid::new_v4().to_string(),
+            email: "sysadmin@example.com".to_string(),
+            school_id: None,
+            role_ids: vec![system_roles::SYSTEM_ADMIN],
+            permissions: vec![],
+            exp: 9999999999,
+            iat: 1234567890,
+        };
+        let auth_user = AuthUser(claims);
+
+        assert_eq!(get_school_id_from_auth(&auth_user), None);
     }
 }

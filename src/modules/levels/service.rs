@@ -144,6 +144,37 @@ impl LevelService {
         Ok(level)
     }
 
+    /// Get level by ID without school filtering (for system admins)
+    #[instrument]
+    pub async fn get_level_by_id_no_school_filter(
+        db: &PgPool,
+        level_id: Uuid,
+    ) -> Result<LevelWithStats, AppError> {
+        let student_role_id = system_roles::STUDENT;
+        let level = sqlx::query_as::<_, LevelWithStats>(
+            r#"SELECT
+                l.id,
+                l.name,
+                l.description,
+                l.school_id,
+                l.created_at,
+                l.updated_at,
+                COUNT(DISTINCT u.id) as student_count
+               FROM levels l
+               LEFT JOIN users u ON u.level_id = l.id
+               LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role_id = $2
+               WHERE l.id = $1
+               GROUP BY l.id, l.name, l.description, l.school_id, l.created_at, l.updated_at"#,
+        )
+        .bind(level_id)
+        .bind(student_role_id)
+        .fetch_optional(db)
+        .await?
+        .ok_or_else(|| AppError::not_found(anyhow::anyhow!("Level not found")))?;
+
+        Ok(level)
+    }
+
     #[instrument]
     pub async fn update_level(
         db: &PgPool,
@@ -193,6 +224,53 @@ impl LevelService {
         Ok(level)
     }
 
+    /// Update level without school filtering (for system admins)
+    #[instrument]
+    pub async fn update_level_no_school_filter(
+        db: &PgPool,
+        level_id: Uuid,
+        dto: UpdateLevelDto,
+    ) -> Result<Level, AppError> {
+        let existing_level = sqlx::query_as::<_, Level>(
+            "SELECT id, name, description, school_id, created_at, updated_at FROM levels WHERE id = $1",
+        )
+        .bind(level_id)
+        .fetch_optional(db)
+        .await?
+        .ok_or_else(|| AppError::not_found(anyhow::anyhow!("Level not found")))?;
+
+        let name = dto.name.unwrap_or(existing_level.name);
+        let description = if dto.description.is_some() {
+            dto.description
+        } else {
+            existing_level.description
+        };
+
+        let level = sqlx::query_as::<_, Level>(
+            r#"UPDATE levels
+               SET name = $1, description = $2, updated_at = NOW()
+               WHERE id = $3
+               RETURNING id, name, description, school_id, created_at, updated_at"#,
+        )
+        .bind(&name)
+        .bind(&description)
+        .bind(level_id)
+        .fetch_one(db)
+        .await
+        .map_err(|e| {
+            if let sqlx::Error::Database(db_err) = &e {
+                if db_err.is_unique_violation() {
+                    return AppError::bad_request(anyhow::anyhow!(
+                        "A level with this name already exists in this school"
+                    ));
+                }
+            }
+            AppError::from(e)
+        })?;
+
+        Ok(level)
+    }
+
     #[instrument]
     pub async fn delete_level(
         db: &PgPool,
@@ -202,6 +280,24 @@ impl LevelService {
         let result = sqlx::query("DELETE FROM levels WHERE id = $1 AND school_id = $2")
             .bind(level_id)
             .bind(school_id)
+            .execute(db)
+            .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::not_found(anyhow::anyhow!("Level not found")));
+        }
+
+        Ok(())
+    }
+
+    /// Delete level without school filtering (for system admins)
+    #[instrument]
+    pub async fn delete_level_no_school_filter(
+        db: &PgPool,
+        level_id: Uuid,
+    ) -> Result<(), AppError> {
+        let result = sqlx::query("DELETE FROM levels WHERE id = $1")
+            .bind(level_id)
             .execute(db)
             .await?;
 
@@ -274,6 +370,61 @@ impl LevelService {
         })
     }
 
+    /// Assign students to level without school filtering (for system admins)
+    #[instrument]
+    pub async fn assign_students_to_level_no_school_filter(
+        db: &PgPool,
+        level_id: Uuid,
+        dto: AssignStudentsToLevelDto,
+    ) -> Result<BulkAssignResponse, AppError> {
+        let level_exists =
+            sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM levels WHERE id = $1)")
+                .bind(level_id)
+                .fetch_one(db)
+                .await?;
+
+        if !level_exists {
+            return Err(AppError::not_found(anyhow::anyhow!("Level not found")));
+        }
+
+        let mut assigned_count = 0;
+        let mut failed_ids = Vec::new();
+
+        let student_role_id = system_roles::STUDENT;
+        for student_id in dto.student_ids {
+            let is_student = sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS(SELECT 1 FROM user_roles WHERE user_id = $1 AND role_id = $2)",
+            )
+            .bind(student_id)
+            .bind(student_role_id)
+            .fetch_one(db)
+            .await
+            .unwrap_or(false);
+
+            if !is_student {
+                failed_ids.push(student_id);
+                continue;
+            }
+
+            let result =
+                sqlx::query(r#"UPDATE users SET level_id = $1, updated_at = NOW() WHERE id = $2"#)
+                    .bind(level_id)
+                    .bind(student_id)
+                    .execute(db)
+                    .await;
+
+            match result {
+                Ok(res) if res.rows_affected() > 0 => assigned_count += 1,
+                _ => failed_ids.push(student_id),
+            }
+        }
+
+        Ok(BulkAssignResponse {
+            assigned_count,
+            failed_ids,
+        })
+    }
+
     #[instrument]
     pub async fn move_student_to_level(
         db: &PgPool,
@@ -331,6 +482,52 @@ impl LevelService {
         Ok(())
     }
 
+    /// Move student to level without school filtering (for system admins)
+    #[instrument]
+    pub async fn move_student_to_level_no_school_filter(
+        db: &PgPool,
+        student_id: Uuid,
+        dto: MoveStudentToLevelDto,
+    ) -> Result<(), AppError> {
+        if let Some(new_level_id) = dto.level_id {
+            let level_exists =
+                sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM levels WHERE id = $1)")
+                    .bind(new_level_id)
+                    .fetch_one(db)
+                    .await?;
+
+            if !level_exists {
+                return Err(AppError::not_found(anyhow::anyhow!("Level not found")));
+            }
+        }
+
+        let student_role_id = system_roles::STUDENT;
+        let is_student = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM user_roles WHERE user_id = $1 AND role_id = $2)",
+        )
+        .bind(student_id)
+        .bind(student_role_id)
+        .fetch_one(db)
+        .await?;
+
+        if !is_student {
+            return Err(AppError::not_found(anyhow::anyhow!("Student not found")));
+        }
+
+        let result =
+            sqlx::query(r#"UPDATE users SET level_id = $1, updated_at = NOW() WHERE id = $2"#)
+                .bind(dto.level_id)
+                .bind(student_id)
+                .execute(db)
+                .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::not_found(anyhow::anyhow!("Student not found")));
+        }
+
+        Ok(())
+    }
+
     #[instrument]
     pub async fn get_students_in_level(
         db: &PgPool,
@@ -359,6 +556,38 @@ impl LevelService {
         )
         .bind(level_id)
         .bind(school_id)
+        .bind(student_role_id)
+        .fetch_all(db)
+        .await?;
+
+        Ok(students)
+    }
+
+    /// Get students in level without school filtering (for system admins)
+    #[instrument]
+    pub async fn get_students_in_level_no_school_filter(
+        db: &PgPool,
+        level_id: Uuid,
+    ) -> Result<Vec<crate::modules::users::model::User>, AppError> {
+        let level_exists =
+            sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM levels WHERE id = $1)")
+                .bind(level_id)
+                .fetch_one(db)
+                .await?;
+
+        if !level_exists {
+            return Err(AppError::not_found(anyhow::anyhow!("Level not found")));
+        }
+
+        let student_role_id = system_roles::STUDENT;
+        let students = sqlx::query_as::<_, crate::modules::users::model::User>(
+            r#"SELECT u.id, u.first_name, u.last_name, u.email, u.school_id, u.level_id, u.branch_id, u.date_of_birth, u.grade_level, u.created_at, u.updated_at
+               FROM users u
+               INNER JOIN user_roles ur ON ur.user_id = u.id AND ur.role_id = $2
+               WHERE u.level_id = $1
+               ORDER BY u.last_name, u.first_name"#,
+        )
+        .bind(level_id)
         .bind(student_role_id)
         .fetch_all(db)
         .await?;
@@ -402,6 +631,38 @@ impl LevelService {
             return Err(AppError::not_found(anyhow::anyhow!(
                 "Student not found or not in this school"
             )));
+        }
+
+        Ok(())
+    }
+
+    /// Remove student from level without school filtering (for system admins)
+    #[instrument]
+    pub async fn remove_student_from_level_no_school_filter(
+        db: &PgPool,
+        student_id: Uuid,
+    ) -> Result<(), AppError> {
+        let student_role_id = system_roles::STUDENT;
+        let is_student = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM user_roles WHERE user_id = $1 AND role_id = $2)",
+        )
+        .bind(student_id)
+        .bind(student_role_id)
+        .fetch_one(db)
+        .await?;
+
+        if !is_student {
+            return Err(AppError::not_found(anyhow::anyhow!("Student not found")));
+        }
+
+        let result =
+            sqlx::query(r#"UPDATE users SET level_id = NULL, updated_at = NOW() WHERE id = $1"#)
+                .bind(student_id)
+                .execute(db)
+                .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::not_found(anyhow::anyhow!("Student not found")));
         }
 
         Ok(())
@@ -456,6 +717,7 @@ mod tests {
         let dto = CreateLevelDto {
             name: "Grade 10".to_string(),
             description: Some("Tenth grade level".to_string()),
+            school_id: None,
         };
 
         let result = LevelService::create_level(&pool, school_id, dto).await;
@@ -474,6 +736,7 @@ mod tests {
         let dto = CreateLevelDto {
             name: "Grade 10".to_string(),
             description: None,
+            school_id: None,
         };
 
         LevelService::create_level(&pool, school_id, dto)
@@ -483,6 +746,7 @@ mod tests {
         let dto2 = CreateLevelDto {
             name: "Grade 10".to_string(),
             description: None,
+            school_id: None,
         };
 
         let result = LevelService::create_level(&pool, school_id, dto2).await;
@@ -500,11 +764,13 @@ mod tests {
         let dto = CreateLevelDto {
             name: "Grade 10".to_string(),
             description: None,
+            school_id: None,
         };
 
         let dto2 = CreateLevelDto {
             name: "Grade 10".to_string(),
             description: None,
+            school_id: None,
         };
 
         let result1 = LevelService::create_level(&pool, school1_id, dto).await;
@@ -521,10 +787,12 @@ mod tests {
         let dto1 = CreateLevelDto {
             name: "Grade 9".to_string(),
             description: None,
+            school_id: None,
         };
         let dto2 = CreateLevelDto {
             name: "Grade 10".to_string(),
             description: None,
+            school_id: None,
         };
 
         LevelService::create_level(&pool, school_id, dto1)
@@ -536,6 +804,7 @@ mod tests {
 
         let filters = LevelFilterParams {
             name: None,
+            school_id: None,
             pagination: PaginationParams {
                 limit: Some(10),
                 offset: Some(0),
@@ -558,10 +827,12 @@ mod tests {
         let dto1 = CreateLevelDto {
             name: "Primary Grade 1".to_string(),
             description: None,
+            school_id: None,
         };
         let dto2 = CreateLevelDto {
             name: "Secondary Grade 10".to_string(),
             description: None,
+            school_id: None,
         };
 
         LevelService::create_level(&pool, school_id, dto1)
@@ -573,6 +844,7 @@ mod tests {
 
         let filters = LevelFilterParams {
             name: Some("Primary".to_string()),
+            school_id: None,
             pagination: PaginationParams {
                 limit: Some(10),
                 offset: Some(0),
@@ -596,6 +868,7 @@ mod tests {
             let dto = CreateLevelDto {
                 name: format!("Grade {}", i),
                 description: None,
+                school_id: None,
             };
             LevelService::create_level(&pool, school_id, dto)
                 .await
@@ -604,6 +877,7 @@ mod tests {
 
         let filters = LevelFilterParams {
             name: None,
+            school_id: None,
             pagination: PaginationParams {
                 limit: Some(2),
                 offset: Some(0),
@@ -627,6 +901,7 @@ mod tests {
         let dto = CreateLevelDto {
             name: "Grade 10".to_string(),
             description: Some("Test description".to_string()),
+            school_id: None,
         };
 
         let created = LevelService::create_level(&pool, school_id, dto)
@@ -662,6 +937,7 @@ mod tests {
         let dto = CreateLevelDto {
             name: "Grade 10".to_string(),
             description: None,
+            school_id: None,
         };
 
         let created = LevelService::create_level(&pool, school1_id, dto)
@@ -682,6 +958,7 @@ mod tests {
         let dto = CreateLevelDto {
             name: "Grade 10".to_string(),
             description: Some("Original description".to_string()),
+            school_id: None,
         };
 
         let created = LevelService::create_level(&pool, school_id, dto)
@@ -708,6 +985,7 @@ mod tests {
         let dto = CreateLevelDto {
             name: "Grade 10".to_string(),
             description: Some("Original description".to_string()),
+            school_id: None,
         };
 
         let created = LevelService::create_level(&pool, school_id, dto)
@@ -754,6 +1032,7 @@ mod tests {
         let dto = CreateLevelDto {
             name: "Grade 10".to_string(),
             description: None,
+            school_id: None,
         };
 
         let created = LevelService::create_level(&pool, school_id, dto)
@@ -787,6 +1066,7 @@ mod tests {
         let dto = CreateLevelDto {
             name: "Grade 10".to_string(),
             description: None,
+            school_id: None,
         };
         let level = LevelService::create_level(&pool, school_id, dto)
             .await
@@ -817,6 +1097,7 @@ mod tests {
         let dto = CreateLevelDto {
             name: "Grade 10".to_string(),
             description: None,
+            school_id: None,
         };
         let level = LevelService::create_level(&pool, school_id, dto)
             .await
@@ -871,6 +1152,7 @@ mod tests {
             CreateLevelDto {
                 name: "Grade 9".to_string(),
                 description: None,
+                school_id: None,
             },
         )
         .await
@@ -882,6 +1164,7 @@ mod tests {
             CreateLevelDto {
                 name: "Grade 10".to_string(),
                 description: None,
+                school_id: None,
             },
         )
         .await
@@ -927,6 +1210,7 @@ mod tests {
             CreateLevelDto {
                 name: "Grade 10".to_string(),
                 description: None,
+                school_id: None,
             },
         )
         .await
@@ -964,6 +1248,7 @@ mod tests {
             CreateLevelDto {
                 name: "Grade 10".to_string(),
                 description: None,
+                school_id: None,
             },
         )
         .await
@@ -1014,6 +1299,7 @@ mod tests {
             CreateLevelDto {
                 name: "Grade 10".to_string(),
                 description: None,
+                school_id: None,
             },
         )
         .await
@@ -1066,6 +1352,7 @@ mod tests {
             CreateLevelDto {
                 name: "Grade 10".to_string(),
                 description: None,
+                school_id: None,
             },
         )
         .await
