@@ -340,7 +340,7 @@ impl UserService {
         let school = if let Some(school_id) = user.school_id {
             sqlx::query_as!(
                 School,
-                r#"SELECT id, name, address FROM schools WHERE id = $1"#,
+                r#"SELECT id, name, address, created_at, updated_at FROM schools WHERE id = $1"#,
                 school_id
             )
             .fetch_optional(db)

@@ -21,7 +21,7 @@ impl SchoolService {
 
         let school = sqlx::query_as::<_, School>(
             "INSERT INTO schools (name, address) VALUES ($1, $2)
-             RETURNING id, name, address",
+             RETURNING id, name, address, created_at, updated_at",
         )
         .bind(&dto.name)
         .bind(&dto.address)
@@ -88,7 +88,8 @@ impl SchoolService {
             AppError::from(e)
         })?;
 
-        let mut data_query = String::from("SELECT id, name, address FROM schools WHERE 1=1");
+        let mut data_query =
+            String::from("SELECT id, name, address, created_at, updated_at FROM schools WHERE 1=1");
         data_query.push_str(&where_clause);
         data_query.push_str(" ORDER BY created_at DESC");
         data_query.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
@@ -127,19 +128,20 @@ impl SchoolService {
     pub async fn get_school_by_id(db: &PgPool, school_id: Uuid) -> Result<School, AppError> {
         debug!("Fetching school by ID");
 
-        let school =
-            sqlx::query_as::<_, School>("SELECT id, name, address FROM schools WHERE id = $1")
-                .bind(school_id)
-                .fetch_optional(db)
-                .await
-                .map_err(|e| {
-                    error!(school.id = %school_id, error = %e, "Database error fetching school");
-                    AppError::from(e)
-                })?
-                .ok_or_else(|| {
-                    debug!(school.id = %school_id, "School not found");
-                    AppError::not_found(anyhow::anyhow!("School not found"))
-                })?;
+        let school = sqlx::query_as::<_, School>(
+            "SELECT id, name, address, created_at, updated_at FROM schools WHERE id = $1",
+        )
+        .bind(school_id)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| {
+            error!(school.id = %school_id, error = %e, "Database error fetching school");
+            AppError::from(e)
+        })?
+        .ok_or_else(|| {
+            debug!(school.id = %school_id, "School not found");
+            AppError::not_found(anyhow::anyhow!("School not found"))
+        })?;
 
         debug!(school.name = %school.name, "School found");
 
@@ -356,19 +358,20 @@ impl SchoolService {
     ) -> Result<SchoolFullInfo, AppError> {
         debug!("Fetching full school information with statistics");
 
-        let school =
-            sqlx::query_as::<_, School>("SELECT id, name, address FROM schools WHERE id = $1")
-                .bind(school_id)
-                .fetch_optional(db)
-                .await
-                .map_err(|e| {
-                    error!(school.id = %school_id, error = %e, "Database error fetching school");
-                    AppError::from(e)
-                })?
-                .ok_or_else(|| {
-                    debug!(school.id = %school_id, "School not found");
-                    AppError::not_found(anyhow::anyhow!("School not found"))
-                })?;
+        let school = sqlx::query_as::<_, School>(
+            "SELECT id, name, address, created_at, updated_at FROM schools WHERE id = $1",
+        )
+        .bind(school_id)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| {
+            error!(school.id = %school_id, error = %e, "Database error fetching school");
+            AppError::from(e)
+        })?
+        .ok_or_else(|| {
+            debug!(school.id = %school_id, "School not found");
+            AppError::not_found(anyhow::anyhow!("School not found"))
+        })?;
 
         debug!(school.name = %school.name, "School found, fetching statistics");
 

@@ -40,6 +40,8 @@ pub struct School {
     pub id: Uuid,
     pub name: String,
     pub address: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -269,6 +271,8 @@ mod tests {
             id: Uuid::new_v4(),
             name: "Test School".to_string(),
             address: Some("123 Main St".to_string()),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
         };
 
         let serialized = serde_json::to_string(&school).unwrap();

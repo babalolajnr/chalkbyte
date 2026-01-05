@@ -60,7 +60,7 @@ services:
 
   # OpenTelemetry Collector - receives traces, metrics, and logs
   otel-collector:
-    profiles: ["observability", "all", "dev"]
+    profiles: ["observability", "all"]
     image: otel/opentelemetry-collector-contrib:0.91.0
     container_name: chalkbyte-otel-collector
     volumes:
@@ -82,7 +82,7 @@ services:
 
   # Tempo - distributed tracing backend
   tempo:
-    profiles: ["observability", "all", "dev"]
+    profiles: ["observability", "all"]
     image: grafana/tempo:latest
     container_name: chalkbyte-tempo
     command: ["-config.file=/etc/tempo.yaml"]
@@ -100,7 +100,7 @@ services:
 
   # Loki - log aggregation system
   loki:
-    profiles: ["observability", "all", "dev"]
+    profiles: ["observability", "all"]
     image: grafana/loki:latest
     container_name: chalkbyte-loki
     command: -config.file=/etc/loki/local-config.yaml
@@ -115,7 +115,7 @@ services:
 
   # Promtail - log shipper for Loki
   promtail:
-    profiles: ["observability", "all", "dev"]
+    profiles: ["observability", "all"]
     image: grafana/promtail:latest
     container_name: chalkbyte-promtail
     command: -config.file=/etc/promtail/config.yaml
@@ -130,7 +130,7 @@ services:
 
   # Prometheus - metrics storage and querying
   prometheus:
-    profiles: ["observability", "all", "dev"]
+    profiles: ["observability", "all"]
     image: prom/prometheus:latest
     container_name: chalkbyte-prometheus
     entrypoint: ["/bin/sh", "/usr/local/bin/prometheus-entrypoint.sh"]
@@ -155,7 +155,7 @@ services:
 
   # Grafana - visualization and dashboards
   grafana:
-    profiles: ["observability", "all", "dev"]
+    profiles: ["observability", "all"]
     image: grafana/grafana:latest
     container_name: chalkbyte-grafana
     environment:
@@ -182,7 +182,7 @@ services:
 
   # Node Exporter - hardware and OS metrics
   node-exporter:
-    profiles: ["observability", "all", "dev"]
+    profiles: ["observability", "all"]
     image: prom/node-exporter:latest
     container_name: chalkbyte-node-exporter
     command:

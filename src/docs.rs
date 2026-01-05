@@ -59,6 +59,8 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
         crate::modules::schools::controller::get_school_students,
         crate::modules::schools::controller::get_school_admins,
         crate::modules::schools::controller::get_school_full_info,
+        crate::modules::schools::controller::get_school_levels,
+        crate::modules::schools::controller::get_school_level_branches,
         crate::modules::students::controller::create_student,
         crate::modules::students::controller::get_students,
         crate::modules::students::controller::get_student,
