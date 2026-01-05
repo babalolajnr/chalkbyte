@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM branches",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "5d34c3dbf6f96fa5f105e3ef2c90d61da646e2f18e317ece803a23fb8c1ff10e"
+}

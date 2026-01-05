@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, name, address FROM schools WHERE id = $1",
+  "query": "SELECT id, name, address, created_at, updated_at FROM schools WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -17,6 +17,16 @@
         "ordinal": 2,
         "name": "address",
         "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
@@ -27,8 +37,10 @@
     "nullable": [
       false,
       false,
-      true
+      true,
+      false,
+      false
     ]
   },
-  "hash": "11ec56c1c52ef7a609eeaf22c39a5cfcf78256074b9577f78ee6358580e1ba85"
+  "hash": "770ed9060a7e3386b0127cf86d4c4211bc4faf069e4aed115a25c04ea0e6c6ed"
 }

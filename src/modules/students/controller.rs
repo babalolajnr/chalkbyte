@@ -9,7 +9,7 @@ use crate::modules::students::model::{
 };
 use crate::modules::students::service::StudentService;
 use crate::state::AppState;
-use crate::utils::auth_helpers::get_admin_school_id;
+use crate::utils::auth_helpers::{get_admin_school_id, get_school_id_for_scoped_operation};
 use crate::utils::errors::AppError;
 use axum::{
     Json,
@@ -45,7 +45,8 @@ pub async fn create_student(
     dto.validate()
         .map_err(|e| AppError::unprocessable(anyhow::anyhow!("Validation failed: {}", e)))?;
 
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    let school_id =
+        get_school_id_for_scoped_operation(&state.db, &auth_user, dto.school_id).await?;
 
     let student = StudentService::create_student(&state.db, dto, school_id).await?;
     Ok(Json(student))
@@ -74,7 +75,8 @@ pub async fn get_students(
     RequireStudentsRead(auth_user): RequireStudentsRead,
     Query(params): Query<QueryParams>,
 ) -> Result<Json<PaginatedStudentsResponse>, AppError> {
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    let school_id =
+        get_school_id_for_scoped_operation(&state.db, &auth_user, params.school_id).await?;
 
     let limit = params.limit();
     let offset = params.offset();

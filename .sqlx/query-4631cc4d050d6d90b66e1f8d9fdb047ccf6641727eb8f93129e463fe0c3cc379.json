@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, name, description, school_id, is_system_role, created_at, updated_at\n        FROM roles WHERE id = $1",
+  "query": "SELECT id, name, slug, description, school_id, is_system_role, created_at, updated_at\n        FROM roles WHERE slug = $1 AND (school_id = $2 OR (school_id IS NULL AND $2 IS NULL))",
   "describe": {
     "columns": [
       {
@@ -15,36 +15,43 @@
       },
       {
         "ordinal": 2,
+        "name": "slug",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
         "name": "description",
         "type_info": "Text"
       },
       {
-        "ordinal": 3,
+        "ordinal": 4,
         "name": "school_id",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "is_system_role",
         "type_info": "Bool"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
+        "Text",
         "Uuid"
       ]
     },
     "nullable": [
+      false,
       false,
       false,
       true,
@@ -54,5 +61,5 @@
       false
     ]
   },
-  "hash": "1d3cabf9932c3f05583cd8b2eda28195bcb7a8c5a466757521db292019d8b5e9"
+  "hash": "4631cc4d050d6d90b66e1f8d9fdb047ccf6641727eb8f93129e463fe0c3cc379"
 }

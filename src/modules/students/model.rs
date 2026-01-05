@@ -22,6 +22,8 @@ pub struct PaginationMeta {
 pub struct QueryParams {
     pub page: Option<i64>,
     pub limit: Option<i64>,
+    /// Required for system admins to specify which school's students to fetch
+    pub school_id: Option<Uuid>,
 }
 
 impl QueryParams {
@@ -68,6 +70,8 @@ pub struct CreateStudentDto {
     pub date_of_birth: Option<chrono::NaiveDate>,
     #[validate(length(max = 10))]
     pub grade_level: Option<String>,
+    /// Required for system admins to specify which school to create the student in
+    pub school_id: Option<Uuid>,
 }
 
 #[derive(Deserialize, Debug, ToSchema, Validate)]

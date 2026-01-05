@@ -89,9 +89,9 @@ impl BranchService {
         let limit = filters.pagination.limit();
         let offset = filters.pagination.offset();
 
+        let student_role_id = system_roles::STUDENT;
         let branches = if let Some(name) = &filters.name {
-            sqlx::query_as!(
-                BranchWithStats,
+            sqlx::query_as::<_, BranchWithStats>(
                 r#"
                 SELECT
                     b.id,
@@ -100,25 +100,25 @@ impl BranchService {
                     b.level_id,
                     b.created_at,
                     b.updated_at,
-                    COUNT(u.id) as "student_count!"
+                    COUNT(u.id)::bigint as student_count
                 FROM branches b
                 LEFT JOIN users u ON u.branch_id = b.id
-                LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role_id = '00000000-0000-0000-0000-000000000004'::uuid
+                LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role_id = $5
                 WHERE b.level_id = $1 AND b.name ILIKE $2 AND (u.id IS NULL OR ur.role_id IS NOT NULL)
                 GROUP BY b.id
                 ORDER BY b.created_at DESC
                 LIMIT $3 OFFSET $4
                 "#,
-                level_id,
-                format!("%{}%", name),
-                limit,
-                offset
             )
+            .bind(level_id)
+            .bind(format!("%{}%", name))
+            .bind(limit)
+            .bind(offset)
+            .bind(student_role_id)
             .fetch_all(db)
             .await?
         } else {
-            sqlx::query_as!(
-                BranchWithStats,
+            sqlx::query_as::<_, BranchWithStats>(
                 r#"
                 SELECT
                     b.id,
@@ -127,19 +127,20 @@ impl BranchService {
                     b.level_id,
                     b.created_at,
                     b.updated_at,
-                    COUNT(DISTINCT CASE WHEN ur.role_id IS NOT NULL THEN u.id END) as "student_count!"
+                    COUNT(DISTINCT CASE WHEN ur.role_id IS NOT NULL THEN u.id END)::bigint as student_count
                 FROM branches b
                 LEFT JOIN users u ON u.branch_id = b.id
-                LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role_id = '00000000-0000-0000-0000-000000000004'::uuid
+                LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role_id = $4
                 WHERE b.level_id = $1
                 GROUP BY b.id
                 ORDER BY b.created_at DESC
                 LIMIT $2 OFFSET $3
                 "#,
-                level_id,
-                limit,
-                offset
             )
+            .bind(level_id)
+            .bind(limit)
+            .bind(offset)
+            .bind(student_role_id)
             .fetch_all(db)
             .await?
         };
@@ -181,8 +182,8 @@ impl BranchService {
         id: Uuid,
         school_id: Uuid,
     ) -> Result<BranchWithStats, AppError> {
-        let branch = sqlx::query_as!(
-            BranchWithStats,
+        let student_role_id = system_roles::STUDENT;
+        let branch = sqlx::query_as::<_, BranchWithStats>(
             r#"
             SELECT
                 b.id,
@@ -191,17 +192,18 @@ impl BranchService {
                 b.level_id,
                 b.created_at,
                 b.updated_at,
-                COUNT(DISTINCT CASE WHEN ur.role_id IS NOT NULL THEN u.id END) as "student_count!"
+                COUNT(DISTINCT CASE WHEN ur.role_id IS NOT NULL THEN u.id END)::bigint as student_count
             FROM branches b
             INNER JOIN levels l ON l.id = b.level_id
             LEFT JOIN users u ON u.branch_id = b.id
-            LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role_id = '00000000-0000-0000-0000-000000000004'::uuid
+            LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role_id = $3
             WHERE b.id = $1 AND l.school_id = $2
             GROUP BY b.id
             "#,
-            id,
-            school_id
         )
+        .bind(id)
+        .bind(school_id)
+        .bind(student_role_id)
         .fetch_optional(db)
         .await?;
 
@@ -447,8 +449,8 @@ impl BranchService {
             return Err(AppError::not_found(anyhow::anyhow!("Branch not found")));
         }
 
-        let students = sqlx::query_as!(
-            crate::modules::users::model::User,
+        let student_role_id = system_roles::STUDENT;
+        let students = sqlx::query_as::<_, crate::modules::users::model::User>(
             r#"
             SELECT
                 u.id,
@@ -464,11 +466,12 @@ impl BranchService {
                 u.updated_at
             FROM users u
             INNER JOIN user_roles ur ON ur.user_id = u.id
-            WHERE u.branch_id = $1 AND ur.role_id = '00000000-0000-0000-0000-000000000004'::uuid
+            WHERE u.branch_id = $1 AND ur.role_id = $2
             ORDER BY u.last_name, u.first_name
             "#,
-            branch_id
         )
+        .bind(branch_id)
+        .bind(student_role_id)
         .fetch_all(db)
         .await?;
 
@@ -481,19 +484,448 @@ impl BranchService {
         student_id: Uuid,
         school_id: Uuid,
     ) -> Result<(), AppError> {
-        let result = sqlx::query!(
+        let student_role_id = system_roles::STUDENT;
+        let result = sqlx::query(
             r#"
             UPDATE users
             SET branch_id = NULL, updated_at = NOW()
             WHERE id = $1 AND school_id = $2
             AND EXISTS (
                 SELECT 1 FROM user_roles ur
-                WHERE ur.user_id = $1 AND ur.role_id = '00000000-0000-0000-0000-000000000004'::uuid
+                WHERE ur.user_id = $1 AND ur.role_id = $3
             )
             "#,
-            student_id,
-            school_id
         )
+        .bind(student_id)
+        .bind(school_id)
+        .bind(student_role_id)
+        .execute(db)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::not_found(anyhow::anyhow!("Student not found")));
+        }
+
+        Ok(())
+    }
+
+    // =====================================================
+    // No school filter variants for system admin operations
+    // =====================================================
+
+    #[instrument(skip(db))]
+    pub async fn create_branch_no_school_filter(
+        db: &PgPool,
+        level_id: Uuid,
+        dto: CreateBranchDto,
+    ) -> Result<Branch, AppError> {
+        // Verify level exists (no school check)
+        let level = sqlx::query!(r#"SELECT id FROM levels WHERE id = $1"#, level_id)
+            .fetch_optional(db)
+            .await?;
+
+        if level.is_none() {
+            return Err(AppError::not_found(anyhow::anyhow!("Level not found")));
+        }
+
+        let branch = sqlx::query_as!(
+            Branch,
+            r#"
+            INSERT INTO branches (name, description, level_id)
+            VALUES ($1, $2, $3)
+            RETURNING id, name, description, level_id, created_at, updated_at
+            "#,
+            dto.name,
+            dto.description,
+            level_id
+        )
+        .fetch_one(db)
+        .await
+        .map_err(|e| {
+            if let sqlx::Error::Database(db_err) = &e {
+                if db_err.is_unique_violation() {
+                    return AppError::bad_request(anyhow::anyhow!(
+                        "Branch with this name already exists for this level"
+                    ));
+                }
+            }
+            AppError::from(e)
+        })?;
+
+        Ok(branch)
+    }
+
+    #[instrument(skip(db))]
+    pub async fn get_branches_by_level_no_school_filter(
+        db: &PgPool,
+        level_id: Uuid,
+        filters: BranchFilterParams,
+    ) -> Result<PaginatedBranchesResponse, AppError> {
+        // Verify level exists (no school check)
+        let level = sqlx::query!(r#"SELECT id FROM levels WHERE id = $1"#, level_id)
+            .fetch_optional(db)
+            .await?;
+
+        if level.is_none() {
+            return Err(AppError::not_found(anyhow::anyhow!("Level not found")));
+        }
+
+        let page = filters.pagination.page();
+        let limit = filters.pagination.limit();
+        let offset = filters.pagination.offset();
+
+        let student_role_id = system_roles::STUDENT;
+        let branches = if let Some(name) = &filters.name {
+            sqlx::query_as::<_, BranchWithStats>(
+                r#"
+                SELECT
+                    b.id,
+                    b.name,
+                    b.description,
+                    b.level_id,
+                    b.created_at,
+                    b.updated_at,
+                    COUNT(u.id)::bigint as student_count
+                FROM branches b
+                LEFT JOIN users u ON u.branch_id = b.id
+                LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role_id = $5
+                WHERE b.level_id = $1 AND b.name ILIKE $2 AND (u.id IS NULL OR ur.role_id IS NOT NULL)
+                GROUP BY b.id
+                ORDER BY b.created_at DESC
+                LIMIT $3 OFFSET $4
+                "#,
+            )
+            .bind(level_id)
+            .bind(format!("%{}%", name))
+            .bind(limit)
+            .bind(offset)
+            .bind(student_role_id)
+            .fetch_all(db)
+            .await?
+        } else {
+            sqlx::query_as::<_, BranchWithStats>(
+                r#"
+                SELECT
+                    b.id,
+                    b.name,
+                    b.description,
+                    b.level_id,
+                    b.created_at,
+                    b.updated_at,
+                    COUNT(DISTINCT CASE WHEN ur.role_id IS NOT NULL THEN u.id END)::bigint as student_count
+                FROM branches b
+                LEFT JOIN users u ON u.branch_id = b.id
+                LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role_id = $4
+                WHERE b.level_id = $1
+                GROUP BY b.id
+                ORDER BY b.created_at DESC
+                LIMIT $2 OFFSET $3
+                "#,
+            )
+            .bind(level_id)
+            .bind(limit)
+            .bind(offset)
+            .bind(student_role_id)
+            .fetch_all(db)
+            .await?
+        };
+
+        let total_query = if let Some(name) = &filters.name {
+            sqlx::query_scalar!(
+                "SELECT COUNT(*) FROM branches WHERE level_id = $1 AND name ILIKE $2",
+                level_id,
+                format!("%{}%", name)
+            )
+            .fetch_one(db)
+            .await?
+        } else {
+            sqlx::query_scalar!(
+                "SELECT COUNT(*) FROM branches WHERE level_id = $1",
+                level_id
+            )
+            .fetch_one(db)
+            .await?
+        };
+
+        let total = total_query.unwrap_or(0);
+
+        Ok(PaginatedBranchesResponse {
+            data: branches,
+            meta: PaginationMeta {
+                total,
+                limit,
+                offset: Some(offset),
+                page,
+                has_more: offset + limit < total,
+            },
+        })
+    }
+
+    #[instrument(skip(db))]
+    pub async fn get_branch_by_id_no_school_filter(
+        db: &PgPool,
+        id: Uuid,
+    ) -> Result<BranchWithStats, AppError> {
+        let student_role_id = system_roles::STUDENT;
+        let branch = sqlx::query_as::<_, BranchWithStats>(
+            r#"
+            SELECT
+                b.id,
+                b.name,
+                b.description,
+                b.level_id,
+                b.created_at,
+                b.updated_at,
+                COUNT(DISTINCT CASE WHEN ur.role_id IS NOT NULL THEN u.id END)::bigint as student_count
+            FROM branches b
+            LEFT JOIN users u ON u.branch_id = b.id
+            LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role_id = $2
+            WHERE b.id = $1
+            GROUP BY b.id
+            "#,
+        )
+        .bind(id)
+        .bind(student_role_id)
+        .fetch_optional(db)
+        .await?;
+
+        branch.ok_or_else(|| AppError::not_found(anyhow::anyhow!("Branch not found")))
+    }
+
+    #[instrument(skip(db))]
+    pub async fn update_branch_no_school_filter(
+        db: &PgPool,
+        id: Uuid,
+        dto: UpdateBranchDto,
+    ) -> Result<Branch, AppError> {
+        let existing = sqlx::query!(r#"SELECT id FROM branches WHERE id = $1"#, id)
+            .fetch_optional(db)
+            .await?;
+
+        if existing.is_none() {
+            return Err(AppError::not_found(anyhow::anyhow!("Branch not found")));
+        }
+
+        let mut query = String::from("UPDATE branches SET updated_at = NOW()");
+        let mut param_count = 1;
+
+        if dto.name.is_some() {
+            param_count += 1;
+            query.push_str(&format!(", name = ${}", param_count));
+        }
+
+        if dto.description.is_some() {
+            param_count += 1;
+            query.push_str(&format!(", description = ${}", param_count));
+        }
+
+        query.push_str(
+            " WHERE id = $1 RETURNING id, name, description, level_id, created_at, updated_at",
+        );
+
+        let mut query_builder = sqlx::query_as::<_, Branch>(&query).bind(id);
+
+        if let Some(name) = dto.name {
+            query_builder = query_builder.bind(name);
+        }
+
+        if let Some(description) = dto.description {
+            query_builder = query_builder.bind(description);
+        }
+
+        let branch = query_builder.fetch_one(db).await.map_err(|e| {
+            if let sqlx::Error::Database(db_err) = &e {
+                if db_err.is_unique_violation() {
+                    return AppError::bad_request(anyhow::anyhow!(
+                        "Branch with this name already exists for this level"
+                    ));
+                }
+            }
+            AppError::from(e)
+        })?;
+
+        Ok(branch)
+    }
+
+    #[instrument(skip(db))]
+    pub async fn delete_branch_no_school_filter(db: &PgPool, id: Uuid) -> Result<(), AppError> {
+        let result = sqlx::query!(r#"DELETE FROM branches WHERE id = $1"#, id)
+            .execute(db)
+            .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::not_found(anyhow::anyhow!("Branch not found")));
+        }
+
+        Ok(())
+    }
+
+    #[instrument(skip(db))]
+    pub async fn assign_students_to_branch_no_school_filter(
+        db: &PgPool,
+        branch_id: Uuid,
+        dto: AssignStudentsToBranchDto,
+    ) -> Result<BulkAssignResponse, AppError> {
+        let branch = sqlx::query!(r#"SELECT id FROM branches WHERE id = $1"#, branch_id)
+            .fetch_optional(db)
+            .await?;
+
+        if branch.is_none() {
+            return Err(AppError::not_found(anyhow::anyhow!("Branch not found")));
+        }
+
+        let mut assigned_count = 0;
+        let mut failed_ids = Vec::new();
+
+        let student_role_id = system_roles::STUDENT;
+        for student_id in dto.student_ids {
+            let is_student = sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS(SELECT 1 FROM user_roles WHERE user_id = $1 AND role_id = $2)",
+            )
+            .bind(student_id)
+            .bind(student_role_id)
+            .fetch_one(db)
+            .await
+            .unwrap_or(false);
+
+            if !is_student {
+                failed_ids.push(student_id);
+                continue;
+            }
+
+            let result = sqlx::query(
+                r#"
+                UPDATE users
+                SET branch_id = $1, updated_at = NOW()
+                WHERE id = $2
+                "#,
+            )
+            .bind(branch_id)
+            .bind(student_id)
+            .execute(db)
+            .await;
+
+            match result {
+                Ok(res) if res.rows_affected() > 0 => assigned_count += 1,
+                _ => failed_ids.push(student_id),
+            }
+        }
+
+        Ok(BulkAssignResponse {
+            assigned_count,
+            failed_ids,
+        })
+    }
+
+    #[instrument(skip(db))]
+    pub async fn get_students_in_branch_no_school_filter(
+        db: &PgPool,
+        branch_id: Uuid,
+    ) -> Result<Vec<crate::modules::users::model::User>, AppError> {
+        let branch = sqlx::query!(r#"SELECT id FROM branches WHERE id = $1"#, branch_id)
+            .fetch_optional(db)
+            .await?;
+
+        if branch.is_none() {
+            return Err(AppError::not_found(anyhow::anyhow!("Branch not found")));
+        }
+
+        let student_role_id = system_roles::STUDENT;
+        let students = sqlx::query_as::<_, crate::modules::users::model::User>(
+            r#"
+            SELECT
+                u.id,
+                u.first_name,
+                u.last_name,
+                u.email,
+                u.school_id,
+                u.level_id,
+                u.branch_id,
+                u.date_of_birth,
+                u.grade_level,
+                u.created_at,
+                u.updated_at
+            FROM users u
+            INNER JOIN user_roles ur ON ur.user_id = u.id
+            WHERE u.branch_id = $1 AND ur.role_id = $2
+            ORDER BY u.last_name, u.first_name
+            "#,
+        )
+        .bind(branch_id)
+        .bind(student_role_id)
+        .fetch_all(db)
+        .await?;
+
+        Ok(students)
+    }
+
+    #[instrument(skip(db))]
+    pub async fn move_student_to_branch_no_school_filter(
+        db: &PgPool,
+        student_id: Uuid,
+        dto: MoveStudentToBranchDto,
+    ) -> Result<(), AppError> {
+        if let Some(branch_id) = dto.branch_id {
+            let branch = sqlx::query!(r#"SELECT id FROM branches WHERE id = $1"#, branch_id)
+                .fetch_optional(db)
+                .await?;
+
+            if branch.is_none() {
+                return Err(AppError::not_found(anyhow::anyhow!("Branch not found")));
+            }
+        }
+
+        let student_role_id = system_roles::STUDENT;
+        let is_student = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM user_roles WHERE user_id = $1 AND role_id = $2)",
+        )
+        .bind(student_id)
+        .bind(student_role_id)
+        .fetch_one(db)
+        .await?;
+
+        if !is_student {
+            return Err(AppError::not_found(anyhow::anyhow!("Student not found")));
+        }
+
+        let result = sqlx::query(
+            r#"
+            UPDATE users
+            SET branch_id = $1, updated_at = NOW()
+            WHERE id = $2
+            "#,
+        )
+        .bind(dto.branch_id)
+        .bind(student_id)
+        .execute(db)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::not_found(anyhow::anyhow!("Student not found")));
+        }
+
+        Ok(())
+    }
+
+    #[instrument(skip(db))]
+    pub async fn remove_student_from_branch_no_school_filter(
+        db: &PgPool,
+        student_id: Uuid,
+    ) -> Result<(), AppError> {
+        let student_role_id = system_roles::STUDENT;
+        let result = sqlx::query(
+            r#"
+            UPDATE users
+            SET branch_id = NULL, updated_at = NOW()
+            WHERE id = $1
+            AND EXISTS (
+                SELECT 1 FROM user_roles ur
+                WHERE ur.user_id = $1 AND ur.role_id = $2
+            )
+            "#,
+        )
+        .bind(student_id)
+        .bind(student_role_id)
         .execute(db)
         .await?;
 

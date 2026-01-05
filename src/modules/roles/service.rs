@@ -9,7 +9,7 @@ use crate::utils::pagination::PaginationMeta;
 use super::model::{
     CreateRoleDto, PaginatedPermissionsResponse, PaginatedRolesResponse, Permission,
     PermissionFilterParams, Role, RoleAssignmentResponse, RoleFilterParams, RoleWithPermissions,
-    UpdateRoleDto,
+    UpdateRoleDto, generate_slug,
 };
 
 // ============ Permission Services ============
@@ -69,6 +69,63 @@ pub async fn get_permission_by_id(db: &PgPool, id: Uuid) -> Result<Permission, A
     .ok_or_else(|| AppError::not_found(anyhow!("Permission not found")))
 }
 
+// ============ Role Slug Services ============
+
+/// Get a role by its slug (and optionally school_id for school-specific roles)
+#[instrument(skip(db))]
+pub async fn get_role_by_slug(
+    db: &PgPool,
+    slug: &str,
+    school_id: Option<Uuid>,
+) -> Result<RoleWithPermissions, AppError> {
+    let role = sqlx::query_as!(
+        Role,
+        r#"SELECT id, name, slug, description, school_id, is_system_role, created_at, updated_at
+        FROM roles WHERE slug = $1 AND (school_id = $2 OR (school_id IS NULL AND $2 IS NULL))"#,
+        slug,
+        school_id
+    )
+    .fetch_optional(db)
+    .await?
+    .ok_or_else(|| AppError::not_found(anyhow!("Role not found")))?;
+
+    let permissions = get_role_permissions(db, role.id).await?;
+
+    Ok(RoleWithPermissions { role, permissions })
+}
+
+/// Get a system role by its slug (school_id is NULL)
+#[instrument(skip(db))]
+pub async fn get_system_role_by_slug(
+    db: &PgPool,
+    slug: &str,
+) -> Result<RoleWithPermissions, AppError> {
+    get_role_by_slug(db, slug, None).await
+}
+
+/// Get role ID by slug (useful for queries that need the UUID)
+#[instrument(skip(db))]
+pub async fn get_role_id_by_slug(
+    db: &PgPool,
+    slug: &str,
+    school_id: Option<Uuid>,
+) -> Result<Uuid, AppError> {
+    sqlx::query_scalar!(
+        r#"SELECT id FROM roles WHERE slug = $1 AND (school_id = $2 OR (school_id IS NULL AND $2 IS NULL))"#,
+        slug,
+        school_id
+    )
+    .fetch_optional(db)
+    .await?
+    .ok_or_else(|| AppError::not_found(anyhow!("Role not found")))
+}
+
+/// Get system role ID by slug
+#[instrument(skip(db))]
+pub async fn get_system_role_id_by_slug(db: &PgPool, slug: &str) -> Result<Uuid, AppError> {
+    get_role_id_by_slug(db, slug, None).await
+}
+
 #[instrument(skip(db))]
 pub async fn get_permissions_by_ids(
     db: &PgPool,
@@ -113,13 +170,17 @@ pub async fn create_role(
         )));
     }
 
+    // Generate slug from name
+    let slug = generate_slug(&dto.name);
+
     // Create the role
     let role = sqlx::query_as!(
         Role,
-        r#"INSERT INTO roles (name, description, school_id, is_system_role)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id, name, description, school_id, is_system_role, created_at, updated_at"#,
+        r#"INSERT INTO roles (name, slug, description, school_id, is_system_role)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, name, slug, description, school_id, is_system_role, created_at, updated_at"#,
         dto.name,
+        slug,
         dto.description,
         school_id,
         is_system_role
@@ -164,7 +225,7 @@ pub async fn get_roles(
             if is_system {
                 sqlx::query_as!(
                     Role,
-                    r#"SELECT id, name, description, school_id, is_system_role, created_at, updated_at
+                    r#"SELECT id, name, slug, description, school_id, is_system_role, created_at, updated_at
                     FROM roles WHERE is_system_role = true
                     ORDER BY name LIMIT $1 OFFSET $2"#,
                     limit,
@@ -175,7 +236,7 @@ pub async fn get_roles(
             } else if let Some(school_id) = params.school_id {
                 sqlx::query_as!(
                     Role,
-                    r#"SELECT id, name, description, school_id, is_system_role, created_at, updated_at
+                    r#"SELECT id, name, slug, description, school_id, is_system_role, created_at, updated_at
                     FROM roles WHERE school_id = $1
                     ORDER BY name LIMIT $2 OFFSET $3"#,
                     school_id,
@@ -187,7 +248,7 @@ pub async fn get_roles(
             } else {
                 sqlx::query_as!(
                     Role,
-                    r#"SELECT id, name, description, school_id, is_system_role, created_at, updated_at
+                    r#"SELECT id, name, slug, description, school_id, is_system_role, created_at, updated_at
                     FROM roles WHERE is_system_role = false
                     ORDER BY name LIMIT $1 OFFSET $2"#,
                     limit,
@@ -199,7 +260,7 @@ pub async fn get_roles(
         } else if let Some(school_id) = params.school_id {
             sqlx::query_as!(
                 Role,
-                r#"SELECT id, name, description, school_id, is_system_role, created_at, updated_at
+                r#"SELECT id, name, slug, description, school_id, is_system_role, created_at, updated_at
                 FROM roles WHERE school_id = $1
                 ORDER BY name LIMIT $2 OFFSET $3"#,
                 school_id,
@@ -211,7 +272,7 @@ pub async fn get_roles(
         } else {
             sqlx::query_as!(
                 Role,
-                r#"SELECT id, name, description, school_id, is_system_role, created_at, updated_at
+                r#"SELECT id, name, slug, description, school_id, is_system_role, created_at, updated_at
                 FROM roles ORDER BY name LIMIT $1 OFFSET $2"#,
                 limit,
                 offset
@@ -226,7 +287,7 @@ pub async fn get_roles(
 
         sqlx::query_as!(
             Role,
-            r#"SELECT id, name, description, school_id, is_system_role, created_at, updated_at
+            r#"SELECT id, name, slug, description, school_id, is_system_role, created_at, updated_at
             FROM roles WHERE school_id = $1
             ORDER BY name LIMIT $2 OFFSET $3"#,
             school_id,
@@ -310,7 +371,7 @@ pub async fn get_role_by_id(
 ) -> Result<RoleWithPermissions, AppError> {
     let role = sqlx::query_as!(
         Role,
-        r#"SELECT id, name, description, school_id, is_system_role, created_at, updated_at
+        r#"SELECT id, name, slug, description, school_id, is_system_role, created_at, updated_at
         FROM roles WHERE id = $1"#,
         id
     )
@@ -348,15 +409,23 @@ pub async fn update_role(
     // First verify the role exists and user has access
     let existing = get_role_by_id(db, id, requester_school_id, is_system_admin).await?;
 
-    let name = dto.name.unwrap_or(existing.role.name);
+    let name_changed = dto.name.is_some();
+    let name = dto.name.unwrap_or(existing.role.name.clone());
+    // Regenerate slug if name changed, otherwise keep existing
+    let slug = if name_changed {
+        generate_slug(&name)
+    } else {
+        existing.role.slug
+    };
     let description = dto.description.or(existing.role.description);
 
     let role = sqlx::query_as!(
         Role,
-        r#"UPDATE roles SET name = $1, description = $2, updated_at = NOW()
-        WHERE id = $3
-        RETURNING id, name, description, school_id, is_system_role, created_at, updated_at"#,
+        r#"UPDATE roles SET name = $1, slug = $2, description = $3, updated_at = NOW()
+        WHERE id = $4
+        RETURNING id, name, slug, description, school_id, is_system_role, created_at, updated_at"#,
         name,
+        slug,
         description,
         id
     )
@@ -609,7 +678,7 @@ pub async fn get_user_roles_internal(
 ) -> Result<Vec<RoleWithPermissions>, AppError> {
     let roles = sqlx::query_as!(
         Role,
-        r#"SELECT r.id, r.name, r.description, r.school_id, r.is_system_role, r.created_at, r.updated_at
+        r#"SELECT r.id, r.name, r.slug, r.description, r.school_id, r.is_system_role, r.created_at, r.updated_at
         FROM roles r
         INNER JOIN user_roles ur ON r.id = ur.role_id
         WHERE ur.user_id = $1
@@ -635,7 +704,7 @@ pub async fn get_user_roles(
 ) -> Result<Vec<RoleWithPermissions>, AppError> {
     let roles = sqlx::query_as!(
         Role,
-        r#"SELECT r.id, r.name, r.description, r.school_id, r.is_system_role, r.created_at, r.updated_at
+        r#"SELECT r.id, r.name, r.slug, r.description, r.school_id, r.is_system_role, r.created_at, r.updated_at
         FROM roles r
         INNER JOIN user_roles ur ON r.id = ur.role_id
         WHERE ur.user_id = $1

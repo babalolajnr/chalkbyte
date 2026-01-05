@@ -116,9 +116,17 @@ pub struct ChangePasswordDto {
     pub new_password: String,
 }
 
-/// Well-known system role IDs
+/// Well-known system role slugs and IDs
 pub mod system_roles {
     use uuid::Uuid;
+
+    /// Role slugs - use these for lookups instead of hardcoded UUIDs
+    pub mod slugs {
+        pub const SYSTEM_ADMIN: &str = "system_admin";
+        pub const ADMIN: &str = "admin";
+        pub const TEACHER: &str = "teacher";
+        pub const STUDENT: &str = "student";
+    }
 
     /// System Admin role - full system access
     pub const SYSTEM_ADMIN: Uuid = Uuid::from_u128(0x00000000_0000_0000_0000_000000000001);
@@ -134,9 +142,24 @@ pub mod system_roles {
         vec![SYSTEM_ADMIN, ADMIN, TEACHER, STUDENT]
     }
 
+    /// Get all system role slugs
+    pub fn all_slugs() -> Vec<&'static str> {
+        vec![
+            slugs::SYSTEM_ADMIN,
+            slugs::ADMIN,
+            slugs::TEACHER,
+            slugs::STUDENT,
+        ]
+    }
+
     /// Check if a role ID is a system role
     pub fn is_system_role(role_id: &Uuid) -> bool {
         all().contains(role_id)
+    }
+
+    /// Check if a slug is a system role slug
+    pub fn is_system_role_slug(slug: &str) -> bool {
+        all_slugs().contains(&slug)
     }
 
     /// Get role name by ID
@@ -146,6 +169,28 @@ pub mod system_roles {
             id if id == ADMIN => Some("Admin"),
             id if id == TEACHER => Some("Teacher"),
             id if id == STUDENT => Some("Student"),
+            _ => None,
+        }
+    }
+
+    /// Get role slug by ID
+    pub fn get_slug(role_id: &Uuid) -> Option<&'static str> {
+        match *role_id {
+            id if id == SYSTEM_ADMIN => Some(slugs::SYSTEM_ADMIN),
+            id if id == ADMIN => Some(slugs::ADMIN),
+            id if id == TEACHER => Some(slugs::TEACHER),
+            id if id == STUDENT => Some(slugs::STUDENT),
+            _ => None,
+        }
+    }
+
+    /// Get role ID by slug
+    pub fn get_id_by_slug(slug: &str) -> Option<Uuid> {
+        match slug {
+            slugs::SYSTEM_ADMIN => Some(SYSTEM_ADMIN),
+            slugs::ADMIN => Some(ADMIN),
+            slugs::TEACHER => Some(TEACHER),
+            slugs::STUDENT => Some(STUDENT),
             _ => None,
         }
     }

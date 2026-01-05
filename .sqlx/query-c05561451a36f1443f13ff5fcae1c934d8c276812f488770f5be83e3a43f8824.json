@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, name, description, school_id, is_system_role, created_at, updated_at\n                    FROM roles WHERE is_system_role = false\n                    ORDER BY name LIMIT $1 OFFSET $2",
+  "query": "SELECT id, name, slug, description, school_id, is_system_role, created_at, updated_at\n        FROM roles WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -15,37 +15,42 @@
       },
       {
         "ordinal": 2,
+        "name": "slug",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
         "name": "description",
         "type_info": "Text"
       },
       {
-        "ordinal": 3,
+        "ordinal": 4,
         "name": "school_id",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "is_system_role",
         "type_info": "Bool"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Int8",
-        "Int8"
+        "Uuid"
       ]
     },
     "nullable": [
+      false,
       false,
       false,
       true,
@@ -55,5 +60,5 @@
       false
     ]
   },
-  "hash": "10ce8a6fbb947ee24bcdef834fb9f02a635a8a406388ce90faf5cea43a5f457b"
+  "hash": "c05561451a36f1443f13ff5fcae1c934d8c276812f488770f5be83e3a43f8824"
 }

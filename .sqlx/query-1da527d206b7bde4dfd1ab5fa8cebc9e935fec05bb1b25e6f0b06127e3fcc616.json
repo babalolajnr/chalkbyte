@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT b.id as branch_id, b.level_id, l.school_id\n        FROM branches b\n        JOIN levels l ON l.id = b.level_id\n        ORDER BY l.school_id, l.name, b.name\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "branch_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "level_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "school_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "1da527d206b7bde4dfd1ab5fa8cebc9e935fec05bb1b25e6f0b06127e3fcc616"
+}

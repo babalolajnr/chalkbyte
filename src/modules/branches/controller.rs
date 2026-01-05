@@ -11,7 +11,7 @@ use crate::middleware::auth::{
     RequireBranchesAssignStudents, RequireBranchesCreate, RequireBranchesDelete,
     RequireBranchesRead, RequireBranchesUpdate,
 };
-use crate::middleware::role::get_admin_school_id;
+use crate::middleware::role::{get_admin_school_id, is_system_admin_jwt};
 use crate::modules::branches::model::{
     AssignStudentsToBranchDto, Branch, BranchFilterParams, BranchWithStats, BulkAssignResponse,
     CreateBranchDto, MoveStudentToBranchDto, PaginatedBranchesResponse, UpdateBranchDto,
@@ -44,10 +44,16 @@ pub async fn create_branch(
     Path(level_id): Path<Uuid>,
     Json(dto): Json<CreateBranchDto>,
 ) -> Result<(StatusCode, Json<Branch>), AppError> {
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
-
     dto.validate()?;
 
+    // System admins can create branches for any level
+    if is_system_admin_jwt(&auth_user) {
+        let branch =
+            BranchService::create_branch_no_school_filter(&state.db, level_id, dto).await?;
+        return Ok((StatusCode::CREATED, Json(branch)));
+    }
+
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
     let branch = BranchService::create_branch(&state.db, level_id, school_id, dto).await?;
 
     Ok((StatusCode::CREATED, Json(branch)))
@@ -75,8 +81,15 @@ pub async fn get_branches(
     Path(level_id): Path<Uuid>,
     Query(filters): Query<BranchFilterParams>,
 ) -> Result<Json<PaginatedBranchesResponse>, AppError> {
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    // System admins can view branches for any level
+    if is_system_admin_jwt(&auth_user) {
+        let branches =
+            BranchService::get_branches_by_level_no_school_filter(&state.db, level_id, filters)
+                .await?;
+        return Ok(Json(branches));
+    }
 
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
     let branches =
         BranchService::get_branches_by_level(&state.db, level_id, school_id, filters).await?;
 
@@ -104,8 +117,13 @@ pub async fn get_branch_by_id(
     RequireBranchesRead(auth_user): RequireBranchesRead,
     Path(id): Path<Uuid>,
 ) -> Result<Json<BranchWithStats>, AppError> {
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    // System admins can access any branch
+    if is_system_admin_jwt(&auth_user) {
+        let branch = BranchService::get_branch_by_id_no_school_filter(&state.db, id).await?;
+        return Ok(Json(branch));
+    }
 
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
     let branch = BranchService::get_branch_by_id(&state.db, id, school_id).await?;
 
     Ok(Json(branch))
@@ -135,10 +153,15 @@ pub async fn update_branch(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateBranchDto>,
 ) -> Result<Json<Branch>, AppError> {
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
-
     dto.validate()?;
 
+    // System admins can update any branch
+    if is_system_admin_jwt(&auth_user) {
+        let branch = BranchService::update_branch_no_school_filter(&state.db, id, dto).await?;
+        return Ok(Json(branch));
+    }
+
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
     let branch = BranchService::update_branch(&state.db, id, school_id, dto).await?;
 
     Ok(Json(branch))
@@ -165,8 +188,13 @@ pub async fn delete_branch(
     RequireBranchesDelete(auth_user): RequireBranchesDelete,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    // System admins can delete any branch
+    if is_system_admin_jwt(&auth_user) {
+        BranchService::delete_branch_no_school_filter(&state.db, id).await?;
+        return Ok(StatusCode::NO_CONTENT);
+    }
 
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
     BranchService::delete_branch(&state.db, id, school_id).await?;
 
     Ok(StatusCode::NO_CONTENT)
@@ -196,10 +224,16 @@ pub async fn assign_students_to_branch(
     Path(id): Path<Uuid>,
     Json(dto): Json<AssignStudentsToBranchDto>,
 ) -> Result<Json<BulkAssignResponse>, AppError> {
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
-
     dto.validate()?;
 
+    // System admins can assign students to any branch
+    if is_system_admin_jwt(&auth_user) {
+        let response =
+            BranchService::assign_students_to_branch_no_school_filter(&state.db, id, dto).await?;
+        return Ok(Json(response));
+    }
+
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
     let response = BranchService::assign_students_to_branch(&state.db, id, school_id, dto).await?;
 
     Ok(Json(response))
@@ -226,8 +260,14 @@ pub async fn get_students_in_branch(
     RequireBranchesRead(auth_user): RequireBranchesRead,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<User>>, AppError> {
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    // System admins can view students in any branch
+    if is_system_admin_jwt(&auth_user) {
+        let students =
+            BranchService::get_students_in_branch_no_school_filter(&state.db, id).await?;
+        return Ok(Json(students));
+    }
 
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
     let students = BranchService::get_students_in_branch(&state.db, id, school_id).await?;
 
     Ok(Json(students))
@@ -257,10 +297,15 @@ pub async fn move_student_to_branch(
     Path(student_id): Path<Uuid>,
     Json(dto): Json<MoveStudentToBranchDto>,
 ) -> Result<StatusCode, AppError> {
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
-
     dto.validate()?;
 
+    // System admins can move any student
+    if is_system_admin_jwt(&auth_user) {
+        BranchService::move_student_to_branch_no_school_filter(&state.db, student_id, dto).await?;
+        return Ok(StatusCode::NO_CONTENT);
+    }
+
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
     BranchService::move_student_to_branch(&state.db, student_id, school_id, dto).await?;
 
     Ok(StatusCode::NO_CONTENT)
@@ -287,8 +332,13 @@ pub async fn remove_student_from_branch(
     RequireBranchesAssignStudents(auth_user): RequireBranchesAssignStudents,
     Path(student_id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
+    // System admins can remove any student from branch
+    if is_system_admin_jwt(&auth_user) {
+        BranchService::remove_student_from_branch_no_school_filter(&state.db, student_id).await?;
+        return Ok(StatusCode::NO_CONTENT);
+    }
 
+    let school_id = get_admin_school_id(&state.db, &auth_user).await?;
     BranchService::remove_student_from_branch(&state.db, student_id, school_id).await?;
 
     Ok(StatusCode::NO_CONTENT)

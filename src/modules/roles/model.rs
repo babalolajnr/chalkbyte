@@ -4,6 +4,43 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
+/// Generate a slug from a name
+/// Converts to lowercase, replaces spaces and hyphens with underscores,
+/// removes invalid characters, and ensures it starts with a letter
+pub fn generate_slug(name: &str) -> String {
+    let slug: String = name
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c == ' ' || c == '-' {
+                '_'
+            } else if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+
+    // Remove consecutive underscores and trim underscores from ends
+    let mut result = String::new();
+    let mut prev_underscore = false;
+    for c in slug.chars() {
+        if c == '_' {
+            if !prev_underscore && !result.is_empty() {
+                result.push(c);
+            }
+            prev_underscore = true;
+        } else {
+            result.push(c);
+            prev_underscore = false;
+        }
+    }
+
+    // Trim trailing underscores
+    result.trim_end_matches('_').to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct Permission {
     pub id: Uuid,
@@ -18,6 +55,7 @@ pub struct Permission {
 pub struct Role {
     pub id: Uuid,
     pub name: String,
+    pub slug: String,
     pub description: Option<String>,
     pub school_id: Option<Uuid>,
     pub is_system_role: bool,

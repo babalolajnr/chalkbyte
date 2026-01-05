@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id FROM roles WHERE slug = $1 AND (school_id = $2 OR (school_id IS NULL AND $2 IS NULL))",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "0f98e2528cfc6ceb7a558ed93ab5e63be19cb891a1b402de7e077fa6009bd2e3"
+}

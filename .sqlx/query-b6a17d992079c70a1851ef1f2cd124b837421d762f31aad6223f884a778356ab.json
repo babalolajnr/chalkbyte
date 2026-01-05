@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "UPDATE roles SET name = $1, description = $2, updated_at = NOW()\n        WHERE id = $3\n        RETURNING id, name, description, school_id, is_system_role, created_at, updated_at",
+  "query": "SELECT r.id, r.name, r.slug, r.description, r.school_id, r.is_system_role, r.created_at, r.updated_at\n        FROM roles r\n        INNER JOIN user_roles ur ON r.id = ur.role_id\n        WHERE ur.user_id = $1\n        ORDER BY r.name",
   "describe": {
     "columns": [
       {
@@ -15,38 +15,42 @@
       },
       {
         "ordinal": 2,
+        "name": "slug",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
         "name": "description",
         "type_info": "Text"
       },
       {
-        "ordinal": 3,
+        "ordinal": 4,
         "name": "school_id",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "is_system_role",
         "type_info": "Bool"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Varchar",
-        "Text",
         "Uuid"
       ]
     },
     "nullable": [
+      false,
       false,
       false,
       true,
@@ -56,5 +60,5 @@
       false
     ]
   },
-  "hash": "d8fc3cf3d24a0548edf2dfeba475fe1a5f7b3d14a91718f1a1ee63e13c42d0ac"
+  "hash": "b6a17d992079c70a1851ef1f2cd124b837421d762f31aad6223f884a778356ab"
 }
