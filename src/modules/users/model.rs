@@ -57,6 +57,51 @@ pub struct UserWithSchool {
     pub school: Option<School>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+pub struct RoleInfo {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_system_role: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+pub struct LevelInfo {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+pub struct BranchInfo {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+pub struct SchoolInfo {
+    pub id: Uuid,
+    pub name: String,
+    pub address: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UserWithRelations {
+    pub id: Uuid,
+    pub first_name: String,
+    pub last_name: String,
+    pub email: String,
+    pub date_of_birth: Option<chrono::NaiveDate>,
+    pub grade_level: Option<String>,
+    pub school: Option<SchoolInfo>,
+    pub level: Option<LevelInfo>,
+    pub branch: Option<BranchInfo>,
+    pub roles: Vec<RoleInfo>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SchoolFilterParams {
     pub name: Option<String>,
@@ -87,6 +132,12 @@ pub struct UserFilterParams {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PaginatedUsersResponse {
+    pub data: Vec<UserWithRelations>,
+    pub meta: crate::utils::pagination::PaginationMeta,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PaginatedBasicUsersResponse {
     pub data: Vec<User>,
     pub meta: crate::utils::pagination::PaginationMeta,
 }

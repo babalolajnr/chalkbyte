@@ -1,8 +1,9 @@
 use crate::{
     metrics,
     modules::users::model::{
-        ChangePasswordDto, CreateUserDto, PaginatedUsersResponse, School, UpdateProfileDto, User,
-        UserFilterParams, UserWithSchool, system_roles,
+        BranchInfo, ChangePasswordDto, CreateUserDto, LevelInfo, PaginatedUsersResponse, RoleInfo,
+        School, SchoolInfo, UpdateProfileDto, User, UserFilterParams, UserWithRelations,
+        UserWithSchool, system_roles,
     },
     utils::{
         errors::AppError,
@@ -12,6 +13,7 @@ use crate::{
 };
 use anyhow::Context;
 use sqlx::{PgPool, Row};
+use std::collections::HashMap;
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
@@ -103,8 +105,17 @@ impl UserService {
         let mut conditions = vec![];
         let mut param_count = 0;
 
+        // Main query with LEFT JOINs for school, level, branch
         let mut query = String::from(
-            r#"SELECT DISTINCT u.id, u.first_name, u.last_name, u.email, u.school_id, u.level_id, u.branch_id, u.date_of_birth, u.grade_level, u.created_at, u.updated_at FROM users u"#,
+            r#"SELECT DISTINCT
+                u.id, u.first_name, u.last_name, u.email, u.date_of_birth, u.grade_level, u.created_at, u.updated_at,
+                s.id as school_id, s.name as school_name, s.address as school_address,
+                l.id as level_id, l.name as level_name, l.description as level_description,
+                b.id as branch_id, b.name as branch_name, b.description as branch_description
+            FROM users u
+            LEFT JOIN schools s ON u.school_id = s.id
+            LEFT JOIN levels l ON u.level_id = l.id
+            LEFT JOIN branches b ON u.branch_id = b.id"#,
         );
 
         // Join with user_roles if filtering by role
@@ -224,13 +235,86 @@ impl UserService {
                 AppError::database(e)
             })?;
 
-        let users: Result<Vec<User>, AppError> = rows
+        // Collect user IDs for batch role fetch
+        let user_ids: Vec<Uuid> = rows
+            .iter()
+            .filter_map(|row| row.try_get::<Uuid, _>("id").ok())
+            .collect();
+
+        // Fetch roles for all users in one query
+        let roles_map: HashMap<Uuid, Vec<RoleInfo>> = if !user_ids.is_empty() {
+            let roles_rows = sqlx::query(
+                r#"SELECT ur.user_id, r.id, r.name, r.description, r.is_system_role
+                   FROM user_roles ur
+                   INNER JOIN roles r ON ur.role_id = r.id
+                   WHERE ur.user_id = ANY($1)"#,
+            )
+            .bind(&user_ids)
+            .fetch_all(db)
+            .await
+            .context("Failed to fetch user roles")
+            .map_err(|e| {
+                error!(error = %e, "Database error fetching roles");
+                AppError::database(e)
+            })?;
+
+            let mut map: HashMap<Uuid, Vec<RoleInfo>> = HashMap::new();
+            for row in roles_rows {
+                let user_id: Uuid = row.try_get("user_id").unwrap_or_default();
+                let role = RoleInfo {
+                    id: row.try_get("id").unwrap_or_default(),
+                    name: row.try_get("name").unwrap_or_default(),
+                    description: row.try_get("description").ok(),
+                    is_system_role: row.try_get("is_system_role").unwrap_or(false),
+                };
+                map.entry(user_id).or_default().push(role);
+            }
+            map
+        } else {
+            HashMap::new()
+        };
+
+        let users: Result<Vec<UserWithRelations>, AppError> = rows
             .iter()
             .map(|row| {
-                Ok(User {
-                    id: row.try_get("id").map_err(|e| {
-                        AppError::database(anyhow::Error::new(e).context("Failed to get id"))
-                    })?,
+                let user_id: Uuid = row.try_get("id").map_err(|e| {
+                    AppError::database(anyhow::Error::new(e).context("Failed to get id"))
+                })?;
+
+                let school = row
+                    .try_get::<Option<Uuid>, _>("school_id")
+                    .ok()
+                    .flatten()
+                    .map(|id| SchoolInfo {
+                        id,
+                        name: row.try_get("school_name").unwrap_or_default(),
+                        address: row.try_get("school_address").ok(),
+                    });
+
+                let level = row
+                    .try_get::<Option<Uuid>, _>("level_id")
+                    .ok()
+                    .flatten()
+                    .map(|id| LevelInfo {
+                        id,
+                        name: row.try_get("level_name").unwrap_or_default(),
+                        description: row.try_get("level_description").ok(),
+                    });
+
+                let branch = row
+                    .try_get::<Option<Uuid>, _>("branch_id")
+                    .ok()
+                    .flatten()
+                    .map(|id| BranchInfo {
+                        id,
+                        name: row.try_get("branch_name").unwrap_or_default(),
+                        description: row.try_get("branch_description").ok(),
+                    });
+
+                let roles = roles_map.get(&user_id).cloned().unwrap_or_default();
+
+                Ok(UserWithRelations {
+                    id: user_id,
                     first_name: row.try_get("first_name").map_err(|e| {
                         AppError::database(
                             anyhow::Error::new(e).context("Failed to get first_name"),
@@ -242,15 +326,6 @@ impl UserService {
                     email: row.try_get("email").map_err(|e| {
                         AppError::database(anyhow::Error::new(e).context("Failed to get email"))
                     })?,
-                    school_id: row.try_get("school_id").map_err(|e| {
-                        AppError::database(anyhow::Error::new(e).context("Failed to get school_id"))
-                    })?,
-                    level_id: row.try_get("level_id").map_err(|e| {
-                        AppError::database(anyhow::Error::new(e).context("Failed to get level_id"))
-                    })?,
-                    branch_id: row.try_get("branch_id").map_err(|e| {
-                        AppError::database(anyhow::Error::new(e).context("Failed to get branch_id"))
-                    })?,
                     date_of_birth: row.try_get("date_of_birth").map_err(|e| {
                         AppError::database(
                             anyhow::Error::new(e).context("Failed to get date_of_birth"),
@@ -261,6 +336,10 @@ impl UserService {
                             anyhow::Error::new(e).context("Failed to get grade_level"),
                         )
                     })?,
+                    school,
+                    level,
+                    branch,
+                    roles,
                     created_at: row.try_get("created_at").map_err(|e| {
                         AppError::database(
                             anyhow::Error::new(e).context("Failed to get created_at"),

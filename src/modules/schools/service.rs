@@ -4,8 +4,8 @@ use uuid::Uuid;
 
 use crate::metrics;
 use crate::modules::users::model::{
-    CreateSchoolDto, PaginatedSchoolsResponse, PaginatedUsersResponse, School, SchoolFilterParams,
-    SchoolFullInfo, User, UserFilterParams, system_roles,
+    CreateSchoolDto, PaginatedBasicUsersResponse, PaginatedSchoolsResponse, School,
+    SchoolFilterParams, SchoolFullInfo, User, UserFilterParams, system_roles,
 };
 use crate::utils::errors::AppError;
 use crate::utils::pagination::PaginationMeta;
@@ -176,7 +176,7 @@ impl SchoolService {
         db: &PgPool,
         school_id: Uuid,
         filters: UserFilterParams,
-    ) -> Result<PaginatedUsersResponse, AppError> {
+    ) -> Result<PaginatedBasicUsersResponse, AppError> {
         let limit = filters.pagination.limit();
         let offset = filters.pagination.offset();
 
@@ -250,7 +250,7 @@ impl SchoolService {
             "Students fetched successfully"
         );
 
-        Ok(PaginatedUsersResponse {
+        Ok(PaginatedBasicUsersResponse {
             data: users,
             meta: PaginationMeta {
                 total,
@@ -267,7 +267,7 @@ impl SchoolService {
         db: &PgPool,
         school_id: Uuid,
         filters: UserFilterParams,
-    ) -> Result<PaginatedUsersResponse, AppError> {
+    ) -> Result<PaginatedBasicUsersResponse, AppError> {
         let limit = filters.pagination.limit();
         let offset = filters.pagination.offset();
 
@@ -339,7 +339,7 @@ impl SchoolService {
             "Admins fetched successfully"
         );
 
-        Ok(PaginatedUsersResponse {
+        Ok(PaginatedBasicUsersResponse {
             data: users,
             meta: PaginationMeta {
                 total,

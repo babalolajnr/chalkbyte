@@ -13,8 +13,8 @@ use crate::modules::branches::service::BranchService;
 use crate::modules::levels::model::{LevelFilterParams, PaginatedLevelsResponse};
 use crate::modules::levels::service::LevelService;
 use crate::modules::users::model::{
-    CreateSchoolDto, PaginatedSchoolsResponse, PaginatedUsersResponse, School, SchoolFilterParams,
-    SchoolFullInfo, UserFilterParams,
+    CreateSchoolDto, PaginatedBasicUsersResponse, PaginatedSchoolsResponse, School,
+    SchoolFilterParams, SchoolFullInfo, UserFilterParams,
 };
 use crate::state::AppState;
 use crate::utils::auth_helpers::get_admin_school_id;
@@ -167,7 +167,7 @@ pub async fn delete_school(
         ("offset" = Option<i64>, Query, description = "Offset for pagination")
     ),
     responses(
-        (status = 200, description = "Paginated list of students", body = PaginatedUsersResponse),
+        (status = 200, description = "Paginated list of students", body = PaginatedBasicUsersResponse),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden - requires schools:read permission"),
         (status = 404, description = "School not found")
@@ -181,7 +181,7 @@ pub async fn get_school_students(
     RequireSchoolsRead(auth_user): RequireSchoolsRead,
     Path(school_id): Path<Uuid>,
     filters: Result<Query<UserFilterParams>, QueryRejection>,
-) -> Result<Json<PaginatedUsersResponse>, AppError> {
+) -> Result<Json<PaginatedBasicUsersResponse>, AppError> {
     let Query(filters) = filters
         .map_err(|e| AppError::bad_request(anyhow::anyhow!("Invalid query parameters: {}", e)))?;
 
@@ -225,7 +225,7 @@ pub async fn get_school_students(
         ("offset" = Option<i64>, Query, description = "Offset for pagination")
     ),
     responses(
-        (status = 200, description = "Paginated list of admins", body = PaginatedUsersResponse),
+        (status = 200, description = "Paginated list of admins", body = PaginatedBasicUsersResponse),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden - requires schools:read permission (system admin only)"),
         (status = 404, description = "School not found")
@@ -239,7 +239,7 @@ pub async fn get_school_admins(
     RequireSchoolsRead(auth_user): RequireSchoolsRead,
     Path(school_id): Path<Uuid>,
     filters: Result<Query<UserFilterParams>, QueryRejection>,
-) -> Result<Json<PaginatedUsersResponse>, AppError> {
+) -> Result<Json<PaginatedBasicUsersResponse>, AppError> {
     let Query(filters) = filters
         .map_err(|e| AppError::bad_request(anyhow::anyhow!("Invalid query parameters: {}", e)))?;
 
