@@ -239,7 +239,7 @@ fn hash_password() -> Result<String, Box<dyn std::error::Error>> {
     println!("🔐 Hashing password...");
     let start = Instant::now();
     // Use lower bcrypt cost for seeding (cost 4 = ~6ms vs cost 12 = ~250ms)
-    let hash = hash("password123", 4).map_err(|e| format!("Failed to hash password: {}", e))?;
+    let hash = hash("Password@123", 4).map_err(|e| format!("Failed to hash password: {}", e))?;
     println!("   ✓ Hashed password in {:?}", start.elapsed());
     Ok(hash)
 }

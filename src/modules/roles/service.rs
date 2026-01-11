@@ -18,6 +18,7 @@ use super::model::{
 pub async fn get_all_permissions(
     db: &PgPool,
     params: PermissionFilterParams,
+    is_system_admin: bool,
 ) -> Result<PaginatedPermissionsResponse, AppError> {
     let limit = params.pagination.limit();
     let offset = params.pagination.offset();
@@ -26,6 +27,12 @@ pub async fn get_all_permissions(
         "SELECT id, name, description, category, created_at, updated_at FROM permissions WHERE 1=1",
     );
     let mut count_query = String::from("SELECT COUNT(*) FROM permissions WHERE 1=1");
+
+    // Filter out schools category for non-system admins
+    if !is_system_admin {
+        query.push_str(" AND category != 'schools'");
+        count_query.push_str(" AND category != 'schools'");
+    }
 
     if let Some(ref category) = params.category {
         query.push_str(&format!(" AND category = '{}'", category));
@@ -521,6 +528,16 @@ pub async fn assign_permissions_to_role(
         return Err(AppError::bad_request(anyhow!(
             "One or more permission IDs are invalid"
         )));
+    }
+
+    // Prevent non-system admins from assigning schools category permissions
+    if !is_system_admin {
+        let has_schools_permission = existing_permissions.iter().any(|p| p.category == "schools");
+        if has_schools_permission {
+            return Err(AppError::forbidden(
+                "School admins cannot assign school management permissions".to_string(),
+            ));
+        }
     }
 
     let permissions = assign_permissions_to_role_internal(db, role_id, &permission_ids).await?;

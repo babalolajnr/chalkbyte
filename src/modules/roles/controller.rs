@@ -42,10 +42,11 @@ use super::service;
 )]
 pub async fn get_permissions(
     State(state): State<AppState>,
-    RequireRolesRead(_auth_user): RequireRolesRead,
+    RequireRolesRead(auth_user): RequireRolesRead,
     Query(params): Query<PermissionFilterParams>,
 ) -> Result<Json<PaginatedPermissionsResponse>, AppError> {
-    let result = service::get_all_permissions(&state.db, params).await?;
+    let is_sys_admin = is_system_admin_jwt(&auth_user);
+    let result = service::get_all_permissions(&state.db, params, is_sys_admin).await?;
     Ok(Json(result))
 }
 
