@@ -18,9 +18,10 @@ use uuid::Uuid;
 use crate::middleware::auth::AuthUser;
 use crate::modules::roles::service as roles_service;
 use crate::modules::users::model::system_roles;
+use chalkbyte_core::AppError;
+
 use crate::modules::users::service::UserService;
 use crate::state::AppState;
-use crate::utils::errors::AppError;
 
 // Re-export auth helpers for convenience
 pub use crate::utils::auth_helpers::get_admin_school_id;

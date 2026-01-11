@@ -1,9 +1,9 @@
-use sqlx::PgPool;
+use chalkbyte_core::AppError;
+use chalkbyte_db::PgPool;
 use uuid::Uuid;
 
 use crate::middleware::auth::AuthUser;
 use crate::middleware::role::is_system_admin_jwt;
-use crate::utils::errors::AppError;
 
 /// Get the school_id for operations that require school scoping.
 ///
@@ -129,8 +129,8 @@ pub async fn verify_school_access(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::auth::model::Claims;
     use crate::modules::users::model::system_roles;
+    use chalkbyte_auth::Claims;
 
     fn create_test_auth_user(school_id: Option<Uuid>, role_ids: Vec<Uuid>) -> AuthUser {
         AuthUser(Claims {

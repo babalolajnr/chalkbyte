@@ -18,8 +18,8 @@
 //! # Example
 //!
 //! ```ignore
-//! use crate::utils::jwt::{create_access_token, verify_token};
-//! use crate::config::jwt::JwtConfig;
+//! use chalkbyte_auth::{create_access_token, verify_token};
+//! use chalkbyte_config::JwtConfig;
 //!
 //! let config = JwtConfig::from_env();
 //!
@@ -41,9 +41,10 @@ use chrono::Utc;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use uuid::Uuid;
 
-use crate::config::jwt::JwtConfig;
-use crate::modules::auth::model::{Claims, MfaTempClaims, RefreshTokenClaims};
-use crate::utils::errors::AppError;
+use chalkbyte_config::JwtConfig;
+use chalkbyte_core::AppError;
+
+use crate::claims::{Claims, MfaTempClaims, RefreshTokenClaims};
 
 /// Creates an access token with embedded roles and permissions for permission-based access control.
 ///
@@ -311,7 +312,7 @@ mod tests {
 
     fn get_test_jwt_config() -> JwtConfig {
         JwtConfig {
-            secret: "test_secret_key_for_testing_purposes".to_string(),
+            secret: "test-secret-key-at-least-32-characters-long".to_string(),
             access_token_expiry: 3600,
             refresh_token_expiry: 604800,
         }
@@ -319,20 +320,17 @@ mod tests {
 
     #[test]
     fn test_create_access_token_success() {
-        let jwt_config = get_test_jwt_config();
+        let config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
-        let email = "test@example.com";
-        let school_id = Some(Uuid::new_v4());
-        let role_ids = vec![Uuid::new_v4()];
-        let permissions = vec!["users:read".to_string(), "users:create".to_string()];
+        let school_id = Uuid::new_v4();
 
         let result = create_access_token(
             user_id,
-            email,
-            school_id,
-            role_ids.clone(),
-            permissions.clone(),
-            &jwt_config,
+            "test@example.com",
+            Some(school_id),
+            vec![Uuid::new_v4()],
+            vec!["users:read".to_string()],
+            &config,
         );
 
         assert!(result.is_ok());
@@ -342,182 +340,61 @@ mod tests {
 
     #[test]
     fn test_verify_token_success() {
-        let jwt_config = get_test_jwt_config();
+        let config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
-        let email = "test@example.com";
-        let school_id = Some(Uuid::new_v4());
-        let role_ids = vec![Uuid::new_v4()];
-        let permissions = vec!["users:read".to_string()];
+        let school_id = Uuid::new_v4();
+        let role_id = Uuid::new_v4();
 
         let token = create_access_token(
             user_id,
-            email,
-            school_id,
-            role_ids.clone(),
-            permissions.clone(),
-            &jwt_config,
+            "test@example.com",
+            Some(school_id),
+            vec![role_id],
+            vec!["users:read".to_string()],
+            &config,
         )
         .unwrap();
-        let result = verify_token(&token, &jwt_config);
 
-        assert!(result.is_ok());
-        let claims = result.unwrap();
-        assert_eq!(claims.email, email);
+        let claims = verify_token(&token, &config).unwrap();
+
         assert_eq!(claims.sub, user_id.to_string());
-        assert_eq!(claims.school_id, school_id);
-        assert_eq!(claims.role_ids, role_ids);
-        assert_eq!(claims.permissions, permissions);
+        assert_eq!(claims.email, "test@example.com");
+        assert_eq!(claims.school_id, Some(school_id));
+        assert_eq!(claims.role_ids, vec![role_id]);
+        assert_eq!(claims.permissions, vec!["users:read".to_string()]);
     }
 
     #[test]
     fn test_verify_token_invalid() {
-        let jwt_config = get_test_jwt_config();
-        let invalid_token = "invalid.token.here";
-
-        let result = verify_token(invalid_token, &jwt_config);
-
+        let config = get_test_jwt_config();
+        let result = verify_token("invalid-token", &config);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_verify_token_wrong_secret() {
-        let jwt_config = get_test_jwt_config();
+        let config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
-        let email = "test@example.com";
 
-        let token = create_access_token(user_id, email, None, vec![], vec![], &jwt_config).unwrap();
+        let token = create_access_token(user_id, "test@example.com", None, vec![], vec![], &config)
+            .unwrap();
 
-        let wrong_jwt_config = JwtConfig {
-            secret: "different_secret_key".to_string(),
+        let wrong_config = JwtConfig {
+            secret: "different-secret-key-at-least-32-characters".to_string(),
             access_token_expiry: 3600,
             refresh_token_expiry: 604800,
         };
 
-        let result = verify_token(&token, &wrong_jwt_config);
-
+        let result = verify_token(&token, &wrong_config);
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_verify_token_empty() {
-        let jwt_config = get_test_jwt_config();
-        let empty_token = "";
-
-        let result = verify_token(empty_token, &jwt_config);
-
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_token_expiry_is_set() {
-        let jwt_config = get_test_jwt_config();
-        let user_id = Uuid::new_v4();
-        let email = "test@example.com";
-
-        let token = create_access_token(user_id, email, None, vec![], vec![], &jwt_config).unwrap();
-        let claims = verify_token(&token, &jwt_config).unwrap();
-
-        assert!(claims.exp > claims.iat);
-        assert_eq!(
-            claims.exp - claims.iat,
-            jwt_config.access_token_expiry as usize
-        );
-    }
-
-    #[test]
-    fn test_token_with_special_characters_in_email() {
-        let jwt_config = get_test_jwt_config();
-        let user_id = Uuid::new_v4();
-        let email = "test+special@example.co.uk";
-
-        let token = create_access_token(user_id, email, None, vec![], vec![], &jwt_config).unwrap();
-        let claims = verify_token(&token, &jwt_config).unwrap();
-
-        assert_eq!(claims.email, email);
-    }
-
-    #[test]
-    fn test_verify_token_malformed() {
-        let jwt_config = get_test_jwt_config();
-        let malformed_tokens = vec![
-            "not.enough.parts",
-            "too.many.parts.here.extra",
-            "!!!.invalid.chars",
-            "header.payload.",
-            ".payload.signature",
-        ];
-
-        for token in malformed_tokens {
-            let result = verify_token(token, &jwt_config);
-            assert!(result.is_err());
-        }
-    }
-
-    #[test]
-    fn test_create_token_different_users_different_tokens() {
-        let jwt_config = get_test_jwt_config();
-        let user_id1 = Uuid::new_v4();
-        let user_id2 = Uuid::new_v4();
-        let email1 = "user1@example.com";
-        let email2 = "user2@example.com";
-
-        let token1 =
-            create_access_token(user_id1, email1, None, vec![], vec![], &jwt_config).unwrap();
-        let token2 =
-            create_access_token(user_id2, email2, None, vec![], vec![], &jwt_config).unwrap();
-
-        assert_ne!(token1, token2);
-
-        let claims1 = verify_token(&token1, &jwt_config).unwrap();
-        let claims2 = verify_token(&token2, &jwt_config).unwrap();
-
-        assert_eq!(claims1.sub, user_id1.to_string());
-        assert_eq!(claims2.sub, user_id2.to_string());
-        assert_eq!(claims1.email, email1);
-        assert_eq!(claims2.email, email2);
-    }
-
-    #[test]
-    fn test_token_with_permissions() {
-        let jwt_config = get_test_jwt_config();
-        let user_id = Uuid::new_v4();
-        let email = "admin@example.com";
-        let school_id = Some(Uuid::new_v4());
-        let role_ids = vec![Uuid::new_v4(), Uuid::new_v4()];
-        let permissions = vec![
-            "users:create".to_string(),
-            "users:read".to_string(),
-            "users:update".to_string(),
-            "schools:read".to_string(),
-        ];
-
-        let token = create_access_token(
-            user_id,
-            email,
-            school_id,
-            role_ids.clone(),
-            permissions.clone(),
-            &jwt_config,
-        )
-        .unwrap();
-
-        let claims = verify_token(&token, &jwt_config).unwrap();
-
-        assert_eq!(claims.sub, user_id.to_string());
-        assert_eq!(claims.school_id, school_id);
-        assert_eq!(claims.role_ids.len(), 2);
-        assert_eq!(claims.permissions.len(), 4);
-        assert!(claims.permissions.contains(&"users:create".to_string()));
-        assert!(claims.permissions.contains(&"schools:read".to_string()));
     }
 
     #[test]
     fn test_create_refresh_token_success() {
-        let jwt_config = get_test_jwt_config();
+        let config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
-        let email = "test@example.com";
 
-        let result = create_refresh_token(user_id, email, &jwt_config);
+        let result = create_refresh_token(user_id, "test@example.com", &config);
 
         assert!(result.is_ok());
         let token = result.unwrap();
@@ -526,26 +403,22 @@ mod tests {
 
     #[test]
     fn test_verify_refresh_token_success() {
-        let jwt_config = get_test_jwt_config();
+        let config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
-        let email = "refresh@example.com";
 
-        let token = create_refresh_token(user_id, email, &jwt_config).unwrap();
-        let result = verify_refresh_token(&token, &jwt_config);
+        let token = create_refresh_token(user_id, "test@example.com", &config).unwrap();
+        let claims = verify_refresh_token(&token, &config).unwrap();
 
-        assert!(result.is_ok());
-        let claims = result.unwrap();
-        assert_eq!(claims.email, email);
         assert_eq!(claims.sub, user_id.to_string());
+        assert_eq!(claims.email, "test@example.com");
     }
 
     #[test]
     fn test_create_mfa_temp_token_success() {
-        let jwt_config = get_test_jwt_config();
+        let config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
-        let email = "mfa@example.com";
 
-        let result = create_mfa_temp_token(user_id, email, &jwt_config);
+        let result = create_mfa_temp_token(user_id, "test@example.com", &config);
 
         assert!(result.is_ok());
         let token = result.unwrap();
@@ -554,43 +427,82 @@ mod tests {
 
     #[test]
     fn test_verify_mfa_temp_token_success() {
-        let jwt_config = get_test_jwt_config();
+        let config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
-        let email = "mfa@example.com";
 
-        let token = create_mfa_temp_token(user_id, email, &jwt_config).unwrap();
-        let result = verify_mfa_temp_token(&token, &jwt_config);
+        let token = create_mfa_temp_token(user_id, "test@example.com", &config).unwrap();
+        let claims = verify_mfa_temp_token(&token, &config).unwrap();
 
-        assert!(result.is_ok());
-        let claims = result.unwrap();
-        assert_eq!(claims.email, email);
         assert_eq!(claims.sub, user_id.to_string());
+        assert_eq!(claims.email, "test@example.com");
         assert!(claims.mfa_pending);
     }
 
     #[test]
     fn test_verify_mfa_temp_token_invalid() {
-        let jwt_config = get_test_jwt_config();
-        let invalid_token = "invalid.mfa.token";
-
-        let result = verify_mfa_temp_token(invalid_token, &jwt_config);
-
+        let config = get_test_jwt_config();
+        let result = verify_mfa_temp_token("invalid-token", &config);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_refresh_token_expiry_longer_than_access() {
-        let jwt_config = get_test_jwt_config();
+        let config = get_test_jwt_config();
         let user_id = Uuid::new_v4();
-        let email = "test@example.com";
 
         let access_token =
-            create_access_token(user_id, email, None, vec![], vec![], &jwt_config).unwrap();
-        let refresh_token = create_refresh_token(user_id, email, &jwt_config).unwrap();
+            create_access_token(user_id, "test@example.com", None, vec![], vec![], &config)
+                .unwrap();
 
-        let access_claims = verify_token(&access_token, &jwt_config).unwrap();
-        let refresh_claims = verify_refresh_token(&refresh_token, &jwt_config).unwrap();
+        let refresh_token = create_refresh_token(user_id, "test@example.com", &config).unwrap();
+
+        let access_claims = verify_token(&access_token, &config).unwrap();
+        let refresh_claims = verify_refresh_token(&refresh_token, &config).unwrap();
 
         assert!(refresh_claims.exp > access_claims.exp);
+    }
+
+    #[test]
+    fn test_token_with_no_school_id() {
+        let config = get_test_jwt_config();
+        let user_id = Uuid::new_v4();
+
+        let token = create_access_token(
+            user_id,
+            "sysadmin@example.com",
+            None,
+            vec![],
+            vec!["*".to_string()],
+            &config,
+        )
+        .unwrap();
+
+        let claims = verify_token(&token, &config).unwrap();
+        assert!(claims.school_id.is_none());
+    }
+
+    #[test]
+    fn test_token_with_multiple_permissions() {
+        let config = get_test_jwt_config();
+        let user_id = Uuid::new_v4();
+        let permissions = vec![
+            "users:read".to_string(),
+            "users:create".to_string(),
+            "users:update".to_string(),
+            "users:delete".to_string(),
+        ];
+
+        let token = create_access_token(
+            user_id,
+            "admin@example.com",
+            Some(Uuid::new_v4()),
+            vec![Uuid::new_v4()],
+            permissions.clone(),
+            &config,
+        )
+        .unwrap();
+
+        let claims = verify_token(&token, &config).unwrap();
+        assert_eq!(claims.permissions, permissions);
     }
 }

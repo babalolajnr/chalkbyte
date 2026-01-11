@@ -25,7 +25,7 @@
 
 use bcrypt::{DEFAULT_COST, hash, verify};
 
-use crate::utils::errors::AppError;
+use crate::errors::AppError;
 
 /// Hashes a password using bcrypt with the default cost factor.
 ///

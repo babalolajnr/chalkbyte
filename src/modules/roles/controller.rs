@@ -4,6 +4,8 @@ use axum::{
 };
 use uuid::Uuid;
 
+use chalkbyte_core::AppError;
+
 use crate::middleware::auth::{
     RequireRolesAssign, RequireRolesCreate, RequireRolesDelete, RequireRolesRead,
     RequireRolesUpdate,
@@ -12,7 +14,6 @@ use crate::middleware::role::is_system_admin_jwt;
 use crate::modules::users::model::system_roles;
 use crate::state::AppState;
 use crate::utils::auth_helpers::get_admin_school_id;
-use crate::utils::errors::AppError;
 use crate::validator::ValidatedJson;
 
 use super::model::{

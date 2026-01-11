@@ -1,0 +1,10 @@
+[package]
+name = "chalkbyte-config"
+description = "Configuration types for Chalkbyte API"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Rate limiting
+tower_governor = { workspace = true }
+governor = { workspace = true }

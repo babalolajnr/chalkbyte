@@ -4,6 +4,8 @@ use axum::{
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
+use chalkbyte_core::AppError;
+
 use crate::middleware::auth::{
     AuthUser, RequireSchoolsCreate, RequireSchoolsDelete, RequireSchoolsRead,
 };
@@ -18,7 +20,6 @@ use crate::modules::users::model::{
 };
 use crate::state::AppState;
 use crate::utils::auth_helpers::get_admin_school_id;
-use crate::utils::errors::AppError;
 
 use super::service::SchoolService;
 

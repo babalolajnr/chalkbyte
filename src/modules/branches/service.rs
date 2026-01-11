@@ -1,10 +1,10 @@
-use crate::modules::users::model::system_roles;
 use sqlx::PgPool;
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::utils::errors::AppError;
-use crate::utils::pagination::PaginationMeta;
+use chalkbyte_core::{AppError, PaginationMeta};
+
+use crate::modules::users::model::system_roles;
 
 use super::model::{
     AssignStudentsToBranchDto, Branch, BranchFilterParams, BranchWithStats, BulkAssignResponse,
@@ -944,7 +944,7 @@ mod tests {
         AssignStudentsToBranchDto, BranchFilterParams, CreateBranchDto, MoveStudentToBranchDto,
         UpdateBranchDto,
     };
-    use crate::utils::pagination::PaginationParams;
+    use chalkbyte_core::PaginationParams;
     use sqlx::PgPool;
     use uuid::Uuid;
 

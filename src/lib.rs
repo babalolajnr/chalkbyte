@@ -140,3 +140,9 @@ pub mod router;
 pub mod state;
 pub mod utils;
 pub mod validator;
+
+// Re-export workspace crates for convenience
+pub use chalkbyte_auth;
+pub use chalkbyte_config;
+pub use chalkbyte_core;
+pub use chalkbyte_db;

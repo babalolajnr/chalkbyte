@@ -1,0 +1,27 @@
+[package]
+name = "chalkbyte-models"
+description = "Domain models and DTOs for Chalkbyte API"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Core crate for shared types
+chalkbyte-core = { workspace = true }
+chalkbyte-auth = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Database
+sqlx = { workspace = true }
+
+# Types
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+# Validation
+validator = { workspace = true }
+
+# API Documentation
+utoipa = { workspace = true }

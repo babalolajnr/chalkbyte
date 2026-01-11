@@ -2,13 +2,13 @@ use sqlx::PgPool;
 use tracing::instrument;
 use uuid::Uuid;
 
+use chalkbyte_core::{AppError, PaginationMeta};
+
 use crate::modules::levels::model::{
     AssignStudentsToLevelDto, BulkAssignResponse, CreateLevelDto, Level, LevelFilterParams,
     LevelWithStats, MoveStudentToLevelDto, PaginatedLevelsResponse, UpdateLevelDto,
 };
 use crate::modules::users::model::system_roles;
-use crate::utils::errors::AppError;
-use crate::utils::pagination::PaginationMeta;
 
 pub struct LevelService;
 
@@ -672,8 +672,8 @@ impl LevelService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::pagination::PaginationParams;
     use axum::http::StatusCode;
+    use chalkbyte_core::PaginationParams;
 
     async fn create_test_school(pool: &PgPool, name: &str) -> Uuid {
         sqlx::query_scalar!(

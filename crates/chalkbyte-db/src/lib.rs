@@ -1,49 +1,22 @@
-//! Database configuration and connection pool initialization.
+//! # Chalkbyte DB
 //!
-//! This module handles PostgreSQL database connection pool setup using SQLx.
-//! The database URL is read from the `DATABASE_URL` environment variable.
+//! Database pool and utilities for the Chalkbyte API.
 //!
-//! # Environment Variables
-//!
-//! - `DATABASE_URL`: PostgreSQL connection string (required)
-//!
-//! # Connection String Format
-//!
-//! ```text
-//! postgres://username:password@host:port/database_name
-//! ```
+//! This crate provides database connection pool initialization and management
+//! using SQLx with PostgreSQL.
 //!
 //! # Example
 //!
 //! ```ignore
-//! use crate::config::database::init_db_pool;
+//! use chalkbyte_db::init_db_pool;
 //!
 //! #[tokio::main]
 //! async fn main() {
-//!     // Ensure DATABASE_URL is set
-//!     std::env::set_var("DATABASE_URL", "postgres://user:pass@localhost/chalkbyte");
-//!
 //!     let pool = init_db_pool().await;
 //!     // Use pool for database operations
 //! }
 //! ```
-//!
-//! # Connection Pool
-//!
-//! SQLx manages a pool of database connections automatically. The pool:
-//!
-//! - Reuses connections to reduce overhead
-//! - Handles connection failures and reconnection
-//! - Provides async/await support for non-blocking queries
-//!
-//! # Panics
-//!
-//! The [`init_db_pool`] function will panic if:
-//!
-//! - `DATABASE_URL` environment variable is not set
-//! - The database connection cannot be established
 
-use sqlx::PgPool;
 use std::env;
 
 /// Initializes a PostgreSQL connection pool.
@@ -78,10 +51,13 @@ use std::env;
 /// This function should typically be called once during application startup.
 /// The returned pool is cheaply cloneable and should be passed to the
 /// application state for use in request handlers.
-pub async fn init_db_pool() -> PgPool {
+pub async fn init_db_pool() -> sqlx::PgPool {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
-    PgPool::connect(&database_url)
+    sqlx::PgPool::connect(&database_url)
         .await
         .expect("Failed to connect to database")
 }
+
+// Re-export PgPool for convenience
+pub use sqlx::PgPool;

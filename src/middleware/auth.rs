@@ -99,10 +99,10 @@ use axum::{
     http::{header, request::Parts},
 };
 
-use crate::modules::auth::model::Claims;
+use chalkbyte_auth::{Claims, verify_token};
+use chalkbyte_core::AppError;
+
 use crate::state::AppState;
-use crate::utils::errors::AppError;
-use crate::utils::jwt::verify_token;
 
 /// Extractor that validates JWT and provides the authenticated user's claims.
 ///

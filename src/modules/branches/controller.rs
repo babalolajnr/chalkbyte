@@ -7,6 +7,8 @@ use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
+use chalkbyte_core::AppError;
+
 use crate::middleware::auth::{
     RequireBranchesAssignStudents, RequireBranchesCreate, RequireBranchesDelete,
     RequireBranchesRead, RequireBranchesUpdate,
@@ -19,7 +21,6 @@ use crate::modules::branches::model::{
 use crate::modules::branches::service::BranchService;
 use crate::modules::users::model::User;
 use crate::state::AppState;
-use crate::utils::errors::AppError;
 
 #[utoipa::path(
     post,

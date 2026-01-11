@@ -1,6 +1,7 @@
-use crate::modules::users::model::system_roles;
-use crate::utils::password::hash_password;
+use chalkbyte_core::hash_password;
 use sqlx::PgPool;
+
+use crate::modules::users::model::system_roles;
 
 pub mod seeder;
 

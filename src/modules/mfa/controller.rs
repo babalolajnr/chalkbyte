@@ -1,6 +1,7 @@
+use chalkbyte_core::AppError;
+
 use crate::middleware::auth::AuthUser;
 use crate::state::AppState;
-use crate::utils::errors::AppError;
 use crate::validator::ValidatedJson;
 use axum::Json;
 use axum::extract::State;

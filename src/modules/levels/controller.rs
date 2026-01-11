@@ -7,6 +7,8 @@ use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
+use chalkbyte_core::AppError;
+
 use crate::middleware::auth::{
     RequireLevelsAssignStudents, RequireLevelsCreate, RequireLevelsDelete, RequireLevelsRead,
     RequireLevelsUpdate,
@@ -20,7 +22,6 @@ use crate::modules::levels::service::LevelService;
 use crate::modules::users::model::User;
 use crate::state::AppState;
 use crate::utils::auth_helpers::{get_admin_school_id, get_school_id_for_scoped_operation};
-use crate::utils::errors::AppError;
 
 #[utoipa::path(
     post,

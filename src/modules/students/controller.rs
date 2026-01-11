@@ -1,3 +1,5 @@
+use chalkbyte_core::AppError;
+
 use crate::middleware::auth::{
     RequireStudentsCreate, RequireStudentsDelete, RequireStudentsRead, RequireStudentsUpdate,
 };
@@ -10,7 +12,6 @@ use crate::modules::students::model::{
 use crate::modules::students::service::StudentService;
 use crate::state::AppState;
 use crate::utils::auth_helpers::{get_admin_school_id, get_school_id_for_scoped_operation};
-use crate::utils::errors::AppError;
 use axum::{
     Json,
     extract::{Path, Query, State},

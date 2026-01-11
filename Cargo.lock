@@ -469,6 +469,11 @@ dependencies = [
  "axum 0.8.4",
  "axum-extra",
  "bcrypt",
+ "chalkbyte-auth",
+ "chalkbyte-config",
+ "chalkbyte-core",
+ "chalkbyte-db",
+ "chalkbyte-models",
  "chrono",
  "clap",
  "data-encoding",
@@ -478,7 +483,6 @@ dependencies = [
  "governor",
  "http-body-util",
  "hyper 1.6.0",
- "jsonwebtoken",
  "lettre",
  "metrics",
  "metrics-exporter-prometheus",
@@ -505,6 +509,66 @@ dependencies = [
  "utoipa",
  "utoipa-scalar",
  "utoipa-swagger-ui",
+ "uuid",
+ "validator",
+]
+
+[[package]]
+name = "chalkbyte-auth"
+version = "0.1.0"
+dependencies = [
+ "chalkbyte-config",
+ "chalkbyte-core",
+ "chrono",
+ "jsonwebtoken",
+ "serde",
+ "serde_json",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "chalkbyte-config"
+version = "0.1.0"
+dependencies = [
+ "governor",
+ "tower_governor",
+]
+
+[[package]]
+name = "chalkbyte-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum 0.8.4",
+ "bcrypt",
+ "serde",
+ "serde_json",
+ "tracing",
+ "utoipa",
+ "uuid",
+ "validator",
+]
+
+[[package]]
+name = "chalkbyte-db"
+version = "0.1.0"
+dependencies = [
+ "sqlx",
+ "tokio",
+]
+
+[[package]]
+name = "chalkbyte-models"
+version = "0.1.0"
+dependencies = [
+ "chalkbyte-auth",
+ "chalkbyte-core",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "utoipa",
  "uuid",
  "validator",
 ]

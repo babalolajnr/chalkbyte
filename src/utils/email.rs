@@ -3,8 +3,8 @@ use lettre::transport::smtp::authentication::Credentials;
 use lettre::{Message, SmtpTransport, Transport};
 use tracing::{debug, info, instrument};
 
-use crate::config::email::EmailConfig;
-use crate::utils::errors::AppError;
+use chalkbyte_config::EmailConfig;
+use chalkbyte_core::AppError;
 
 #[allow(dead_code)]
 pub struct EmailService {

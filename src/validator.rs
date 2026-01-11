@@ -7,7 +7,7 @@ use axum::{
 use serde::de::DeserializeOwned;
 use validator::{Validate, ValidationErrors};
 
-use crate::utils::errors::AppError;
+use chalkbyte_core::AppError;
 
 fn format_errors(errors: &ValidationErrors) -> String {
     errors

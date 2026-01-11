@@ -3,7 +3,13 @@ use sqlx::{PgPool, Row};
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
-use crate::config::jwt::JwtConfig;
+use chalkbyte_auth::{
+    create_access_token, create_mfa_temp_token, create_refresh_token, verify_mfa_temp_token,
+    verify_refresh_token,
+};
+use chalkbyte_config::JwtConfig;
+use chalkbyte_core::{AppError, hash_password, verify_password};
+
 use crate::metrics;
 use crate::modules::auth::model::{
     ForgotPasswordRequest, LoginRequest, LoginResponse, LoginUser, MessageResponse,
@@ -12,12 +18,6 @@ use crate::modules::auth::model::{
 };
 use crate::modules::roles::service as roles_service;
 use crate::modules::users::model::{BranchInfo, LevelInfo, SchoolInfo};
-use crate::utils::errors::AppError;
-use crate::utils::jwt::{
-    create_access_token, create_mfa_temp_token, create_refresh_token, verify_mfa_temp_token,
-    verify_refresh_token,
-};
-use crate::utils::password::{hash_password, verify_password};
 
 pub struct AuthService;
 

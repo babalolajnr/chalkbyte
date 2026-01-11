@@ -2,13 +2,13 @@ use sqlx::PgPool;
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
+use chalkbyte_core::{AppError, PaginationMeta};
+
 use crate::metrics;
 use crate::modules::users::model::{
     CreateSchoolDto, PaginatedBasicUsersResponse, PaginatedSchoolsResponse, School,
     SchoolFilterParams, SchoolFullInfo, User, UserFilterParams, system_roles,
 };
-use crate::utils::errors::AppError;
-use crate::utils::pagination::PaginationMeta;
 
 pub struct SchoolService;
 

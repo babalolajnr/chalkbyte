@@ -143,7 +143,7 @@ Chalkbyte is a REST API built with Rust, Axum, and PostgreSQL that implements a 
 
 ## Tech Stack
 
-- **Language**: Rust (2021 edition)
+- **Language**: Rust (2024 edition)
 - **Framework**: Axum 0.8
 - **Database**: PostgreSQL with SQLx
 - **Authentication**: JWT with bcrypt
@@ -153,48 +153,142 @@ Chalkbyte is a REST API built with Rust, Axum, and PostgreSQL that implements a 
 
 ## Project Structure
 
-```
-src/
-├── cli/              # CLI commands (e.g., create-sysadmin)
-├── config/           # Configuration modules (JWT, database)
-├── middleware/       # Auth middleware and extractors
-├── modules/          # Feature modules (NestJS-style architecture)
-│   ├── auth/        # Authentication (login only, no registration)
-│   ├── schools/     # School management
-│   └── users/       # User management
-├── utils/           # Utilities (errors, JWT, password hashing)
-├── db.rs            # Database connection setup
-├── docs.rs          # OpenAPI documentation configuration
-├── main.rs          # Entry point with CLI argument handling
-├── router.rs        # Main router setup
-└── validator.rs     # Validation utilities
+Chalkbyte uses a **Cargo workspace** with multiple internal crates for improved compilation speed and separation of concerns.
 
-migrations/          # SQLx database migrations
-docs/                # Documentation markdown files
 ```
+.
+├── Cargo.toml           # Workspace root with workspace.dependencies
+├── crates/
+│   ├── chalkbyte-core/      # Shared utilities (errors, pagination, password)
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── errors.rs    # AppError type
+│   │       ├── pagination.rs
+│   │       ├── password.rs
+│   │       └── serde.rs
+│   ├── chalkbyte-config/    # Configuration modules
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── cors.rs
+│   │       ├── email.rs
+│   │       ├── jwt.rs
+│   │       └── rate_limit.rs
+│   ├── chalkbyte-db/        # Database connection setup
+│   │   └── src/
+│   │       └── lib.rs
+│   ├── chalkbyte-auth/      # JWT claims and helpers
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── claims.rs
+│   │       └── jwt.rs
+│   └── chalkbyte-models/    # Domain models and DTOs
+│       └── src/
+│           ├── lib.rs
+│           ├── auth.rs
+│           ├── branches.rs
+│           ├── levels.rs
+│           ├── mfa.rs
+│           ├── roles.rs
+│           ├── students.rs
+│           └── users.rs
+├── src/                     # Main application crate
+│   ├── main.rs              # Entry point
+│   ├── lib.rs               # Library exports
+│   ├── router.rs            # Main router setup
+│   ├── state.rs             # AppState definition
+│   ├── docs.rs              # OpenAPI documentation configuration
+│   ├── logging.rs           # Tracing/logging setup
+│   ├── metrics.rs           # Metrics configuration
+│   ├── validator.rs         # Validation utilities
+│   ├── bin/
+│   │   └── cli.rs           # CLI binary
+│   ├── cli/                 # CLI commands
+│   ├── config/              # App-level configuration
+│   ├── middleware/          # Auth middleware and extractors
+│   ├── modules/             # Feature modules (NestJS-style)
+│   │   ├── mod.rs
+│   │   ├── auth/            # Authentication (login only)
+│   │   ├── branches/        # Branch management
+│   │   ├── levels/          # Level management
+│   │   ├── mfa/             # Multi-factor authentication
+│   │   ├── roles/           # Role management
+│   │   ├── schools/         # School management
+│   │   ├── students/        # Student management
+│   │   └── users/           # User management
+│   └── utils/               # App-level utilities
+├── migrations/              # SQLx database migrations
+├── docs/                    # Documentation markdown files
+└── tests/                   # Integration tests
+```
+
+## Workspace Crates
+
+### `chalkbyte-core`
+Shared utilities used across the application:
+- `AppError` - Unified error type with Axum `IntoResponse` implementation
+- `PaginationParams`, `PaginatedResponse` - Pagination utilities
+- `password` - Password hashing with bcrypt
+
+### `chalkbyte-config`
+Configuration modules:
+- `JwtConfig` - JWT settings from environment
+- `CorsConfig` - CORS configuration
+- `EmailConfig` - Email/SMTP settings
+- `RateLimitConfig` - Rate limiting settings
+
+### `chalkbyte-db`
+Database connection:
+- `create_pool()` - Creates SQLx PostgreSQL connection pool
+
+### `chalkbyte-auth`
+Authentication primitives:
+- `Claims` - JWT claims structure
+- JWT token creation and validation helpers
+
+### `chalkbyte-models`
+Domain models and DTOs for all modules:
+- `users` - User, CreateUserDto, UpdateUserDto, UserResponse
+- `roles` - Role, Permission, CreateRoleDto
+- `auth` - LoginDto, AuthResponse, RefreshToken
+- `levels` - Level, CreateLevelDto
+- `branches` - Branch, CreateBranchDto
+- `students` - Student, CreateStudentDto
+- `mfa` - MfaSetup, MfaVerify
 
 ## Architecture Patterns
 
 ### Module Structure (NestJS-style)
 
-Each feature module follows this pattern:
+Each feature module in `src/modules/` follows this pattern:
 ```
 module_name/
 ├── mod.rs           # Module exports
 ├── controller.rs    # HTTP handlers (routes)
 ├── service.rs       # Business logic
-├── model.rs         # Data models, DTOs, database structs
+├── model.rs         # Re-exports from chalkbyte-models + any local types
 └── router.rs        # Axum router configuration
+```
+
+### Importing from Workspace Crates
+
+```rust
+// Import shared types from workspace crates
+use chalkbyte_core::{AppError, PaginatedResponse, PaginationParams};
+use chalkbyte_config::JwtConfig;
+use chalkbyte_db::create_pool;
+use chalkbyte_auth::Claims;
+use chalkbyte_models::users::{User, CreateUserDto, UserResponse};
 ```
 
 ### Code Style Guidelines
 
-1. **Error Handling**: Always use `AppError` from `utils/errors.rs`
+1. **Error Handling**: Always use `AppError` from `chalkbyte-core`
 2. **Database Queries**: Use SQLx with query macros for type safety
 3. **Authentication**: Use `AuthUser` extractor from middleware
 4. **Documentation**: Add `#[utoipa::path]` attributes to all API endpoints
 5. **Validation**: Use validator derive macros on DTOs
 6. **Tracing**: Add `#[instrument]` to service methods
+7. **Models**: Domain models live in `chalkbyte-models`, module `model.rs` re-exports them
 
 ## Role System
 
@@ -325,25 +419,43 @@ pub fn init_module_router() -> Router<AppState> {
 
 ## CLI Commands
 
+### Running CLI
+```bash
+# Run CLI binary
+cargo run --bin chalkbyte-cli -- <command>
+```
+
 ### Adding New Commands
 
+CLI commands are defined in `src/bin/cli.rs` using clap:
 ```rust
-// In main.rs
-if args.len() > 1 && args[1] == "command-name" {
-    handle_command(args).await;
-    return;
+#[derive(Parser)]
+#[command(name = "chalkbyte-cli")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
 }
 
-// Create handler function
-async fn handle_command(args: Vec<String>) {
-    // Parse args
-    // Connect to database
-    // Execute operation
-    // Print result
+#[derive(Subcommand)]
+enum Commands {
+    CreateSysadmin { ... },
+    // Add new commands here
 }
 ```
 
 ## Testing Patterns
+
+### Running Tests
+```bash
+# Run all workspace tests
+cargo test --workspace
+
+# Run tests for a specific crate
+cargo test -p chalkbyte-core
+
+# Run tests for main application
+cargo test -p chalkbyte
+```
 
 ### Manual Testing
 Use curl or the test script:
@@ -361,12 +473,21 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/api/endpoint
 
 ### Adding a New Endpoint
 
-1. Create/update model in `model.rs` with DTOs
-2. Add service method in `service.rs`
-3. Add controller handler in `controller.rs` with utoipa docs
-4. Add route in `router.rs`
-5. Update `docs.rs` to include the new path
-6. Test with curl or swagger UI
+1. Add/update model types in `crates/chalkbyte-models/src/<module>.rs`
+2. Re-export in module's `model.rs` if needed
+3. Add service method in `service.rs`
+4. Add controller handler in `controller.rs` with utoipa docs
+5. Add route in `router.rs`
+6. Update `docs.rs` to include the new path
+7. Test with curl or swagger UI
+
+### Adding a New Crate
+
+1. Create directory: `crates/chalkbyte-<name>/`
+2. Add `Cargo.toml` with `package` section
+3. Add to workspace members in root `Cargo.toml`
+4. Add to `[workspace.dependencies]` if needed by other crates
+5. Add as dependency in crates that need it
 
 ### Adding a New Role Permission
 
@@ -379,15 +500,17 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/api/endpoint
 1. `sqlx migrate add description`
 2. Write SQL in generated file
 3. `sqlx migrate run`
-4. Update models if schema changed
+4. Update models in `chalkbyte-models` if schema changed
 
 ## Important Notes
 
+- **Workspace Build**: Always run `cargo build` from workspace root
 - **No Public Registration**: Users created only by admins
 - **School Isolation**: School admins see only their school's data
 - **CLI System Admin**: Only way to create system administrators
 - **Unique School Names**: Enforced at database level
 - **JWT Expiry**: Configured via JWT_ACCESS_TOKEN_EXPIRY env var
+- **Models Location**: All domain models/DTOs in `chalkbyte-models` crate
 
 ## Documentation
 
@@ -408,7 +531,7 @@ When adding features, update:
 ## Code Review Checklist
 
 Before suggesting code:
-- [ ] Added proper error handling with AppError
+- [ ] Added proper error handling with AppError from `chalkbyte-core`
 - [ ] Added authorization checks for protected endpoints
 - [ ] Added OpenAPI documentation
 - [ ] Followed the module structure pattern
@@ -416,10 +539,12 @@ Before suggesting code:
 - [ ] Added validation to DTOs where needed
 - [ ] Scoped queries by school_id for school admins
 - [ ] Updated relevant documentation
+- [ ] Models placed in correct crate (`chalkbyte-models` for shared, module for local)
 
 ## When in Doubt
 
-- Check existing patterns in `modules/schools/` or `modules/users/`
+- Check existing patterns in `src/modules/schools/` or `src/modules/users/`
+- Check workspace crates for shared utilities
 - Refer to `docs/SYSTEM_ADMIN_IMPLEMENTATION.md`
 - Follow Axum and SQLx best practices
 - Maintain consistency with existing code style

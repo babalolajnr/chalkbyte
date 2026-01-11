@@ -1,0 +1,31 @@
+[package]
+name = "chalkbyte-core"
+description = "Core types, errors, and utilities for Chalkbyte API"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Web framework (for IntoResponse on AppError)
+axum = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Validation
+validator = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+
+# Auth
+bcrypt = { workspace = true }
+
+# Observability
+tracing = { workspace = true }
+
+# API Documentation
+utoipa = { workspace = true }
+
+# Types
+uuid = { workspace = true }

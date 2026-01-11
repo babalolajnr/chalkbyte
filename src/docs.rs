@@ -31,7 +31,7 @@ use crate::modules::users::model::{
     PaginatedUsersResponse, School, SchoolFilterParams, SchoolFullInfo, UpdateProfileDto, User,
     UserFilterParams,
 };
-use crate::utils::pagination::{PaginationMeta, PaginationParams};
+use chalkbyte_core::{PaginationMeta, PaginationParams};
 
 #[derive(OpenApi)]
 #[openapi(

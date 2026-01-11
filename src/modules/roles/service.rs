@@ -3,8 +3,7 @@ use sqlx::PgPool;
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::utils::errors::AppError;
-use crate::utils::pagination::PaginationMeta;
+use chalkbyte_core::{AppError, PaginationMeta};
 
 use super::model::{
     CreateRoleDto, PaginatedPermissionsResponse, PaginatedRolesResponse, Permission,

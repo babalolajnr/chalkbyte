@@ -17,13 +17,8 @@
 //! }
 //! ```
 
-use sqlx::PgPool;
-
-use crate::config::cors::CorsConfig;
-use crate::config::database::init_db_pool;
-use crate::config::email::EmailConfig;
-use crate::config::jwt::JwtConfig;
-use crate::config::rate_limit::RateLimitConfig;
+use chalkbyte_config::{CorsConfig, EmailConfig, JwtConfig, RateLimitConfig};
+use chalkbyte_db::{PgPool, init_db_pool};
 
 /// Shared application state passed to all request handlers.
 ///

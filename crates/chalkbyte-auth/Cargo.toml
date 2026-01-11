@@ -1,0 +1,26 @@
+[package]
+name = "chalkbyte-auth"
+description = "Authentication types and JWT utilities for Chalkbyte API"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Internal crates
+chalkbyte-core = { workspace = true }
+chalkbyte-config = { workspace = true }
+
+# Auth
+jsonwebtoken = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+
+# Types
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+# API Documentation
+utoipa = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

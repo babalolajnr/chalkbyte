@@ -1,3 +1,5 @@
+use chalkbyte_core::AppError;
+
 use crate::middleware::auth::{AuthUser, RequireUsersCreate, RequireUsersRead};
 use crate::middleware::role::is_system_admin_jwt;
 use crate::modules::auth::controller::ErrorResponse;
@@ -8,7 +10,6 @@ use crate::modules::users::model::{
 use crate::modules::users::service::UserService;
 use crate::state::AppState;
 use crate::utils::auth_helpers::get_admin_school_id;
-use crate::utils::errors::AppError;
 use axum::{
     Json,
     extract::{Query, State, rejection::QueryRejection},

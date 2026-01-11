@@ -1,0 +1,12 @@
+[package]
+name = "chalkbyte-db"
+description = "Database pool and utilities for Chalkbyte API"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Database
+sqlx = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }

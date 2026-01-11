@@ -5,8 +5,7 @@ use totp_rs::{Algorithm, Secret, TOTP};
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::utils::errors::AppError;
-use crate::utils::password::{hash_password, verify_password};
+use chalkbyte_core::{AppError, hash_password, verify_password};
 
 use super::model::{EnableMfaResponse, MfaStatusResponse, RegenerateMfaRecoveryCodesResponse};
 
