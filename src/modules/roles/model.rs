@@ -70,6 +70,7 @@ pub struct RoleWithPermissions {
     pub permissions: Vec<Permission>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct RolePermission {
     pub id: Uuid,
@@ -87,6 +88,7 @@ pub struct UserRole {
     pub assigned_by: Option<Uuid>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct UserWithRoles {
     pub user_id: Uuid,
@@ -140,6 +142,7 @@ pub struct RoleFilterParams {
     /// Filter system roles only
     pub is_system_role: Option<bool>,
     /// Search by name
+    #[allow(dead_code)]
     pub name: Option<String>,
     #[serde(flatten)]
     pub pagination: crate::utils::pagination::PaginationParams,
@@ -172,12 +175,14 @@ pub struct RoleAssignmentResponse {
     pub role_id: Uuid,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PermissionCategory {
     pub category: String,
     pub permissions: Vec<Permission>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, ToSchema)]
 pub struct GroupedPermissionsResponse {
     pub categories: Vec<PermissionCategory>,

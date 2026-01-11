@@ -59,14 +59,14 @@ pub async fn metrics_middleware(req: Request, next: Next) -> Response {
     }
 
     let start = Instant::now();
-    let method = req.method().clone();
-    let uri = req.uri().clone();
+    let method = req.method().as_str().to_owned();
+    let uri_path = req.uri().path().to_owned();
 
     let path = req
         .extensions()
         .get::<MatchedPath>()
-        .map(|p| p.as_str().to_string())
-        .unwrap_or_else(|| uri.path().to_string());
+        .map(|p| p.as_str().to_owned())
+        .unwrap_or(uri_path);
 
     // Increment active requests
     gauge!("http_requests_active").increment(1.0);
@@ -75,11 +75,12 @@ pub async fn metrics_middleware(req: Request, next: Next) -> Response {
 
     let latency = start.elapsed().as_secs_f64();
     let status = response.status().as_u16();
+    let status_str = status.to_string();
 
     // Record metrics
-    counter!("http_requests_total", "method" => method.to_string(), "path" => path.clone(), "status" => status.to_string()).increment(1);
+    counter!("http_requests_total", "method" => method.clone(), "path" => path.clone(), "status" => status_str).increment(1);
 
-    histogram!("http_request_duration_seconds", "method" => method.to_string(), "path" => path.clone()).record(latency);
+    histogram!("http_request_duration_seconds", "method" => method, "path" => path).record(latency);
 
     // Track by status code category
     let status_category = match status {
@@ -126,6 +127,7 @@ pub fn track_user_login_failure(reason: &str) {
 }
 
 /// Track database operations
+#[allow(dead_code)]
 pub fn track_db_query(operation: &str, success: bool) {
     if !is_observability_enabled() {
         return;
@@ -135,6 +137,7 @@ pub fn track_db_query(operation: &str, success: bool) {
         .increment(1);
 }
 
+#[allow(dead_code)]
 pub fn track_db_query_duration(operation: &str, duration_secs: f64) {
     if !is_observability_enabled() {
         return;
@@ -151,6 +154,7 @@ pub fn track_school_created() {
     counter!("schools_created_total").increment(1);
 }
 
+#[allow(dead_code)]
 pub fn track_school_operation(operation: &str) {
     if !is_observability_enabled() {
         return;
@@ -159,6 +163,7 @@ pub fn track_school_operation(operation: &str) {
 }
 
 /// Set gauge metrics for current state
+#[allow(dead_code)]
 pub fn set_active_users(count: i64) {
     if !is_observability_enabled() {
         return;
@@ -166,6 +171,7 @@ pub fn set_active_users(count: i64) {
     gauge!("active_users_total").set(count as f64);
 }
 
+#[allow(dead_code)]
 pub fn set_total_schools(count: i64) {
     if !is_observability_enabled() {
         return;
@@ -173,6 +179,7 @@ pub fn set_total_schools(count: i64) {
     gauge!("schools_total").set(count as f64);
 }
 
+#[allow(dead_code)]
 pub fn set_total_users_by_role(role: &str, count: i64) {
     if !is_observability_enabled() {
         return;
@@ -188,6 +195,7 @@ pub fn track_jwt_issued() {
     counter!("jwt_tokens_issued_total").increment(1);
 }
 
+#[allow(dead_code)]
 pub fn track_jwt_validation(success: bool) {
     if !is_observability_enabled() {
         return;
@@ -197,6 +205,7 @@ pub fn track_jwt_validation(success: bool) {
 }
 
 /// Track API errors
+#[allow(dead_code)]
 pub fn track_api_error(error_type: &str, endpoint: &str) {
     if !is_observability_enabled() {
         return;
@@ -205,6 +214,7 @@ pub fn track_api_error(error_type: &str, endpoint: &str) {
 }
 
 /// Track authorization events
+#[allow(dead_code)]
 pub fn track_authorization_check(allowed: bool, role: &str) {
     if !is_observability_enabled() {
         return;

@@ -212,7 +212,7 @@ async fn test_get_school_by_id(pool: PgPool) {
 
     let request = Request::builder()
         .method("GET")
-        .uri(&format!("/api/schools/{}", school.id))
+        .uri(format!("/api/schools/{}", school.id))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -244,7 +244,7 @@ async fn test_get_nonexistent_school(pool: PgPool) {
 
     let request = Request::builder()
         .method("GET")
-        .uri(&format!("/api/schools/{}", fake_id))
+        .uri(format!("/api/schools/{}", fake_id))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -272,7 +272,7 @@ async fn test_delete_school_as_system_admin(pool: PgPool) {
 
     let request = Request::builder()
         .method("DELETE")
-        .uri(&format!("/api/schools/{}", school.id))
+        .uri(format!("/api/schools/{}", school.id))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -301,7 +301,7 @@ async fn test_delete_school_as_admin_forbidden(pool: PgPool) {
 
     let request = Request::builder()
         .method("DELETE")
-        .uri(&format!("/api/schools/{}", school2.id))
+        .uri(format!("/api/schools/{}", school2.id))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -349,7 +349,7 @@ async fn test_get_school_students(pool: PgPool) {
 
     let request = Request::builder()
         .method("GET")
-        .uri(&format!("/api/schools/{}/students", school.id))
+        .uri(format!("/api/schools/{}/students", school.id))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -388,7 +388,7 @@ async fn test_get_school_admins(pool: PgPool) {
 
     let request = Request::builder()
         .method("GET")
-        .uri(&format!("/api/schools/{}/admins", school.id))
+        .uri(format!("/api/schools/{}/admins", school.id))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();

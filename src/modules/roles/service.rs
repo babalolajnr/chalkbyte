@@ -79,6 +79,7 @@ pub async fn get_permission_by_id(db: &PgPool, id: Uuid) -> Result<Permission, A
 // ============ Role Slug Services ============
 
 /// Get a role by its slug (and optionally school_id for school-specific roles)
+#[allow(dead_code)]
 #[instrument(skip(db))]
 pub async fn get_role_by_slug(
     db: &PgPool,
@@ -102,6 +103,7 @@ pub async fn get_role_by_slug(
 }
 
 /// Get a system role by its slug (school_id is NULL)
+#[allow(dead_code)]
 #[instrument(skip(db))]
 pub async fn get_system_role_by_slug(
     db: &PgPool,
@@ -111,6 +113,7 @@ pub async fn get_system_role_by_slug(
 }
 
 /// Get role ID by slug (useful for queries that need the UUID)
+#[allow(dead_code)]
 #[instrument(skip(db))]
 pub async fn get_role_id_by_slug(
     db: &PgPool,
@@ -128,6 +131,7 @@ pub async fn get_role_id_by_slug(
 }
 
 /// Get system role ID by slug
+#[allow(dead_code)]
 #[instrument(skip(db))]
 pub async fn get_system_role_id_by_slug(db: &PgPool, slug: &str) -> Result<Uuid, AppError> {
     get_role_id_by_slug(db, slug, None).await
@@ -195,12 +199,12 @@ pub async fn create_role(
     .fetch_one(db)
     .await
     .map_err(|e| {
-        if let sqlx::Error::Database(db_err) = &e {
-            if db_err.is_unique_violation() {
-                return AppError::bad_request(anyhow!(
-                    "A role with this name already exists in this scope"
-                ));
-            }
+        if let sqlx::Error::Database(db_err) = &e
+            && db_err.is_unique_violation()
+        {
+            return AppError::bad_request(anyhow!(
+                "A role with this name already exists in this scope"
+            ));
         }
         AppError::from(e)
     })?;
@@ -343,17 +347,16 @@ pub async fn get_roles(
             .unwrap_or(0)
     };
 
-    // Fetch permissions for each role
-    let mut roles_with_permissions = Vec::new();
-    for role in roles.iter() {
-        let permissions = get_role_permissions(db, role.id).await?;
-        roles_with_permissions.push(RoleWithPermissions {
-            role: role.clone(),
-            permissions,
-        });
-    }
+    // Calculate has_more before consuming roles
+    let roles_count = roles.len();
+    let has_more = offset + (roles_count as i64) < total;
 
-    let has_more = offset + (roles.len() as i64) < total;
+    // Fetch permissions for each role
+    let mut roles_with_permissions = Vec::with_capacity(roles_count);
+    for role in roles {
+        let permissions = get_role_permissions(db, role.id).await?;
+        roles_with_permissions.push(RoleWithPermissions { role, permissions });
+    }
 
     let meta = PaginationMeta {
         total,
@@ -417,7 +420,7 @@ pub async fn update_role(
     let existing = get_role_by_id(db, id, requester_school_id, is_system_admin).await?;
 
     let name_changed = dto.name.is_some();
-    let name = dto.name.unwrap_or(existing.role.name.clone());
+    let name = dto.name.unwrap_or(existing.role.name);
     // Regenerate slug if name changed, otherwise keep existing
     let slug = if name_changed {
         generate_slug(&name)
@@ -439,12 +442,12 @@ pub async fn update_role(
     .fetch_one(db)
     .await
     .map_err(|e| {
-        if let sqlx::Error::Database(db_err) = &e {
-            if db_err.is_unique_violation() {
-                return AppError::bad_request(anyhow!(
-                    "A role with this name already exists in this scope"
-                ));
-            }
+        if let sqlx::Error::Database(db_err) = &e
+            && db_err.is_unique_violation()
+        {
+            return AppError::bad_request(anyhow!(
+                "A role with this name already exists in this scope"
+            ));
         }
         AppError::from(e)
     })?;
@@ -596,12 +599,10 @@ pub async fn assign_role_to_user(
         .ok_or_else(|| AppError::not_found(anyhow!("User not found")))?;
 
     // Authorization checks for non-system admins
-    if !is_system_admin {
-        if role.role.is_system_role {
-            return Err(AppError::forbidden(
-                "School admins cannot assign system roles".to_string(),
-            ));
-        }
+    if !is_system_admin && role.role.is_system_role {
+        return Err(AppError::forbidden(
+            "School admins cannot assign system roles".to_string(),
+        ));
     }
 
     // For system roles, allow assignment to users without school_id or with school_id
@@ -623,10 +624,10 @@ pub async fn assign_role_to_user(
     .execute(db)
     .await
     .map_err(|e| {
-        if let sqlx::Error::Database(db_err) = &e {
-            if db_err.is_unique_violation() {
-                return AppError::bad_request(anyhow!("User already has this role"));
-            }
+        if let sqlx::Error::Database(db_err) = &e
+            && db_err.is_unique_violation()
+        {
+            return AppError::bad_request(anyhow!("User already has this role"));
         }
         AppError::from(e)
     })?;

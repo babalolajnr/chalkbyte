@@ -264,9 +264,8 @@ impl MfaService {
         )
         .map_err(|e| AppError::internal_error(format!("Failed to create TOTP: {}", e)))?;
 
-        Ok(totp
-            .check_current(code)
-            .map_err(|e| AppError::internal_error(format!("Failed to verify TOTP: {}", e)))?)
+        totp.check_current(code)
+            .map_err(|e| AppError::internal_error(format!("Failed to verify TOTP: {}", e)))
     }
 
     /// Generate recovery codes (10 codes, 8 characters each)
@@ -347,18 +346,16 @@ impl MfaService {
 
         // Check each code
         for recovery_code in codes {
-            if let Ok(valid) = verify_password(code, &recovery_code.code_hash) {
-                if valid {
-                    // Mark as used
-                    sqlx::query(
-                        "UPDATE mfa_recovery_codes SET used = TRUE, used_at = NOW() WHERE id = $1",
-                    )
-                    .bind(recovery_code.id)
-                    .execute(db)
-                    .await?;
+            if let Ok(true) = verify_password(code, &recovery_code.code_hash) {
+                // Mark as used
+                sqlx::query(
+                    "UPDATE mfa_recovery_codes SET used = TRUE, used_at = NOW() WHERE id = $1",
+                )
+                .bind(recovery_code.id)
+                .execute(db)
+                .await?;
 
-                    return Ok(true);
-                }
+                return Ok(true);
             }
         }
 

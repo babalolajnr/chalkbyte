@@ -42,13 +42,13 @@ impl UserService {
         .fetch_one(db)
         .await
         .map_err(|e| {
-            if let sqlx::Error::Database(db_err) = &e {
-                if db_err.is_unique_violation() {
-                    warn!(email = %dto.email, "Attempted to create user with existing email");
-                    return AppError::unprocessable(anyhow::anyhow!(
-                        "User with this email already exists"
-                    ));
-                }
+            if let sqlx::Error::Database(db_err) = &e
+                && db_err.is_unique_violation()
+            {
+                warn!(email = %dto.email, "Attempted to create user with existing email");
+                return AppError::unprocessable(anyhow::anyhow!(
+                    "User with this email already exists"
+                ));
             }
             error!(error = %e, "Failed to create user");
             AppError::database(anyhow::Error::new(e).context("Failed to insert user"))
@@ -544,6 +544,7 @@ impl UserService {
     }
 
     /// Check if user has a specific system role
+    #[allow(dead_code)]
     pub async fn user_has_system_role(
         db: &PgPool,
         user_id: Uuid,
@@ -563,6 +564,7 @@ impl UserService {
     }
 
     /// Get user's primary role (first assigned role, preferring system roles)
+    #[allow(dead_code)]
     pub async fn get_user_primary_role(
         db: &PgPool,
         user_id: Uuid,
@@ -587,11 +589,13 @@ impl UserService {
     }
 
     /// Check if user is a system admin
+    #[allow(dead_code)]
     pub async fn is_system_admin(db: &PgPool, user_id: Uuid) -> Result<bool, AppError> {
         Self::user_has_system_role(db, user_id, system_roles::SYSTEM_ADMIN).await
     }
 
     /// Check if user is an admin (school admin)
+    #[allow(dead_code)]
     pub async fn is_admin(db: &PgPool, user_id: Uuid) -> Result<bool, AppError> {
         Self::user_has_system_role(db, user_id, system_roles::ADMIN).await
     }

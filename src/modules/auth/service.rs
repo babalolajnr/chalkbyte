@@ -685,7 +685,7 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn test_verify_mfa_login_returns_all_user_fields(db: PgPool) {
+    async fn test_verify_mfa_login_returns_all_user_fields(_db: PgPool) {
         // This test would require MFA setup, skipping for basic test
         // Just verify the function signature and basic structure
     }

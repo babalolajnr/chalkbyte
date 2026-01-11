@@ -285,7 +285,7 @@ async fn test_get_student_by_id(pool: PgPool) {
 
     let request = Request::builder()
         .method("GET")
-        .uri(&format!("/api/students/{}", student.id))
+        .uri(format!("/api/students/{}", student.id))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -330,7 +330,7 @@ async fn test_get_student_from_different_school_forbidden(pool: PgPool) {
 
     let request = Request::builder()
         .method("GET")
-        .uri(&format!("/api/students/{}", student.id))
+        .uri(format!("/api/students/{}", student.id))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -369,7 +369,7 @@ async fn test_update_student(pool: PgPool) {
 
     let request = Request::builder()
         .method("PUT")
-        .uri(&format!("/api/students/{}", student.id))
+        .uri(format!("/api/students/{}", student.id))
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {}", token))
         .body(Body::from(
@@ -422,7 +422,7 @@ async fn test_delete_student(pool: PgPool) {
 
     let request = Request::builder()
         .method("DELETE")
-        .uri(&format!("/api/students/{}", student.id))
+        .uri(format!("/api/students/{}", student.id))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -462,7 +462,7 @@ async fn test_delete_student_from_different_school_forbidden(pool: PgPool) {
 
     let request = Request::builder()
         .method("DELETE")
-        .uri(&format!("/api/students/{}", student.id))
+        .uri(format!("/api/students/{}", student.id))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();

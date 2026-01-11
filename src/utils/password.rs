@@ -1,12 +1,99 @@
+//! Password hashing and verification utilities.
+//!
+//! This module provides secure password hashing using bcrypt. It wraps the
+//! [`bcrypt`] crate to provide a simple API with proper error handling.
+//!
+//! # Security
+//!
+//! - Uses bcrypt with the default cost factor (currently 12)
+//! - Each password generates a unique salt automatically
+//! - Passwords are never stored in plaintext
+//!
+//! # Example
+//!
+//! ```ignore
+//! use crate::utils::password::{hash_password, verify_password};
+//!
+//! // Hash a password before storing
+//! let hash = hash_password("user_password")?;
+//!
+//! // Verify a password during login
+//! if verify_password("user_password", &hash)? {
+//!     println!("Password is correct!");
+//! }
+//! ```
+
 use bcrypt::{DEFAULT_COST, hash, verify};
 
 use crate::utils::errors::AppError;
 
+/// Hashes a password using bcrypt with the default cost factor.
+///
+/// This function generates a unique salt for each password, ensuring that
+/// identical passwords produce different hashes.
+///
+/// # Arguments
+///
+/// * `password` - The plaintext password to hash
+///
+/// # Returns
+///
+/// Returns the bcrypt hash string on success, which includes the salt
+/// and can be stored directly in the database.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] if hashing fails (e.g., due to system errors).
+///
+/// # Example
+///
+/// ```ignore
+/// let hash = hash_password("secure_password_123")?;
+/// // Store `hash` in the database
+/// ```
+///
+/// # Security Note
+///
+/// The default bcrypt cost factor provides good security but may need
+/// adjustment based on your server's performance characteristics.
 pub fn hash_password(password: &str) -> Result<String, AppError> {
     hash(password, DEFAULT_COST)
         .map_err(|e| AppError::internal_error(format!("Failed to hash password: {}", e)))
 }
 
+/// Verifies a password against a bcrypt hash.
+///
+/// This function performs a constant-time comparison to prevent timing attacks.
+///
+/// # Arguments
+///
+/// * `password` - The plaintext password to verify
+/// * `hash` - The bcrypt hash to verify against (from the database)
+///
+/// # Returns
+///
+/// Returns `true` if the password matches the hash, `false` otherwise.
+///
+/// # Errors
+///
+/// Returns an [`AppError`] if verification fails due to an invalid hash format.
+///
+/// # Example
+///
+/// ```ignore
+/// let stored_hash = get_user_password_hash_from_db(user_id)?;
+///
+/// if verify_password(&submitted_password, &stored_hash)? {
+///     // Password is correct, proceed with login
+/// } else {
+///     // Password is incorrect
+/// }
+/// ```
+///
+/// # Security Note
+///
+/// - Always use this function for password comparison, never compare hashes directly
+/// - The bcrypt library handles timing-safe comparison internally
 pub fn verify_password(password: &str, hash: &str) -> Result<bool, AppError> {
     verify(password, hash)
         .map_err(|e| AppError::internal_error(format!("Failed to verify password: {}", e)))

@@ -1,6 +1,58 @@
+//! Pagination utilities for API responses.
+//!
+//! This module provides types and utilities for implementing pagination
+//! in API endpoints. It supports both offset-based and page-based pagination.
+//!
+//! # Pagination Strategies
+//!
+//! ## Offset-based pagination
+//!
+//! Uses `limit` and `offset` parameters:
+//! - `limit`: Maximum number of items to return (1-100, default: 10)
+//! - `offset`: Number of items to skip from the beginning
+//!
+//! ## Page-based pagination
+//!
+//! Uses `limit` and `page` parameters:
+//! - `limit`: Items per page (1-100, default: 10)
+//! - `page`: Page number (1-indexed, default: 1)
+//!
+//! When `page` is provided, it takes precedence over `offset`.
+//!
+//! # Example
+//!
+//! ```ignore
+//! use crate::utils::pagination::{PaginationParams, PaginationMeta};
+//!
+//! // In a handler
+//! async fn list_users(
+//!     Query(params): Query<PaginationParams>,
+//! ) -> Result<Json<PaginatedResponse>, AppError> {
+//!     let limit = params.limit();
+//!     let offset = params.offset();
+//!
+//!     let users = fetch_users(limit, offset).await?;
+//!     let total = count_users().await?;
+//!
+//!     let meta = PaginationMeta {
+//!         total,
+//!         limit,
+//!         offset: Some(offset),
+//!         page: params.page(),
+//!         has_more: offset + limit < total,
+//!     };
+//!
+//!     Ok(Json(PaginatedResponse { data: users, meta }))
+//! }
+//! ```
+
 use serde::{Deserialize, Deserializer, Serialize};
 use utoipa::ToSchema;
 
+/// Deserializes an optional string into an optional i64.
+///
+/// Handles the case where query parameters may be empty strings,
+/// which should be treated as `None`.
 fn deserialize_optional_i64<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
 where
     D: Deserializer<'de>,
@@ -13,23 +65,78 @@ where
     }
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+/// Metadata about a paginated response.
+///
+/// This struct is included in paginated API responses to provide
+/// information about the total number of items and current position.
+///
+/// # Example JSON Response
+///
+/// ```json
+/// {
+///   "data": [...],
+///   "meta": {
+///     "total": 100,
+///     "limit": 10,
+///     "offset": 20,
+///     "page": 3,
+///     "has_more": true
+///   }
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 pub struct PaginationMeta {
+    /// Total number of items across all pages
     pub total: i64,
+    /// Maximum items per page (the limit that was applied)
     pub limit: i64,
+    /// Number of items skipped (only present if offset-based pagination was used)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub offset: Option<i64>,
+    /// Current page number (only present if page-based pagination was used)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page: Option<i64>,
+    /// Whether there are more items after this page
     pub has_more: bool,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+/// Query parameters for pagination.
+///
+/// Supports both offset-based and page-based pagination:
+///
+/// - **Offset-based**: Use `limit` and `offset`
+/// - **Page-based**: Use `limit` and `page`
+///
+/// When `page` is provided, it takes precedence over `offset`.
+///
+/// # Limits
+///
+/// - `limit` is clamped to the range [1, 100]
+/// - `offset` is clamped to a minimum of 0
+/// - `page` is clamped to a minimum of 1
+///
+/// # Example
+///
+/// ```ignore
+/// // GET /api/users?limit=20&page=3
+/// let params = PaginationParams {
+///     limit: Some(20),
+///     offset: None,
+///     page: Some(3),
+/// };
+///
+/// assert_eq!(params.limit(), 20);
+/// assert_eq!(params.offset(), 40); // (page - 1) * limit
+/// ```
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct PaginationParams {
+    /// Maximum number of items to return (1-100, default: 10)
     #[serde(default, deserialize_with = "deserialize_optional_i64")]
     pub limit: Option<i64>,
+    /// Number of items to skip (default: 0, ignored if `page` is set)
     #[serde(default, deserialize_with = "deserialize_optional_i64")]
     pub offset: Option<i64>,
+    /// Page number (1-indexed, default: 1)
     #[serde(default, deserialize_with = "deserialize_optional_i64")]
     pub page: Option<i64>,
 }
@@ -45,10 +152,21 @@ impl Default for PaginationParams {
 }
 
 impl PaginationParams {
+    /// Returns the effective limit, clamped to [1, 100].
+    ///
+    /// Defaults to 10 if not specified.
+    #[must_use]
     pub fn limit(&self) -> i64 {
-        self.limit.unwrap_or(10).max(1).min(100)
+        self.limit.unwrap_or(10).clamp(1, 100)
     }
 
+    /// Returns the effective offset.
+    ///
+    /// If `page` is set, calculates the offset from the page number.
+    /// Otherwise, returns the explicit offset or 0.
+    ///
+    /// The offset is always clamped to a minimum of 0.
+    #[must_use]
     pub fn offset(&self) -> i64 {
         // If page is provided, calculate offset from page
         if let Some(page) = self.page {
@@ -60,6 +178,8 @@ impl PaginationParams {
         }
     }
 
+    /// Returns the page number if provided, clamped to a minimum of 1.
+    #[must_use]
     pub fn page(&self) -> Option<i64> {
         self.page.map(|p| p.max(1))
     }
@@ -356,5 +476,37 @@ mod tests {
         assert_eq!(meta.total, 1000000);
         assert_eq!(meta.limit, 100);
         assert_eq!(meta.offset, Some(5000));
+    }
+
+    #[test]
+    fn test_pagination_meta_clone() {
+        let meta = PaginationMeta {
+            total: 100,
+            limit: 10,
+            offset: Some(0),
+            page: Some(1),
+            has_more: true,
+        };
+        let cloned = meta.clone();
+        assert_eq!(meta, cloned);
+    }
+
+    #[test]
+    fn test_pagination_meta_equality() {
+        let meta1 = PaginationMeta {
+            total: 100,
+            limit: 10,
+            offset: Some(0),
+            page: Some(1),
+            has_more: true,
+        };
+        let meta2 = PaginationMeta {
+            total: 100,
+            limit: 10,
+            offset: Some(0),
+            page: Some(1),
+            has_more: true,
+        };
+        assert_eq!(meta1, meta2);
     }
 }

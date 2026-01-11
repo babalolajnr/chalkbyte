@@ -41,16 +41,16 @@ fn get_trace_id() -> String {
 /// HTTP request/response logging middleware with full observability context
 pub async fn logging_middleware(req: Request, next: Next) -> Response {
     let start = Instant::now();
-    let method = req.method().clone();
-    let uri = req.uri().clone();
+    let method = req.method().as_str().to_owned();
+    let uri_path = req.uri().path().to_owned();
     let version = format!("{:?}", req.version());
 
     // Extract the matched path for better route identification
     let matched_path = req
         .extensions()
         .get::<MatchedPath>()
-        .map(|p| p.as_str().to_string())
-        .unwrap_or_else(|| uri.path().to_string());
+        .map(|p| p.as_str().to_owned())
+        .unwrap_or(uri_path);
 
     // Generate request ID for correlation
     let request_id = req
@@ -90,7 +90,7 @@ pub async fn logging_middleware(req: Request, next: Next) -> Response {
         "http_request",
         http.method = %method,
         http.route = %matched_path,
-        http.url = %uri,
+        http.url = %matched_path,
         http.version = %version,
         http.user_agent = %user_agent,
         http.client_ip = %client_ip,
@@ -105,7 +105,7 @@ pub async fn logging_middleware(req: Request, next: Next) -> Response {
     );
 
     // Execute the request within the span
-    let response = async move {
+    async move {
         info!(
             request_id = %request_id,
             method = %method,
@@ -141,9 +141,7 @@ pub async fn logging_middleware(req: Request, next: Next) -> Response {
         // Set OTEL status based on HTTP status
         let otel_status = if status.is_success() {
             "OK"
-        } else if status.is_client_error() {
-            "ERROR"
-        } else if status.is_server_error() {
+        } else if status.is_client_error() || status.is_server_error() {
             "ERROR"
         } else {
             "UNSET"
@@ -203,9 +201,7 @@ pub async fn logging_middleware(req: Request, next: Next) -> Response {
         response
     }
     .instrument(span)
-    .await;
-
-    response
+    .await
 }
 
 fn init_tracer() -> Result<Tracer, TraceError> {
@@ -228,7 +224,7 @@ fn init_tracer() -> Result<Tracer, TraceError> {
 
     // Configure resource with service information following semantic conventions
     let resource = Resource::new(vec![
-        KeyValue::new(SERVICE_NAME, service_name.clone()),
+        KeyValue::new(SERVICE_NAME, service_name),
         KeyValue::new(SERVICE_VERSION, env!("CARGO_PKG_VERSION")),
         KeyValue::new("environment", environment.clone()),
         KeyValue::new("service.namespace", "chalkbyte"),

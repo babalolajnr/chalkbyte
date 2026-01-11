@@ -32,7 +32,7 @@ impl QueryParams {
     }
 
     pub fn limit(&self) -> i64 {
-        self.limit.unwrap_or(10).max(1).min(100)
+        self.limit.unwrap_or(10).clamp(1, 100)
     }
 
     pub fn offset(&self) -> i64 {

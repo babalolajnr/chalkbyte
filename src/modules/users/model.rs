@@ -1,3 +1,31 @@
+//! User data models and DTOs.
+//!
+//! This module contains all data structures related to user management,
+//! including user entities, request/response DTOs, and system role definitions.
+//!
+//! # Core Types
+//!
+//! - [`User`] - Base user entity from the database
+//! - [`UserWithRelations`] - User with joined school, level, branch, and roles
+//! - [`UserWithSchool`] - User with school information only
+//!
+//! # Request DTOs
+//!
+//! - [`CreateUserDto`] - Create a new user
+//! - [`UpdateProfileDto`] - Update user profile (name only)
+//! - [`ChangePasswordDto`] - Change user password
+//! - [`UserFilterParams`] - Query parameters for filtering users
+//!
+//! # System Roles
+//!
+//! The [`system_roles`] module provides constants and utilities for working
+//! with the four system-defined roles:
+//!
+//! - System Admin (global access, CLI-created only)
+//! - Admin (school-scoped management)
+//! - Teacher (school-scoped, teaching permissions)
+//! - Student (school-scoped, basic permissions)
+
 use crate::utils::serde::deserialize_optional_uuid;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -5,7 +33,12 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
-#[derive(Serialize, Deserialize, FromRow, Debug, Clone, ToSchema)]
+/// A user in the system.
+///
+/// This struct represents the core user entity stored in the database.
+/// Users are associated with a school (except system admins) and can
+/// have multiple roles assigned.
+#[derive(Serialize, Deserialize, FromRow, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub struct User {
     pub id: Uuid,
     pub first_name: String,
@@ -20,7 +53,12 @@ pub struct User {
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Deserialize, Debug, Validate, ToSchema)]
+/// DTO for creating a new user.
+///
+/// Used by admins to create users within their scope. School admins
+/// can only create users within their school, while system admins
+/// can create users in any school.
+#[derive(Deserialize, Debug, Clone, Validate, ToSchema)]
 pub struct CreateUserDto {
     #[validate(length(min = 1))]
     pub first_name: String,
@@ -36,7 +74,11 @@ pub struct CreateUserDto {
     pub school_id: Option<Uuid>,
 }
 
-#[derive(Debug, Serialize, Deserialize, FromRow, ToSchema)]
+/// A school entity.
+///
+/// Schools are the primary organizational unit. All non-system-admin
+/// users are associated with exactly one school.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct School {
     pub id: Uuid,
     pub name: String,
@@ -45,19 +87,28 @@ pub struct School {
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+/// DTO for creating a new school.
+///
+/// Only system admins can create schools.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateSchoolDto {
     pub name: String,
     pub address: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+/// User with their associated school information.
+///
+/// Used in responses where both user and school data are needed.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct UserWithSchool {
     pub user: User,
     pub school: Option<School>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+/// Summary information about a role.
+///
+/// Used in user responses to include assigned role details.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, ToSchema)]
 pub struct RoleInfo {
     pub id: Uuid,
     pub name: String,
@@ -65,28 +116,41 @@ pub struct RoleInfo {
     pub is_system_role: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+/// Summary information about an educational level.
+///
+/// Used in user responses to include level details.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, ToSchema)]
 pub struct LevelInfo {
     pub id: Uuid,
     pub name: String,
     pub description: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+/// Summary information about a school branch.
+///
+/// Used in user responses to include branch details.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, ToSchema)]
 pub struct BranchInfo {
     pub id: Uuid,
     pub name: String,
     pub description: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+/// Summary information about a school.
+///
+/// Used in responses where full school details aren't needed.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, ToSchema)]
 pub struct SchoolInfo {
     pub id: Uuid,
     pub name: String,
     pub address: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+/// User with all related entities joined.
+///
+/// This is the most complete user representation, including school,
+/// level, branch, and all assigned roles.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct UserWithRelations {
     pub id: Uuid,
     pub first_name: String,
@@ -102,7 +166,8 @@ pub struct UserWithRelations {
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+/// Query parameters for filtering schools.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct SchoolFilterParams {
     pub name: Option<String>,
     pub address: Option<String>,
@@ -110,13 +175,17 @@ pub struct SchoolFilterParams {
     pub pagination: crate::utils::pagination::PaginationParams,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+/// Paginated response containing schools.
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct PaginatedSchoolsResponse {
     pub data: Vec<School>,
     pub meta: crate::utils::pagination::PaginationMeta,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+/// Query parameters for filtering users.
+///
+/// All filters are optional and can be combined.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UserFilterParams {
     pub first_name: Option<String>,
     pub last_name: Option<String>,
@@ -130,19 +199,22 @@ pub struct UserFilterParams {
     pub pagination: crate::utils::pagination::PaginationParams,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+/// Paginated response containing users with full relations.
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct PaginatedUsersResponse {
     pub data: Vec<UserWithRelations>,
     pub meta: crate::utils::pagination::PaginationMeta,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+/// Paginated response containing basic user data.
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct PaginatedBasicUsersResponse {
     pub data: Vec<User>,
     pub meta: crate::utils::pagination::PaginationMeta,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+/// School information with user counts by role.
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SchoolFullInfo {
     pub id: Uuid,
     pub name: String,
@@ -152,7 +224,11 @@ pub struct SchoolFullInfo {
     pub total_admins: i64,
 }
 
-#[derive(Debug, Deserialize, Validate, ToSchema)]
+/// DTO for updating user profile.
+///
+/// Only name fields can be updated through this DTO.
+/// Email and other fields require different endpoints.
+#[derive(Debug, Clone, Deserialize, Validate, ToSchema)]
 pub struct UpdateProfileDto {
     #[validate(length(min = 1))]
     pub first_name: Option<String>,
@@ -160,7 +236,11 @@ pub struct UpdateProfileDto {
     pub last_name: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Validate, ToSchema)]
+/// DTO for changing user password.
+///
+/// Requires the current password for verification before
+/// allowing the password change.
+#[derive(Debug, Clone, Deserialize, Validate, ToSchema)]
 pub struct ChangePasswordDto {
     #[validate(length(min = 1))]
     #[serde(alias = "old_password")]
@@ -170,11 +250,41 @@ pub struct ChangePasswordDto {
     pub new_password: String,
 }
 
-/// Well-known system role slugs and IDs
+/// Well-known system role slugs and IDs.
+///
+/// This module provides constants and helper functions for working with
+/// the four system-defined roles. These roles have fixed UUIDs and cannot
+/// be deleted or modified.
+///
+/// # Role Hierarchy
+///
+/// ```text
+/// System Admin (full system access)
+///     └── Admin (school-scoped management)
+///             └── Teacher (teaching permissions)
+///                     └── Student (basic permissions)
+/// ```
+///
+/// # Example
+///
+/// ```ignore
+/// use crate::modules::users::model::system_roles;
+///
+/// // Check if a role is a system role
+/// if system_roles::is_system_role(&role_id) {
+///     // Handle system role
+/// }
+///
+/// // Get role name for display
+/// if let Some(name) = system_roles::get_name(&role_id) {
+///     println!("Role: {}", name);
+/// }
+/// ```
 pub mod system_roles {
     use uuid::Uuid;
 
     /// Role slugs - use these for lookups instead of hardcoded UUIDs
+    #[allow(dead_code)]
     pub mod slugs {
         pub const SYSTEM_ADMIN: &str = "system_admin";
         pub const ADMIN: &str = "admin";
@@ -197,6 +307,7 @@ pub mod system_roles {
     }
 
     /// Get all system role slugs
+    #[allow(dead_code)]
     pub fn all_slugs() -> Vec<&'static str> {
         vec![
             slugs::SYSTEM_ADMIN,
@@ -212,6 +323,7 @@ pub mod system_roles {
     }
 
     /// Check if a slug is a system role slug
+    #[allow(dead_code)]
     pub fn is_system_role_slug(slug: &str) -> bool {
         all_slugs().contains(&slug)
     }
@@ -228,6 +340,7 @@ pub mod system_roles {
     }
 
     /// Get role slug by ID
+    #[allow(dead_code)]
     pub fn get_slug(role_id: &Uuid) -> Option<&'static str> {
         match *role_id {
             id if id == SYSTEM_ADMIN => Some(slugs::SYSTEM_ADMIN),
@@ -239,6 +352,7 @@ pub mod system_roles {
     }
 
     /// Get role ID by slug
+    #[allow(dead_code)]
     pub fn get_id_by_slug(slug: &str) -> Option<Uuid> {
         match slug {
             slugs::SYSTEM_ADMIN => Some(SYSTEM_ADMIN),

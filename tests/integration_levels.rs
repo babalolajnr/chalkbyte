@@ -264,7 +264,7 @@ async fn test_get_level_by_id(pool: PgPool) {
     let app = setup_test_app(pool.clone()).await;
     let request = Request::builder()
         .method("GET")
-        .uri(&format!("/api/levels/{}", level_id))
+        .uri(format!("/api/levels/{}", level_id))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -304,7 +304,7 @@ async fn test_get_level_from_different_school_not_found(pool: PgPool) {
     let app = setup_test_app(pool.clone()).await;
     let request = Request::builder()
         .method("GET")
-        .uri(&format!("/api/levels/{}", level_id))
+        .uri(format!("/api/levels/{}", level_id))
         .header("authorization", format!("Bearer {}", token2))
         .body(Body::empty())
         .unwrap();
@@ -332,7 +332,7 @@ async fn test_update_level(pool: PgPool) {
     let app = setup_test_app(pool.clone()).await;
     let request = Request::builder()
         .method("PUT")
-        .uri(&format!("/api/levels/{}", level_id))
+        .uri(format!("/api/levels/{}", level_id))
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {}", token))
         .body(Body::from(
@@ -373,7 +373,7 @@ async fn test_delete_level(pool: PgPool) {
     let app = setup_test_app(pool.clone()).await;
     let request = Request::builder()
         .method("DELETE")
-        .uri(&format!("/api/levels/{}", level_id))
+        .uri(format!("/api/levels/{}", level_id))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -384,7 +384,7 @@ async fn test_delete_level(pool: PgPool) {
     let app = setup_test_app(pool.clone()).await;
     let request = Request::builder()
         .method("GET")
-        .uri(&format!("/api/levels/{}", level_id))
+        .uri(format!("/api/levels/{}", level_id))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -429,7 +429,7 @@ async fn test_assign_students_to_level(pool: PgPool) {
     let app = setup_test_app(pool.clone()).await;
     let request = Request::builder()
         .method("POST")
-        .uri(&format!("/api/levels/{}/students", level_id))
+        .uri(format!("/api/levels/{}/students", level_id))
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {}", token))
         .body(Body::from(
@@ -480,7 +480,7 @@ async fn test_assign_students_with_invalid_ids(pool: PgPool) {
     let app = setup_test_app(pool.clone()).await;
     let request = Request::builder()
         .method("POST")
-        .uri(&format!("/api/levels/{}/students", level_id))
+        .uri(format!("/api/levels/{}/students", level_id))
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {}", token))
         .body(Body::from(
@@ -533,7 +533,7 @@ async fn test_move_student_to_level(pool: PgPool) {
     let app = setup_test_app(pool.clone()).await;
     let request = Request::builder()
         .method("POST")
-        .uri(&format!("/api/levels/{}/students", level1_id))
+        .uri(format!("/api/levels/{}/students", level1_id))
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {}", token))
         .body(Body::from(
@@ -549,7 +549,7 @@ async fn test_move_student_to_level(pool: PgPool) {
     let app = setup_test_app(pool.clone()).await;
     let request = Request::builder()
         .method("PATCH")
-        .uri(&format!("/api/levels/students/{}/move", student.id))
+        .uri(format!("/api/levels/students/{}/move", student.id))
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {}", token))
         .body(Body::from(
@@ -592,7 +592,7 @@ async fn test_remove_student_from_level(pool: PgPool) {
     let app = setup_test_app(pool.clone()).await;
     let request = Request::builder()
         .method("POST")
-        .uri(&format!("/api/levels/{}/students", level_id))
+        .uri(format!("/api/levels/{}/students", level_id))
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {}", token))
         .body(Body::from(
@@ -608,7 +608,7 @@ async fn test_remove_student_from_level(pool: PgPool) {
     let app = setup_test_app(pool.clone()).await;
     let request = Request::builder()
         .method("DELETE")
-        .uri(&format!("/api/levels/students/{}", student.id))
+        .uri(format!("/api/levels/students/{}", student.id))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -653,7 +653,7 @@ async fn test_get_students_in_level(pool: PgPool) {
     let app = setup_test_app(pool.clone()).await;
     let request = Request::builder()
         .method("POST")
-        .uri(&format!("/api/levels/{}/students", level_id))
+        .uri(format!("/api/levels/{}/students", level_id))
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {}", token))
         .body(Body::from(
@@ -669,7 +669,7 @@ async fn test_get_students_in_level(pool: PgPool) {
     let app = setup_test_app(pool.clone()).await;
     let request = Request::builder()
         .method("GET")
-        .uri(&format!("/api/levels/{}/students", level_id))
+        .uri(format!("/api/levels/{}/students", level_id))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -720,7 +720,7 @@ async fn test_level_with_student_count(pool: PgPool) {
     let app = setup_test_app(pool.clone()).await;
     let request = Request::builder()
         .method("POST")
-        .uri(&format!("/api/levels/{}/students", level_id))
+        .uri(format!("/api/levels/{}/students", level_id))
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {}", token))
         .body(Body::from(
@@ -736,7 +736,7 @@ async fn test_level_with_student_count(pool: PgPool) {
     let app = setup_test_app(pool.clone()).await;
     let request = Request::builder()
         .method("GET")
-        .uri(&format!("/api/levels/{}", level_id))
+        .uri(format!("/api/levels/{}", level_id))
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();
@@ -776,7 +776,7 @@ async fn test_cannot_assign_teacher_to_level(pool: PgPool) {
     let app = setup_test_app(pool.clone()).await;
     let request = Request::builder()
         .method("POST")
-        .uri(&format!("/api/levels/{}/students", level_id))
+        .uri(format!("/api/levels/{}/students", level_id))
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {}", token))
         .body(Body::from(

@@ -857,7 +857,7 @@ async fn test_filter_branches_by_name(pool: PgPool) {
     assert_eq!(status, StatusCode::OK);
     assert!(body["data"].is_array());
     let branches = body["data"].as_array().unwrap();
-    assert!(branches.len() > 0);
+    assert!(!branches.is_empty());
     assert!(
         branches
             .iter()

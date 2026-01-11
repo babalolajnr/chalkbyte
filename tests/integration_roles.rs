@@ -101,7 +101,7 @@ async fn test_get_all_permissions(pool: PgPool) {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert!(body["data"].as_array().unwrap().len() > 0);
+    assert!(!body["data"].as_array().unwrap().is_empty());
     assert!(body["meta"]["total"].as_i64().unwrap() > 0);
 }
 
@@ -440,7 +440,7 @@ async fn test_get_roles_as_system_admin_sees_all(pool: PgPool) {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert!(body["data"].as_array().unwrap().len() > 0);
+    assert!(!body["data"].as_array().unwrap().is_empty());
 }
 
 #[sqlx::test(migrations = "./migrations")]

@@ -120,11 +120,13 @@ macro_rules! auth_span {
 }
 
 /// Record a successful operation on the current span
+#[allow(dead_code)]
 pub fn record_success() {
     Span::current().record("otel.status_code", "OK");
 }
 
 /// Record a failed operation on the current span with an error message
+#[allow(dead_code)]
 pub fn record_error(message: &str) {
     let span = Span::current();
     span.record("otel.status_code", "ERROR");
@@ -132,16 +134,19 @@ pub fn record_error(message: &str) {
 }
 
 /// Record a user ID on the current span
+#[allow(dead_code)]
 pub fn record_user_id(user_id: &str) {
     Span::current().record("user.id", user_id);
 }
 
 /// Record authentication success/failure on the current span
+#[allow(dead_code)]
 pub fn record_auth_result(success: bool) {
     Span::current().record("auth.success", success);
 }
 
 /// Record HTTP status code on the current span
+#[allow(dead_code)]
 pub fn record_http_status(status: u16) {
     let span = Span::current();
     span.record("http.status_code", status);
@@ -182,6 +187,7 @@ macro_rules! audit_event {
 }
 
 /// Trait extension for adding context to errors before logging
+#[allow(dead_code)]
 pub trait ErrorExt {
     /// Log the error and return it unchanged
     fn log_error(self, context: &str) -> Self;
@@ -206,6 +212,7 @@ macro_rules! user_context {
 }
 
 /// Helper to create a span with standard service fields
+#[allow(dead_code)]
 pub fn service_span(service_name: &str, operation: &str) -> Span {
     tracing::span!(
         Level::INFO,

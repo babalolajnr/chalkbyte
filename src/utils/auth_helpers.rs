@@ -63,6 +63,7 @@ pub async fn get_school_id_for_scoped_operation(
 /// Get optional school_id for operations on existing resources (get by id, update, delete).
 /// System admins get None (no school scoping), school admins get their school_id.
 /// This allows system admins to operate on any resource without specifying school.
+#[allow(dead_code)]
 pub async fn get_optional_school_id_for_resource_operation(
     db: &PgPool,
     auth_user: &AuthUser,
@@ -82,6 +83,7 @@ pub async fn get_optional_school_id_for_resource_operation(
 ///
 /// - If `specified_school_id` is provided and user is system admin, use that
 /// - Otherwise, use the user's associated school_id
+#[allow(dead_code)]
 pub async fn get_school_id_with_override(
     db: &PgPool,
     auth_user: &AuthUser,
@@ -102,6 +104,7 @@ pub async fn get_school_id_with_override(
 
 /// Verify that a resource belongs to the user's school (for school admins).
 /// System admins bypass this check.
+#[allow(dead_code)]
 pub async fn verify_school_access(
     db: &PgPool,
     auth_user: &AuthUser,
@@ -178,7 +181,7 @@ mod tests {
     #[tokio::test]
     async fn test_verify_school_access_system_admin() {
         let auth_user = create_test_auth_user(None, vec![system_roles::SYSTEM_ADMIN]);
-        let any_school_id = Uuid::new_v4();
+        let _any_school_id = Uuid::new_v4();
 
         // System admin should pass verification for any school (mocked - no DB)
         assert!(is_system_admin_jwt(&auth_user));

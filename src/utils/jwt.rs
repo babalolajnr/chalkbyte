@@ -1,3 +1,42 @@
+//! JWT (JSON Web Token) utilities for authentication.
+//!
+//! This module provides functions for creating and verifying JWT tokens
+//! used for authentication in the Chalkbyte API. It supports:
+//!
+//! - **Access tokens**: Short-lived tokens for API authentication
+//! - **Refresh tokens**: Long-lived tokens for obtaining new access tokens
+//! - **MFA temporary tokens**: Short-lived tokens for multi-factor authentication flow
+//!
+//! # Token Structure
+//!
+//! Access tokens include:
+//! - User ID and email
+//! - School ID (for school-scoped users)
+//! - Role IDs assigned to the user
+//! - Permission names derived from roles
+//!
+//! # Example
+//!
+//! ```ignore
+//! use crate::utils::jwt::{create_access_token, verify_token};
+//! use crate::config::jwt::JwtConfig;
+//!
+//! let config = JwtConfig::from_env();
+//!
+//! // Create a token
+//! let token = create_access_token(
+//!     user_id,
+//!     "user@example.com",
+//!     Some(school_id),
+//!     vec![role_id],
+//!     vec!["users:read".to_string()],
+//!     &config,
+//! )?;
+//!
+//! // Verify the token
+//! let claims = verify_token(&token, &config)?;
+//! ```
+
 use chrono::Utc;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use uuid::Uuid;
@@ -8,13 +47,38 @@ use crate::utils::errors::AppError;
 
 /// Creates an access token with embedded roles and permissions for permission-based access control.
 ///
+/// The access token is a short-lived JWT that contains all the information needed
+/// for authentication and authorization decisions without additional database queries.
+///
 /// # Arguments
+///
 /// * `user_id` - The user's UUID
-/// * `email` - The user's email
-/// * `school_id` - Optional school ID for school-scoped users
+/// * `email` - The user's email address
+/// * `school_id` - Optional school ID for school-scoped users (None for system admins)
 /// * `role_ids` - List of role IDs assigned to the user
 /// * `permissions` - List of permission names (e.g., "users:create", "schools:read")
-/// * `jwt_config` - JWT configuration
+/// * `jwt_config` - JWT configuration containing the secret and expiry settings
+///
+/// # Returns
+///
+/// Returns the encoded JWT string on success, or an [`AppError`] on failure.
+///
+/// # Errors
+///
+/// Returns an error if token encoding fails (e.g., invalid secret key).
+///
+/// # Example
+///
+/// ```ignore
+/// let token = create_access_token(
+///     user_id,
+///     "admin@school.com",
+///     Some(school_id),
+///     vec![admin_role_id],
+///     vec!["users:create".to_string(), "users:read".to_string()],
+///     &jwt_config,
+/// )?;
+/// ```
 pub fn create_access_token(
     user_id: Uuid,
     email: &str,
@@ -44,6 +108,34 @@ pub fn create_access_token(
     .map_err(|e| AppError::internal_error(format!("Failed to create token: {}", e)))
 }
 
+/// Verifies an access token and returns the embedded claims.
+///
+/// This function validates the token signature and expiration, then extracts
+/// the claims for use in authentication and authorization.
+///
+/// # Arguments
+///
+/// * `token` - The JWT string to verify
+/// * `jwt_config` - JWT configuration containing the secret
+///
+/// # Returns
+///
+/// Returns the decoded [`Claims`] on success, or an [`AppError`] on failure.
+///
+/// # Errors
+///
+/// Returns an unauthorized error if:
+/// - The token signature is invalid
+/// - The token has expired
+/// - The token is malformed
+///
+/// # Example
+///
+/// ```ignore
+/// let claims = verify_token(&token, &jwt_config)?;
+/// println!("User ID: {}", claims.sub);
+/// println!("Permissions: {:?}", claims.permissions);
+/// ```
 pub fn verify_token(token: &str, jwt_config: &JwtConfig) -> Result<Claims, AppError> {
     decode::<Claims>(
         token,
@@ -54,6 +146,29 @@ pub fn verify_token(token: &str, jwt_config: &JwtConfig) -> Result<Claims, AppEr
     .map_err(|_| AppError::unauthorized("Invalid or expired token".to_string()))
 }
 
+/// Creates a temporary token for MFA verification flow.
+///
+/// This token is issued after successful password authentication when MFA is enabled.
+/// It has a short expiry (10 minutes) and can only be used to complete the MFA flow.
+///
+/// # Arguments
+///
+/// * `user_id` - The user's UUID
+/// * `email` - The user's email address
+/// * `jwt_config` - JWT configuration containing the secret
+///
+/// # Returns
+///
+/// Returns the encoded temporary JWT string on success.
+///
+/// # Errors
+///
+/// Returns an error if token encoding fails.
+///
+/// # Security Note
+///
+/// This token has `mfa_pending: true` flag and should only be accepted by
+/// MFA verification endpoints, not regular API endpoints.
 pub fn create_mfa_temp_token(
     user_id: Uuid,
     email: &str,
@@ -78,6 +193,25 @@ pub fn create_mfa_temp_token(
     .map_err(|e| AppError::internal_error(format!("Failed to create temp token: {}", e)))
 }
 
+/// Verifies an MFA temporary token and returns the claims.
+///
+/// This function validates that the token is a valid MFA temporary token
+/// with the `mfa_pending` flag set to true.
+///
+/// # Arguments
+///
+/// * `token` - The temporary JWT string to verify
+/// * `jwt_config` - JWT configuration containing the secret
+///
+/// # Returns
+///
+/// Returns the decoded [`MfaTempClaims`] on success.
+///
+/// # Errors
+///
+/// Returns an unauthorized error if:
+/// - The token is invalid or expired
+/// - The `mfa_pending` flag is not true
 pub fn verify_mfa_temp_token(
     token: &str,
     jwt_config: &JwtConfig,
@@ -96,6 +230,31 @@ pub fn verify_mfa_temp_token(
     Ok(decoded.claims)
 }
 
+/// Creates a refresh token for obtaining new access tokens.
+///
+/// Refresh tokens are long-lived and should be stored securely by the client.
+/// They can be used to obtain new access tokens without re-authenticating.
+///
+/// # Arguments
+///
+/// * `user_id` - The user's UUID
+/// * `email` - The user's email address
+/// * `jwt_config` - JWT configuration containing the secret and refresh token expiry
+///
+/// # Returns
+///
+/// Returns the encoded refresh JWT string on success.
+///
+/// # Errors
+///
+/// Returns an error if token encoding fails.
+///
+/// # Security Note
+///
+/// Refresh tokens should be:
+/// - Stored securely (e.g., HttpOnly cookies or secure storage)
+/// - Rotated on use (issue new refresh token with each access token refresh)
+/// - Revocable server-side for logout functionality
 pub fn create_refresh_token(
     user_id: Uuid,
     email: &str,
@@ -119,6 +278,20 @@ pub fn create_refresh_token(
     .map_err(|e| AppError::internal_error(format!("Failed to create refresh token: {}", e)))
 }
 
+/// Verifies a refresh token and returns the claims.
+///
+/// # Arguments
+///
+/// * `token` - The refresh JWT string to verify
+/// * `jwt_config` - JWT configuration containing the secret
+///
+/// # Returns
+///
+/// Returns the decoded [`RefreshTokenClaims`] on success.
+///
+/// # Errors
+///
+/// Returns an unauthorized error if the token is invalid or expired.
 pub fn verify_refresh_token(
     token: &str,
     jwt_config: &JwtConfig,

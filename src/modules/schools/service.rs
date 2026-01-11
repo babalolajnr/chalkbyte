@@ -65,7 +65,7 @@ impl SchoolService {
 
         let mut count_query = String::from("SELECT COUNT(*) FROM schools WHERE 1=1");
         let mut where_clause = String::new();
-        let mut params: Vec<String> = Vec::new();
+        let mut params = Vec::new();
 
         if let Some(name) = &filters.name {
             params.push(format!("%{}%", name));
@@ -193,7 +193,7 @@ impl SchoolService {
             "SELECT COUNT(*) FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id WHERE u.school_id = $1 AND ur.role_id = $2",
         );
         let mut where_clause = String::new();
-        let mut params: Vec<String> = Vec::new();
+        let mut params = Vec::new();
 
         if let Some(first_name) = &filters.first_name {
             params.push(format!("%{}%", first_name));
@@ -282,7 +282,7 @@ impl SchoolService {
             "SELECT COUNT(*) FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id WHERE u.school_id = $1 AND ur.role_id = $2",
         );
         let mut where_clause = String::new();
-        let mut params: Vec<String> = Vec::new();
+        let mut params = Vec::new();
 
         if let Some(first_name) = &filters.first_name {
             params.push(format!("%{}%", first_name));

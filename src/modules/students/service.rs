@@ -37,13 +37,13 @@ impl StudentService {
         .fetch_one(db)
         .await
         .map_err(|e| {
-            if let sqlx::Error::Database(db_err) = &e {
-                if db_err.is_unique_violation() {
-                    return AppError::bad_request(anyhow::anyhow!(
-                        "Student with email {} already exists",
-                        dto.email
-                    ));
-                }
+            if let sqlx::Error::Database(db_err) = &e
+                && db_err.is_unique_violation()
+            {
+                return AppError::bad_request(anyhow::anyhow!(
+                    "Student with email {} already exists",
+                    dto.email
+                ));
             }
             AppError::database(anyhow::Error::from(e))
         })?;
@@ -231,13 +231,13 @@ impl StudentService {
             .await
         }
         .map_err(|e| {
-            if let sqlx::Error::Database(db_err) = &e {
-                if db_err.is_unique_violation() {
-                    return AppError::bad_request(anyhow::anyhow!(
-                        "Student with email {} already exists",
-                        email
-                    ));
-                }
+            if let sqlx::Error::Database(db_err) = &e
+                && db_err.is_unique_violation()
+            {
+                return AppError::bad_request(anyhow::anyhow!(
+                    "Student with email {} already exists",
+                    email
+                ));
             }
             AppError::database(anyhow::Error::from(e))
         })?;
@@ -391,13 +391,13 @@ impl StudentService {
             .await
         }
         .map_err(|e| {
-            if let sqlx::Error::Database(db_err) = &e {
-                if db_err.is_unique_violation() {
-                    return AppError::bad_request(anyhow::anyhow!(
-                        "Student with email {} already exists",
-                        email
-                    ));
-                }
+            if let sqlx::Error::Database(db_err) = &e
+                && db_err.is_unique_violation()
+            {
+                return AppError::bad_request(anyhow::anyhow!(
+                    "Student with email {} already exists",
+                    email
+                ));
             }
             AppError::database(anyhow::Error::from(e))
         })?;

@@ -50,12 +50,12 @@ impl BranchService {
         .fetch_one(db)
         .await
         .map_err(|e| {
-            if let sqlx::Error::Database(db_err) = &e {
-                if db_err.is_unique_violation() {
-                    return AppError::bad_request(anyhow::anyhow!(
-                        "Branch with this name already exists for this level"
-                    ));
-                }
+            if let sqlx::Error::Database(db_err) = &e
+                && db_err.is_unique_violation()
+            {
+                return AppError::bad_request(anyhow::anyhow!(
+                    "Branch with this name already exists for this level"
+                ));
             }
             AppError::from(e)
         })?;
@@ -247,9 +247,9 @@ impl BranchService {
             query.push_str(&format!(", description = ${}", param_count));
         }
 
-        query.push_str(&format!(
-            " WHERE id = $1 RETURNING id, name, description, level_id, created_at, updated_at"
-        ));
+        query.push_str(
+            " WHERE id = $1 RETURNING id, name, description, level_id, created_at, updated_at",
+        );
 
         let mut query_builder = sqlx::query_as::<_, Branch>(&query).bind(id);
 
@@ -262,12 +262,12 @@ impl BranchService {
         }
 
         let branch = query_builder.fetch_one(db).await.map_err(|e| {
-            if let sqlx::Error::Database(db_err) = &e {
-                if db_err.is_unique_violation() {
-                    return AppError::bad_request(anyhow::anyhow!(
-                        "Branch with this name already exists for this level"
-                    ));
-                }
+            if let sqlx::Error::Database(db_err) = &e
+                && db_err.is_unique_violation()
+            {
+                return AppError::bad_request(anyhow::anyhow!(
+                    "Branch with this name already exists for this level"
+                ));
             }
             AppError::from(e)
         })?;
@@ -542,12 +542,12 @@ impl BranchService {
         .fetch_one(db)
         .await
         .map_err(|e| {
-            if let sqlx::Error::Database(db_err) = &e {
-                if db_err.is_unique_violation() {
-                    return AppError::bad_request(anyhow::anyhow!(
-                        "Branch with this name already exists for this level"
-                    ));
-                }
+            if let sqlx::Error::Database(db_err) = &e
+                && db_err.is_unique_violation()
+            {
+                return AppError::bad_request(anyhow::anyhow!(
+                    "Branch with this name already exists for this level"
+                ));
             }
             AppError::from(e)
         })?;
@@ -734,12 +734,12 @@ impl BranchService {
         }
 
         let branch = query_builder.fetch_one(db).await.map_err(|e| {
-            if let sqlx::Error::Database(db_err) = &e {
-                if db_err.is_unique_violation() {
-                    return AppError::bad_request(anyhow::anyhow!(
-                        "Branch with this name already exists for this level"
-                    ));
-                }
+            if let sqlx::Error::Database(db_err) = &e
+                && db_err.is_unique_violation()
+            {
+                return AppError::bad_request(anyhow::anyhow!(
+                    "Branch with this name already exists for this level"
+                ));
             }
             AppError::from(e)
         })?;

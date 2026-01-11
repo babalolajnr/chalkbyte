@@ -82,6 +82,7 @@ pub fn generate_students(
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn generate_user(
     role_id: Uuid,
     school_id: Option<Uuid>,
@@ -239,7 +240,7 @@ async fn insert_users_chunk(
             .bind(user.branch_id);
     }
 
-    let ids: Vec<Uuid> = q.fetch_all(&mut **tx).await?;
+    let ids = q.fetch_all(&mut **tx).await?;
     Ok(ids)
 }
 

@@ -103,12 +103,12 @@ pub fn init_router(state: AppState) -> Router {
         )
         .with_state(state.clone())
         .layer({
-            let allowed_origins: Vec<HeaderValue> = state
+            let allowed_origins = state
                 .cors_config
                 .allowed_origins
                 .iter()
                 .filter_map(|origin| origin.parse().ok())
-                .collect();
+                .collect::<Vec<HeaderValue>>();
 
             CorsLayer::new()
                 .allow_origin(allowed_origins)
@@ -202,12 +202,12 @@ pub fn init_router(state: AppState) -> Router {
         )
         .with_state(state.clone())
         .layer({
-            let allowed_origins: Vec<HeaderValue> = state
+            let allowed_origins = state
                 .cors_config
                 .allowed_origins
                 .iter()
                 .filter_map(|origin| origin.parse().ok())
-                .collect();
+                .collect::<Vec<HeaderValue>>();
 
             CorsLayer::new()
                 .allow_origin(allowed_origins)

@@ -111,7 +111,7 @@ async fn insert_levels_chunk(
             .bind(level.school_id);
     }
 
-    let ids: Vec<Uuid> = q.fetch_all(&mut **tx).await?;
+    let ids = q.fetch_all(&mut **tx).await?;
     Ok(ids)
 }
 

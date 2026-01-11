@@ -1,5 +1,6 @@
 use std::env;
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct EmailConfig {
     pub enabled: bool,

@@ -14,7 +14,10 @@ use sqlx::PgPool;
 use tower::ServiceExt;
 
 /// Setup test app with custom rate limit config for testing
-async fn setup_test_app_with_rate_limit(pool: PgPool, rate_limit_config: RateLimitConfig) -> axum::Router {
+async fn setup_test_app_with_rate_limit(
+    pool: PgPool,
+    rate_limit_config: RateLimitConfig,
+) -> axum::Router {
     dotenvy::dotenv().ok();
     let state = AppState {
         db: pool,

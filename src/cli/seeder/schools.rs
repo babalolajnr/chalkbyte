@@ -74,7 +74,7 @@ async fn insert_schools_chunk(
     }
 
     let mut query = String::from("INSERT INTO schools (name, address) VALUES ");
-    let mut params: Vec<String> = Vec::with_capacity(schools.len() * 2);
+    let mut params = Vec::with_capacity(schools.len() * 2);
 
     for (i, school) in schools.iter().enumerate() {
         if i > 0 {
@@ -93,7 +93,7 @@ async fn insert_schools_chunk(
         q = q.bind(param);
     }
 
-    let ids: Vec<Uuid> = q.fetch_all(&mut **tx).await?;
+    let ids = q.fetch_all(&mut **tx).await?;
     Ok(ids)
 }
 

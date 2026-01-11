@@ -23,10 +23,7 @@ use crate::state::AppState;
 use crate::utils::errors::AppError;
 
 // Re-export auth helpers for convenience
-pub use crate::utils::auth_helpers::{
-    get_admin_school_id, get_optional_school_id_for_resource_operation,
-    get_school_id_for_scoped_operation, get_school_id_with_override, verify_school_access,
-};
+pub use crate::utils::auth_helpers::get_admin_school_id;
 
 // ============================================================================
 // JWT-Based Permission Checking (No DB queries - uses embedded permissions)
@@ -34,6 +31,7 @@ pub use crate::utils::auth_helpers::{
 
 /// Middleware function that checks if the user has a specific permission from JWT claims.
 /// This is the preferred method as it doesn't require database queries.
+#[allow(dead_code)]
 pub async fn require_permission_from_jwt(
     State(state): State<AppState>,
     mut req: Request,
@@ -56,6 +54,7 @@ pub async fn require_permission_from_jwt(
 }
 
 /// Middleware function that checks if the user has any of the specified permissions from JWT.
+#[allow(dead_code)]
 pub async fn require_any_permission_from_jwt(
     State(state): State<AppState>,
     mut req: Request,
@@ -110,6 +109,7 @@ pub async fn require_roles(
 
 /// Middleware function that checks if the user has a specific permission.
 /// Uses database for fresh permission data - use when permissions may have changed.
+#[allow(dead_code)]
 pub async fn require_permission(
     State(state): State<AppState>,
     mut req: Request,
@@ -169,6 +169,7 @@ pub async fn require_admin(State(state): State<AppState>, req: Request, next: Ne
 }
 
 /// Helper function for teacher routes (SystemAdmin, Admin, and Teacher allowed)
+#[allow(dead_code)]
 pub async fn require_teacher(State(state): State<AppState>, req: Request, next: Next) -> Response {
     match require_roles(
         State(state),
@@ -193,6 +194,7 @@ pub async fn require_teacher(State(state): State<AppState>, req: Request, next: 
 
 /// Simple role checker extractor for system admin requirement.
 /// Uses JWT-embedded role_ids for fast checking.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct RequireSystemAdmin(pub Uuid);
 
@@ -226,6 +228,7 @@ impl FromRequestParts<AppState> for RequireSystemAdmin {
 
 /// Extractor for admin-level access (SystemAdmin or Admin).
 /// Uses JWT-embedded role_ids for fast checking.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct RequireAdmin(pub Uuid);
 
@@ -264,6 +267,7 @@ impl FromRequestParts<AppState> for RequireAdmin {
 
 /// Extractor for teacher-level access (SystemAdmin, Admin, or Teacher).
 /// Uses JWT-embedded role_ids for fast checking.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct RequireTeacher(pub Uuid);
 
@@ -313,21 +317,25 @@ impl FromRequestParts<AppState> for RequireTeacher {
 // ============================================================================
 
 /// Get the user ID from auth claims
+#[allow(dead_code)]
 pub fn get_user_id_from_auth(auth_user: &AuthUser) -> Result<Uuid, AppError> {
     auth_user.user_id()
 }
 
 /// Check if user has any of the specified roles using JWT claims (fast, no DB)
+#[allow(dead_code)]
 pub fn check_user_has_any_role_jwt(auth_user: &AuthUser, role_ids: &[Uuid]) -> bool {
     auth_user.has_any_role(role_ids)
 }
 
 /// Check if user has a specific permission using JWT claims (fast, no DB)
+#[allow(dead_code)]
 pub fn check_user_has_permission_jwt(auth_user: &AuthUser, permission_name: &str) -> bool {
     auth_user.has_permission(permission_name)
 }
 
 /// Helper function to check if a user has any of the specified roles (database query)
+#[allow(dead_code)]
 pub async fn check_user_has_any_role(
     db: &sqlx::PgPool,
     user_id: Uuid,
@@ -337,6 +345,7 @@ pub async fn check_user_has_any_role(
 }
 
 /// Helper function to check if a user has a specific permission (database query)
+#[allow(dead_code)]
 pub async fn check_user_has_permission(
     db: &sqlx::PgPool,
     user_id: Uuid,
@@ -346,6 +355,7 @@ pub async fn check_user_has_permission(
 }
 
 /// Check if user is a system admin (database query)
+#[allow(dead_code)]
 pub async fn is_system_admin(db: &sqlx::PgPool, user_id: Uuid) -> Result<bool, AppError> {
     UserService::is_system_admin(db, user_id).await
 }
@@ -356,6 +366,7 @@ pub fn is_system_admin_jwt(auth_user: &AuthUser) -> bool {
 }
 
 /// Check if user is an admin (school admin or system admin) using database
+#[allow(dead_code)]
 pub async fn is_admin(db: &sqlx::PgPool, user_id: Uuid) -> Result<bool, AppError> {
     UserService::user_has_any_role(
         db,
@@ -366,11 +377,13 @@ pub async fn is_admin(db: &sqlx::PgPool, user_id: Uuid) -> Result<bool, AppError
 }
 
 /// Check if user is an admin using JWT claims (fast, no DB)
+#[allow(dead_code)]
 pub fn is_admin_jwt(auth_user: &AuthUser) -> bool {
     auth_user.has_any_role(&[system_roles::SYSTEM_ADMIN, system_roles::ADMIN])
 }
 
 /// Check if user is at least a teacher (teacher, admin, or system admin) using database
+#[allow(dead_code)]
 pub async fn is_teacher_or_above(db: &sqlx::PgPool, user_id: Uuid) -> Result<bool, AppError> {
     UserService::user_has_any_role(
         db,
@@ -385,6 +398,7 @@ pub async fn is_teacher_or_above(db: &sqlx::PgPool, user_id: Uuid) -> Result<boo
 }
 
 /// Check if user is at least a teacher using JWT claims (fast, no DB)
+#[allow(dead_code)]
 pub fn is_teacher_or_above_jwt(auth_user: &AuthUser) -> bool {
     auth_user.has_any_role(&[
         system_roles::SYSTEM_ADMIN,
@@ -394,6 +408,7 @@ pub fn is_teacher_or_above_jwt(auth_user: &AuthUser) -> bool {
 }
 
 /// Get the school_id from auth user (from JWT claims)
+#[allow(dead_code)]
 pub fn get_school_id_from_auth(auth_user: &AuthUser) -> Option<Uuid> {
     auth_user.school_id()
 }

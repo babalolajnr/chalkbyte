@@ -1,3 +1,30 @@
+//! Authentication data models and DTOs.
+//!
+//! This module contains all data structures used for authentication operations,
+//! including JWT claims, login/logout requests and responses, MFA verification,
+//! and password reset flows.
+//!
+//! # Token Types
+//!
+//! The authentication system uses three types of JWT tokens:
+//!
+//! - **Access Token** ([`Claims`]): Short-lived token for API authentication
+//! - **Refresh Token** ([`RefreshTokenClaims`]): Long-lived token for obtaining new access tokens
+//! - **MFA Temp Token** ([`MfaTempClaims`]): Temporary token for MFA verification flow
+//!
+//! # Request/Response Types
+//!
+//! | Type | Purpose |
+//! |------|---------|
+//! | [`LoginRequest`] | Email and password for login |
+//! | [`LoginResponse`] | Tokens and user info on successful login |
+//! | [`MfaRequiredResponse`] | Indicates MFA verification is needed |
+//! | [`MfaVerifyLoginRequest`] | TOTP code for MFA verification |
+//! | [`MfaRecoveryLoginRequest`] | Recovery code for MFA bypass |
+//! | [`RefreshTokenRequest`] | Request to refresh access token |
+//! | [`ForgotPasswordRequest`] | Initiate password reset |
+//! | [`ResetPasswordRequest`] | Complete password reset |
+
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -6,7 +33,20 @@ use validator::Validate;
 use crate::modules::roles::model::{Permission, RoleWithPermissions};
 use crate::modules::users::model::{BranchInfo, LevelInfo, SchoolInfo};
 
-// JWT Claims structure
+/// JWT claims for access tokens.
+///
+/// These claims are embedded in access tokens and provide all necessary
+/// information for authentication and authorization without database lookups.
+///
+/// # Fields
+///
+/// - `sub`: User ID (subject)
+/// - `email`: User's email address
+/// - `school_id`: School scope (None for system admins)
+/// - `role_ids`: List of assigned role UUIDs
+/// - `permissions`: List of permission strings derived from roles
+/// - `exp`: Token expiration timestamp
+/// - `iat`: Token issued-at timestamp
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Claims {
     pub sub: String, // user_id
@@ -21,8 +61,12 @@ pub struct Claims {
     pub iat: usize,
 }
 
-// MFA temporary token claims
-#[derive(Debug, Serialize, Deserialize)]
+/// JWT claims for MFA temporary tokens.
+///
+/// Issued after successful password authentication when MFA is enabled.
+/// This token has a short lifetime (10 minutes) and can only be used
+/// to complete the MFA verification flow.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MfaTempClaims {
     pub sub: String,
     pub email: String,
@@ -31,8 +75,11 @@ pub struct MfaTempClaims {
     pub iat: usize,
 }
 
-// Refresh token claims
-#[derive(Debug, Serialize, Deserialize)]
+/// JWT claims for refresh tokens.
+///
+/// Refresh tokens are long-lived and used to obtain new access tokens
+/// without requiring the user to re-authenticate with their password.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RefreshTokenClaims {
     pub sub: String,
     pub email: String,
@@ -40,8 +87,12 @@ pub struct RefreshTokenClaims {
     pub iat: usize,
 }
 
-// Login request structure
-#[derive(Debug, Deserialize, Validate, ToSchema)]
+/// Login request with email and password.
+///
+/// Used for the initial authentication step. If MFA is enabled,
+/// successful authentication returns an [`MfaRequiredResponse`] instead
+/// of a [`LoginResponse`].
+#[derive(Debug, Clone, Deserialize, Validate, ToSchema)]
 pub struct LoginRequest {
     #[validate(email)]
     pub email: String,
@@ -51,7 +102,7 @@ pub struct LoginRequest {
 }
 
 /// User info returned in login response with joined relations
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct LoginUser {
     pub id: uuid::Uuid,
     pub first_name: String,
@@ -66,8 +117,11 @@ pub struct LoginUser {
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
-// Login response
-#[derive(Debug, Serialize, ToSchema)]
+/// Successful login response with tokens and user information.
+///
+/// Returned after successful authentication (including MFA if enabled).
+/// Contains both access and refresh tokens, along with full user details.
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct LoginResponse {
     pub access_token: String,
     pub refresh_token: String,
@@ -76,15 +130,21 @@ pub struct LoginResponse {
     pub permissions: Vec<Permission>,
 }
 
-// MFA required response (temp token for MFA verification)
-#[derive(Debug, Serialize, ToSchema)]
+/// Response indicating MFA verification is required.
+///
+/// Returned when the user has MFA enabled. The `temp_token` must be
+/// submitted along with a TOTP code to complete authentication.
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MfaRequiredResponse {
     pub mfa_required: bool,
     pub temp_token: String,
 }
 
-// MFA verification request
-#[derive(Debug, Deserialize, Validate, ToSchema)]
+/// MFA verification request with TOTP code.
+///
+/// Submit this with the temp token from [`MfaRequiredResponse`] to
+/// complete MFA verification and receive a full [`LoginResponse`].
+#[derive(Debug, Clone, Deserialize, Validate, ToSchema)]
 pub struct MfaVerifyLoginRequest {
     #[validate(length(min = 1))]
     pub temp_token: String,
@@ -93,8 +153,11 @@ pub struct MfaVerifyLoginRequest {
     pub code: String,
 }
 
-// MFA recovery code login request
-#[derive(Debug, Deserialize, Validate, ToSchema)]
+/// MFA recovery code login request.
+///
+/// Used when the user doesn't have access to their authenticator app.
+/// Each recovery code can only be used once.
+#[derive(Debug, Clone, Deserialize, Validate, ToSchema)]
 pub struct MfaRecoveryLoginRequest {
     #[validate(length(min = 1))]
     pub temp_token: String,
@@ -103,23 +166,32 @@ pub struct MfaRecoveryLoginRequest {
     pub recovery_code: String,
 }
 
-// Refresh token request
-#[derive(Debug, Deserialize, Validate, ToSchema)]
+/// Request to refresh an access token.
+///
+/// Submit a valid refresh token to receive a new access token
+/// without re-authenticating.
+#[derive(Debug, Clone, Deserialize, Validate, ToSchema)]
 pub struct RefreshTokenRequest {
     #[validate(length(min = 1))]
     pub refresh_token: String,
 }
 
-// Forgot password request
-#[derive(Debug, Deserialize, Validate, ToSchema)]
+/// Forgot password request to initiate password reset.
+///
+/// Submitting this request sends a password reset email to the user
+/// if the email exists in the system.
+#[derive(Debug, Clone, Deserialize, Validate, ToSchema)]
 pub struct ForgotPasswordRequest {
     #[validate(email)]
     #[schema(example = "user@example.com")]
     pub email: String,
 }
 
-// Reset password request
-#[derive(Debug, Deserialize, Validate, ToSchema)]
+/// Reset password request to complete password reset.
+///
+/// Submit the token received via email along with the new password
+/// to complete the password reset process.
+#[derive(Debug, Clone, Deserialize, Validate, ToSchema)]
 pub struct ResetPasswordRequest {
     #[validate(length(min = 1))]
     pub token: String,
@@ -128,8 +200,11 @@ pub struct ResetPasswordRequest {
     pub new_password: String,
 }
 
-// Generic success message response
-#[derive(Debug, Serialize, ToSchema)]
+/// Generic success message response.
+///
+/// Used for operations that don't return specific data,
+/// such as logout or password reset initiation.
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MessageResponse {
     pub message: String,
 }

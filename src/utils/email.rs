@@ -6,10 +6,12 @@ use tracing::{debug, info, instrument};
 use crate::config::email::EmailConfig;
 use crate::utils::errors::AppError;
 
+#[allow(dead_code)]
 pub struct EmailService {
     config: EmailConfig,
 }
 
+#[allow(dead_code)]
 impl EmailService {
     pub fn new(config: EmailConfig) -> Self {
         Self { config }

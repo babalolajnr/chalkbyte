@@ -108,7 +108,7 @@ async fn insert_branches_chunk(
             .bind(branch.level_id);
     }
 
-    let ids: Vec<Uuid> = q.fetch_all(&mut **tx).await?;
+    let ids = q.fetch_all(&mut **tx).await?;
     Ok(ids)
 }
 
