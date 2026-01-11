@@ -3,8 +3,9 @@ use utoipa::{Modify, OpenApi};
 
 use crate::modules::auth::controller::ErrorResponse;
 use crate::modules::auth::model::{
-    ForgotPasswordRequest, LoginRequest, LoginResponse, MessageResponse, MfaRecoveryLoginRequest,
-    MfaRequiredResponse, MfaVerifyLoginRequest, RefreshTokenRequest, ResetPasswordRequest,
+    ForgotPasswordRequest, LoginRequest, LoginResponse, LoginUser, MessageResponse,
+    MfaRecoveryLoginRequest, MfaRequiredResponse, MfaVerifyLoginRequest, RefreshTokenRequest,
+    ResetPasswordRequest,
 };
 use crate::modules::branches::model::{
     AssignStudentsToBranchDto, Branch, BranchFilterParams, BranchWithStats, CreateBranchDto,
@@ -108,6 +109,7 @@ use crate::utils::pagination::{PaginationMeta, PaginationParams};
             CreateSchoolDto,
             LoginRequest,
             LoginResponse,
+            LoginUser,
             MfaRequiredResponse,
             MfaVerifyLoginRequest,
             MfaRecoveryLoginRequest,

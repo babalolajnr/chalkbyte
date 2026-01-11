@@ -1,16 +1,17 @@
 use chrono::{Duration, Utc};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
 use crate::config::jwt::JwtConfig;
 use crate::metrics;
 use crate::modules::auth::model::{
-    ForgotPasswordRequest, LoginRequest, LoginResponse, MessageResponse, MfaRecoveryLoginRequest,
-    MfaRequiredResponse, MfaVerifyLoginRequest, RefreshTokenRequest, ResetPasswordRequest,
+    ForgotPasswordRequest, LoginRequest, LoginResponse, LoginUser, MessageResponse,
+    MfaRecoveryLoginRequest, MfaRequiredResponse, MfaVerifyLoginRequest, RefreshTokenRequest,
+    ResetPasswordRequest,
 };
 use crate::modules::roles::service as roles_service;
-use crate::modules::users::model::User;
+use crate::modules::users::model::{BranchInfo, LevelInfo, SchoolInfo};
 use crate::utils::errors::AppError;
 use crate::utils::jwt::{
     create_access_token, create_mfa_temp_token, create_refresh_token, verify_mfa_temp_token,
@@ -19,6 +20,88 @@ use crate::utils::jwt::{
 use crate::utils::password::{hash_password, verify_password};
 
 pub struct AuthService;
+
+/// Helper struct for user data with school_id needed for JWT
+struct UserForLogin {
+    id: Uuid,
+    email: String,
+    school_id: Option<Uuid>,
+    login_user: LoginUser,
+}
+
+/// Fetch user with joined school/level/branch relations
+async fn fetch_user_with_relations(db: &PgPool, user_id: Uuid) -> Result<UserForLogin, AppError> {
+    let row = sqlx::query(
+        r#"SELECT
+            u.id, u.first_name, u.last_name, u.email,
+            u.date_of_birth, u.grade_level, u.created_at, u.updated_at,
+            u.school_id, u.level_id, u.branch_id,
+            s.id as school_id_joined, s.name as school_name, s.address as school_address,
+            l.id as level_id_joined, l.name as level_name, l.description as level_description,
+            b.id as branch_id_joined, b.name as branch_name, b.description as branch_description
+        FROM users u
+        LEFT JOIN schools s ON u.school_id = s.id
+        LEFT JOIN levels l ON u.level_id = l.id
+        LEFT JOIN branches b ON u.branch_id = b.id
+        WHERE u.id = $1"#,
+    )
+    .bind(user_id)
+    .fetch_one(db)
+    .await?;
+
+    let id = row.get("id");
+    let email: String = row.get("email");
+    let school_id = row.get("school_id");
+
+    let school = row
+        .try_get::<Option<Uuid>, _>("school_id_joined")
+        .ok()
+        .flatten()
+        .map(|sid| SchoolInfo {
+            id: sid,
+            name: row.get("school_name"),
+            address: row.get("school_address"),
+        });
+
+    let level = row
+        .try_get::<Option<Uuid>, _>("level_id_joined")
+        .ok()
+        .flatten()
+        .map(|lid| LevelInfo {
+            id: lid,
+            name: row.get("level_name"),
+            description: row.get("level_description"),
+        });
+
+    let branch = row
+        .try_get::<Option<Uuid>, _>("branch_id_joined")
+        .ok()
+        .flatten()
+        .map(|bid| BranchInfo {
+            id: bid,
+            name: row.get("branch_name"),
+            description: row.get("branch_description"),
+        });
+
+    Ok(UserForLogin {
+        id,
+        email: email.clone(),
+        school_id,
+        login_user: LoginUser {
+            id,
+            first_name: row.get("first_name"),
+            last_name: row.get("last_name"),
+            email,
+            date_of_birth: row.get("date_of_birth"),
+            grade_level: row.get("grade_level"),
+            school,
+            level,
+            branch,
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+        },
+    })
+}
 
 impl AuthService {
     #[instrument(skip(db, dto, jwt_config), fields(auth.email = %dto.email, auth.event = "login_attempt"))]
@@ -29,35 +112,71 @@ impl AuthService {
     ) -> Result<Result<LoginResponse, MfaRequiredResponse>, AppError> {
         debug!(email = %dto.email, "Processing login request");
 
-        #[derive(sqlx::FromRow)]
-        struct UserWithPassword {
-            id: Uuid,
-            first_name: String,
-            last_name: String,
-            email: String,
-            password: String,
-            school_id: Option<Uuid>,
-            level_id: Option<Uuid>,
-            branch_id: Option<Uuid>,
-            date_of_birth: Option<chrono::NaiveDate>,
-            grade_level: Option<String>,
-            created_at: chrono::DateTime<chrono::Utc>,
-            updated_at: chrono::DateTime<chrono::Utc>,
-            mfa_enabled: bool,
-        }
-
-        let user_with_password = sqlx::query_as::<_, UserWithPassword>(
-            "SELECT id, first_name, last_name, email, password, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at, mfa_enabled FROM users WHERE email = $1",
+        let row = sqlx::query(
+            r#"SELECT
+                u.id, u.first_name, u.last_name, u.email, u.password,
+                u.date_of_birth, u.grade_level, u.created_at, u.updated_at, u.mfa_enabled,
+                u.school_id, u.level_id, u.branch_id,
+                s.id as school_id_joined, s.name as school_name, s.address as school_address,
+                l.id as level_id_joined, l.name as level_name, l.description as level_description,
+                b.id as branch_id_joined, b.name as branch_name, b.description as branch_description
+            FROM users u
+            LEFT JOIN schools s ON u.school_id = s.id
+            LEFT JOIN levels l ON u.level_id = l.id
+            LEFT JOIN branches b ON u.branch_id = b.id
+            WHERE u.email = $1"#,
         )
         .bind(&dto.email)
         .fetch_optional(db)
         .await?
-        .ok_or_else(||{
+        .ok_or_else(|| {
             metrics::track_user_login_failure("invalid_email");
-            AppError::unauthorized("Invalid email or password".to_string() )
+            AppError::unauthorized("Invalid email or password".to_string())
         })?;
 
-        let is_valid = verify_password(&dto.password, &user_with_password.password)?;
+        let user_id = row.get("id");
+        let first_name = row.get("first_name");
+        let last_name = row.get("last_name");
+        let email: String = row.get("email");
+        let password: String = row.get("password");
+        let school_id = row.get("school_id");
+        let date_of_birth = row.get("date_of_birth");
+        let grade_level = row.get("grade_level");
+        let created_at = row.get("created_at");
+        let updated_at = row.get("updated_at");
+        let mfa_enabled = row.get("mfa_enabled");
+
+        let school = row
+            .try_get::<Option<Uuid>, _>("school_id_joined")
+            .ok()
+            .flatten()
+            .map(|id| SchoolInfo {
+                id,
+                name: row.get("school_name"),
+                address: row.get("school_address"),
+            });
+
+        let level = row
+            .try_get::<Option<Uuid>, _>("level_id_joined")
+            .ok()
+            .flatten()
+            .map(|id| LevelInfo {
+                id,
+                name: row.get("level_name"),
+                description: row.get("level_description"),
+            });
+
+        let branch = row
+            .try_get::<Option<Uuid>, _>("branch_id_joined")
+            .ok()
+            .flatten()
+            .map(|id| BranchInfo {
+                id,
+                name: row.get("branch_name"),
+                description: row.get("branch_description"),
+            });
+
+        let is_valid = verify_password(&dto.password, &password)?;
 
         if !is_valid {
             metrics::track_user_login_failure("invalid_password");
@@ -67,13 +186,9 @@ impl AuthService {
         }
 
         // Check if MFA is enabled
-        if user_with_password.mfa_enabled {
+        if mfa_enabled {
             // Generate temporary token for MFA verification
-            let temp_token = create_mfa_temp_token(
-                user_with_password.id,
-                &user_with_password.email,
-                jwt_config,
-            )?;
+            let temp_token = create_mfa_temp_token(user_id, &email, jwt_config)?;
 
             metrics::track_jwt_issued();
             return Ok(Err(MfaRequiredResponse {
@@ -84,24 +199,23 @@ impl AuthService {
 
         // No MFA, proceed with normal login
         // Fetch roles and permissions first (needed for JWT)
-        let roles = roles_service::get_user_roles_internal(db, user_with_password.id).await?;
-        let permissions = roles_service::get_user_permissions(db, user_with_password.id).await?;
+        let roles = roles_service::get_user_roles_internal(db, user_id).await?;
+        let permissions = roles_service::get_user_permissions(db, user_id).await?;
 
         // Extract role IDs and permission names for JWT
-        let role_ids: Vec<Uuid> = roles.iter().map(|r| r.role.id).collect();
-        let permission_names: Vec<String> = permissions.iter().map(|p| p.name.clone()).collect();
+        let role_ids = roles.iter().map(|r| r.role.id).collect();
+        let permission_names = permissions.iter().map(|p| p.name.clone()).collect();
 
         let access_token = create_access_token(
-            user_with_password.id,
-            &user_with_password.email,
-            user_with_password.school_id,
+            user_id,
+            &email,
+            school_id,
             role_ids,
             permission_names,
             jwt_config,
         )?;
 
-        let refresh_token =
-            create_refresh_token(user_with_password.id, &user_with_password.email, jwt_config)?;
+        let refresh_token = create_refresh_token(user_id, &email, jwt_config)?;
 
         // Track metrics
         metrics::track_jwt_issued();
@@ -116,24 +230,24 @@ impl AuthService {
         // Store refresh token in database
         let expires_at = Utc::now() + Duration::seconds(jwt_config.refresh_token_expiry);
         sqlx::query("INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)")
-            .bind(user_with_password.id)
+            .bind(user_id)
             .bind(&refresh_token)
             .bind(expires_at)
             .execute(db)
             .await?;
 
-        let user = User {
-            id: user_with_password.id,
-            first_name: user_with_password.first_name,
-            last_name: user_with_password.last_name,
-            email: user_with_password.email,
-            school_id: user_with_password.school_id,
-            level_id: user_with_password.level_id,
-            branch_id: user_with_password.branch_id,
-            date_of_birth: user_with_password.date_of_birth,
-            grade_level: user_with_password.grade_level,
-            created_at: user_with_password.created_at,
-            updated_at: user_with_password.updated_at,
+        let user = LoginUser {
+            id: user_id,
+            first_name,
+            last_name,
+            email,
+            date_of_birth,
+            grade_level,
+            school,
+            level,
+            branch,
+            created_at,
+            updated_at,
         };
 
         Ok(Ok(LoginResponse {
@@ -168,17 +282,12 @@ impl AuthService {
             return Err(AppError::unauthorized("Invalid MFA code".to_string()));
         }
 
-        // Get user details
-        let user = sqlx::query_as::<_, User>(
-            "SELECT id, first_name, last_name, email, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE id = $1",
-        )
-        .bind(user_id)
-        .fetch_one(db)
-        .await?;
+        // Get user details with relations
+        let user_data = fetch_user_with_relations(db, user_id).await?;
 
         // Fetch roles and permissions for JWT
-        let roles = roles_service::get_user_roles_internal(db, user.id).await?;
-        let permissions = roles_service::get_user_permissions(db, user.id).await?;
+        let roles = roles_service::get_user_roles_internal(db, user_data.id).await?;
+        let permissions = roles_service::get_user_permissions(db, user_data.id).await?;
 
         // Extract role IDs and permission names for JWT
         let role_ids: Vec<Uuid> = roles.iter().map(|r| r.role.id).collect();
@@ -187,14 +296,14 @@ impl AuthService {
         // Generate final access token with roles and permissions
         let access_token = create_access_token(
             user_id,
-            &user.email,
-            user.school_id,
+            &user_data.email,
+            user_data.school_id,
             role_ids,
             permission_names,
             jwt_config,
         )?;
 
-        let refresh_token = create_refresh_token(user_id, &user.email, jwt_config)?;
+        let refresh_token = create_refresh_token(user_id, &user_data.email, jwt_config)?;
 
         // Store refresh token in database
         let expires_at = Utc::now() + Duration::seconds(jwt_config.refresh_token_expiry);
@@ -208,7 +317,7 @@ impl AuthService {
         Ok(LoginResponse {
             access_token,
             refresh_token,
-            user,
+            user: user_data.login_user,
             roles,
             permissions,
         })
@@ -239,17 +348,12 @@ impl AuthService {
             ));
         }
 
-        // Get user details
-        let user = sqlx::query_as::<_, User>(
-            "SELECT id, first_name, last_name, email, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE id = $1",
-        )
-        .bind(user_id)
-        .fetch_one(db)
-        .await?;
+        // Get user details with relations
+        let user_data = fetch_user_with_relations(db, user_id).await?;
 
         // Fetch roles and permissions for JWT
-        let roles = roles_service::get_user_roles_internal(db, user.id).await?;
-        let permissions = roles_service::get_user_permissions(db, user.id).await?;
+        let roles = roles_service::get_user_roles_internal(db, user_data.id).await?;
+        let permissions = roles_service::get_user_permissions(db, user_data.id).await?;
 
         // Extract role IDs and permission names for JWT
         let role_ids: Vec<Uuid> = roles.iter().map(|r| r.role.id).collect();
@@ -258,14 +362,14 @@ impl AuthService {
         // Generate final access token with roles and permissions
         let access_token = create_access_token(
             user_id,
-            &user.email,
-            user.school_id,
+            &user_data.email,
+            user_data.school_id,
             role_ids,
             permission_names,
             jwt_config,
         )?;
 
-        let refresh_token = create_refresh_token(user_id, &user.email, jwt_config)?;
+        let refresh_token = create_refresh_token(user_id, &user_data.email, jwt_config)?;
 
         // Store refresh token in database
         let expires_at = Utc::now() + Duration::seconds(jwt_config.refresh_token_expiry);
@@ -279,7 +383,7 @@ impl AuthService {
         Ok(LoginResponse {
             access_token,
             refresh_token,
-            user,
+            user: user_data.login_user,
             roles,
             permissions,
         })
@@ -442,17 +546,12 @@ impl AuthService {
 
         debug!(user.id = %user_id, "Refresh token valid, generating new tokens");
 
-        // Get user details
-        let user = sqlx::query_as::<_, User>(
-            "SELECT id, first_name, last_name, email, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE id = $1",
-        )
-        .bind(user_id)
-        .fetch_one(db)
-        .await?;
+        // Get user details with relations
+        let user_data = fetch_user_with_relations(db, user_id).await?;
 
         // Fetch roles and permissions for new access token
-        let roles = roles_service::get_user_roles_internal(db, user.id).await?;
-        let permissions = roles_service::get_user_permissions(db, user.id).await?;
+        let roles = roles_service::get_user_roles_internal(db, user_data.id).await?;
+        let permissions = roles_service::get_user_permissions(db, user_data.id).await?;
 
         // Extract role IDs and permission names for JWT
         let role_ids: Vec<Uuid> = roles.iter().map(|r| r.role.id).collect();
@@ -461,15 +560,15 @@ impl AuthService {
         // Generate new access token with roles and permissions
         let access_token = create_access_token(
             user_id,
-            &user.email,
-            user.school_id,
+            &user_data.email,
+            user_data.school_id,
             role_ids,
             permission_names,
             jwt_config,
         )?;
 
         // Generate new refresh token (refresh token rotation)
-        let new_refresh_token = create_refresh_token(user_id, &user.email, jwt_config)?;
+        let new_refresh_token = create_refresh_token(user_id, &user_data.email, jwt_config)?;
 
         // Revoke old refresh token
         sqlx::query(
@@ -491,7 +590,7 @@ impl AuthService {
         Ok(LoginResponse {
             access_token,
             refresh_token: new_refresh_token,
-            user,
+            user: user_data.login_user,
             roles,
             permissions,
         })
@@ -649,24 +748,19 @@ mod tests {
         let user_id = create_test_user(&db, &email).await;
 
         // Test the query directly
-        let user = sqlx::query_as::<_, User>(
-            "SELECT id, first_name, last_name, email, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at FROM users WHERE id = $1",
-        )
-        .bind(user_id)
-        .fetch_one(&db)
-        .await;
+        let user_data = fetch_user_with_relations(&db, user_id).await;
 
-        assert!(user.is_ok());
-        let user = user.unwrap();
-        assert_eq!(user.id, user_id);
-        assert_eq!(user.email, email);
-        assert_eq!(user.first_name, "Test");
-        assert_eq!(user.last_name, "User");
-        assert!(user.school_id.is_none());
-        assert!(user.level_id.is_none());
-        assert!(user.branch_id.is_none());
-        assert!(user.date_of_birth.is_none());
-        assert!(user.grade_level.is_none());
+        assert!(user_data.is_ok());
+        let user_data = user_data.unwrap();
+        assert_eq!(user_data.id, user_id);
+        assert_eq!(user_data.email, email);
+        assert_eq!(user_data.login_user.first_name, "Test");
+        assert_eq!(user_data.login_user.last_name, "User");
+        assert!(user_data.school_id.is_none());
+        assert!(user_data.login_user.level.is_none());
+        assert!(user_data.login_user.branch.is_none());
+        assert!(user_data.login_user.date_of_birth.is_none());
+        assert!(user_data.login_user.grade_level.is_none());
 
         cleanup_test_user(&db, user_id).await;
     }

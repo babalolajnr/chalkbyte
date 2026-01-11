@@ -4,7 +4,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::modules::roles::model::{Permission, RoleWithPermissions};
-use crate::modules::users::model::User;
+use crate::modules::users::model::{BranchInfo, LevelInfo, SchoolInfo};
 
 // JWT Claims structure
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -50,12 +50,28 @@ pub struct LoginRequest {
     pub password: String,
 }
 
+/// User info returned in login response with joined relations
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LoginUser {
+    pub id: uuid::Uuid,
+    pub first_name: String,
+    pub last_name: String,
+    pub email: String,
+    pub date_of_birth: Option<chrono::NaiveDate>,
+    pub grade_level: Option<String>,
+    pub school: Option<SchoolInfo>,
+    pub level: Option<LevelInfo>,
+    pub branch: Option<BranchInfo>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
 // Login response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LoginResponse {
     pub access_token: String,
     pub refresh_token: String,
-    pub user: User,
+    pub user: LoginUser,
     pub roles: Vec<RoleWithPermissions>,
     pub permissions: Vec<Permission>,
 }
