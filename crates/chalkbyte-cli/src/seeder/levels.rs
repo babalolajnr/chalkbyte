@@ -1,3 +1,8 @@
+//! Level (grade) seeding functionality.
+//!
+//! Provides functions for generating and inserting fake level data
+//! into the database.
+
 use rayon::prelude::*;
 use sqlx::{PgPool, Postgres, Transaction};
 use std::time::Instant;
@@ -135,6 +140,7 @@ pub async fn clear_levels(db: &PgPool) -> Result<u64, Box<dyn std::error::Error>
 }
 
 /// Gets all level IDs for a specific school
+#[allow(dead_code)]
 pub async fn get_levels_for_school(
     db: &PgPool,
     school_id: Uuid,

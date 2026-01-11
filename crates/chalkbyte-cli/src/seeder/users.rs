@@ -1,4 +1,9 @@
-use crate::modules::users::model::system_roles;
+//! User seeding functionality.
+//!
+//! Provides functions for generating and inserting fake user data
+//! (staff and students) into the database.
+
+use chalkbyte_models::users::system_roles;
 use fake::Fake;
 use fake::faker::name::en::*;
 use rayon::prelude::*;

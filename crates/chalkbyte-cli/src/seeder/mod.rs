@@ -15,7 +15,7 @@
 //!
 //! ## Full seeding
 //! ```ignore
-//! use chalkbyte::cli::seeder::{seed_all, SeedConfig};
+//! use chalkbyte_cli::seeder::{seed_all, SeedConfig};
 //!
 //! let config = SeedConfig::new(10); // 10 schools with defaults
 //! seed_all(&db, config).await?;
@@ -125,7 +125,7 @@ pub async fn seed_all(db: &PgPool, config: SeedConfig) -> Result<(), Box<dyn std
         total_users,
         start_time.elapsed()
     );
-    println!("\n📝 Default password for all users: password123");
+    println!("\n📝 Default password for all users: Password@123");
 
     Ok(())
 }

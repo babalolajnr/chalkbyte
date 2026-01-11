@@ -1,0 +1,25 @@
+[package]
+name = "chalkbyte-cli"
+version.workspace = true
+edition.workspace = true
+description = "CLI tools for Chalkbyte administration and database seeding"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Internal crates
+chalkbyte-core.workspace = true
+chalkbyte-models.workspace = true
+
+# Database
+sqlx.workspace = true
+
+# Types
+uuid.workspace = true
+
+# Auth (for password hashing in seeder)
+bcrypt.workspace = true
+
+# Data generation
+fake.workspace = true
+rayon.workspace = true

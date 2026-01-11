@@ -129,7 +129,6 @@
 //! - System admins cannot be created via API (CLI only)
 //! - Rate limiting is configurable for API endpoints
 
-pub mod cli;
 pub mod config;
 pub mod docs;
 pub mod logging;
@@ -143,6 +142,10 @@ pub mod validator;
 
 // Re-export workspace crates for convenience
 pub use chalkbyte_auth;
+pub use chalkbyte_cli;
 pub use chalkbyte_config;
 pub use chalkbyte_core;
 pub use chalkbyte_db;
+
+// Re-export CLI module for backward compatibility
+pub use chalkbyte_cli as cli;

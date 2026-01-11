@@ -1,5 +1,5 @@
-use chalkbyte::cli::create_system_admin;
-use chalkbyte::cli::seeder::{self, LevelsPerSchool, SeedConfig, UsersPerSchool};
+use chalkbyte_cli::create_system_admin;
+use chalkbyte_cli::seeder::{self, LevelsPerSchool, SeedConfig, UsersPerSchool};
 use clap::{Parser, Subcommand};
 use dialoguer::{Input, Password};
 use dotenvy::dotenv;

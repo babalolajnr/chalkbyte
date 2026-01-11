@@ -1,3 +1,8 @@
+//! Branch (section) seeding functionality.
+//!
+//! Provides functions for generating and inserting fake branch data
+//! into the database.
+
 use rayon::prelude::*;
 use sqlx::{PgPool, Postgres, Transaction};
 use std::time::Instant;
@@ -132,6 +137,7 @@ pub async fn clear_branches(db: &PgPool) -> Result<u64, Box<dyn std::error::Erro
 }
 
 /// Gets all branch IDs for a specific level
+#[allow(dead_code)]
 pub async fn get_branches_for_level(
     db: &PgPool,
     level_id: Uuid,
@@ -147,6 +153,7 @@ pub async fn get_branches_for_level(
 }
 
 /// Gets all branch IDs grouped by level for a school
+#[allow(dead_code)]
 pub async fn get_branches_by_level_for_school(
     db: &PgPool,
     school_id: Uuid,

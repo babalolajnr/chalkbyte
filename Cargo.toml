@@ -6,6 +6,7 @@ members = [
     "crates/chalkbyte-db",
     "crates/chalkbyte-auth",
     "crates/chalkbyte-models",
+    "crates/chalkbyte-cli",
 ]
 
 [workspace.package]
@@ -21,6 +22,7 @@ chalkbyte-config = { path = "crates/chalkbyte-config" }
 chalkbyte-db = { path = "crates/chalkbyte-db" }
 chalkbyte-auth = { path = "crates/chalkbyte-auth" }
 chalkbyte-models = { path = "crates/chalkbyte-models" }
+chalkbyte-cli = { path = "crates/chalkbyte-cli" }
 
 # Web framework
 axum = { version = "0.8", features = ["macros"] }
@@ -123,6 +125,7 @@ chalkbyte-config.workspace = true
 chalkbyte-db.workspace = true
 chalkbyte-auth.workspace = true
 chalkbyte-models.workspace = true
+chalkbyte-cli.workspace = true
 
 # Web framework
 axum.workspace = true

@@ -181,16 +181,26 @@ Chalkbyte uses a **Cargo workspace** with multiple internal crates for improved 
 │   │       ├── lib.rs
 │   │       ├── claims.rs
 │   │       └── jwt.rs
-│   └── chalkbyte-models/    # Domain models and DTOs
+│   ├── chalkbyte-models/    # Domain models and DTOs
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── auth.rs
+│   │       ├── branches.rs
+│   │       ├── levels.rs
+│   │       ├── mfa.rs
+│   │       ├── roles.rs
+│   │       ├── students.rs
+│   │       └── users.rs
+│   └── chalkbyte-cli/       # CLI tools and database seeding
 │       └── src/
 │           ├── lib.rs
-│           ├── auth.rs
-│           ├── branches.rs
-│           ├── levels.rs
-│           ├── mfa.rs
-│           ├── roles.rs
-│           ├── students.rs
-│           └── users.rs
+│           └── seeder/
+│               ├── mod.rs
+│               ├── models.rs
+│               ├── schools.rs
+│               ├── levels.rs
+│               ├── branches.rs
+│               └── users.rs
 ├── src/                     # Main application crate
 │   ├── main.rs              # Entry point
 │   ├── lib.rs               # Library exports
@@ -201,8 +211,7 @@ Chalkbyte uses a **Cargo workspace** with multiple internal crates for improved 
 │   ├── metrics.rs           # Metrics configuration
 │   ├── validator.rs         # Validation utilities
 │   ├── bin/
-│   │   └── cli.rs           # CLI binary
-│   ├── cli/                 # CLI commands
+│   │   └── cli.rs           # CLI binary (uses chalkbyte-cli crate)
 │   ├── config/              # App-level configuration
 │   ├── middleware/          # Auth middleware and extractors
 │   ├── modules/             # Feature modules (NestJS-style)
@@ -255,6 +264,15 @@ Domain models and DTOs for all modules:
 - `students` - Student, CreateStudentDto
 - `mfa` - MfaSetup, MfaVerify
 
+### `chalkbyte-cli`
+CLI tools and database seeding:
+- `create_system_admin()` - Create system administrator accounts
+- `seeder` module - Database seeding functionality
+  - `SeedConfig`, `UsersPerSchool`, `LevelsPerSchool` - Configuration types
+  - `seed_all()` - Full database seeding
+  - `seed_schools_only()`, `seed_levels_only()`, etc. - Individual seeding
+  - `clear_all()`, `clear_users_only()`, etc. - Data clearing
+
 ## Architecture Patterns
 
 ### Module Structure (NestJS-style)
@@ -278,6 +296,7 @@ use chalkbyte_config::JwtConfig;
 use chalkbyte_db::create_pool;
 use chalkbyte_auth::Claims;
 use chalkbyte_models::users::{User, CreateUserDto, UserResponse};
+use chalkbyte_cli::{create_system_admin, seeder};
 ```
 
 ### Code Style Guidelines
@@ -423,11 +442,17 @@ pub fn init_module_router() -> Router<AppState> {
 ```bash
 # Run CLI binary
 cargo run --bin chalkbyte-cli -- <command>
+
+# Examples
+cargo run --bin chalkbyte-cli -- create-sysadmin
+cargo run --bin chalkbyte-cli -- seed --schools 5
+cargo run --bin chalkbyte-cli -- clear-seed
 ```
 
 ### Adding New Commands
 
-CLI commands are defined in `src/bin/cli.rs` using clap:
+CLI commands are defined in `src/bin/cli.rs` using clap.
+The CLI binary uses the `chalkbyte-cli` crate for core functionality:
 ```rust
 #[derive(Parser)]
 #[command(name = "chalkbyte-cli")]
@@ -439,7 +464,19 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     CreateSysadmin { ... },
+    Seed { ... },
+    ClearSeed,
     // Add new commands here
+}
+```
+
+### Adding CLI Functionality
+
+For reusable CLI logic, add to `crates/chalkbyte-cli/src/`:
+```rust
+// In chalkbyte-cli crate
+pub async fn my_new_function(db: &PgPool, ...) -> Result<(), Box<dyn std::error::Error>> {
+    // Implementation
 }
 ```
 

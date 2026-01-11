@@ -1,3 +1,8 @@
+//! School seeding functionality.
+//!
+//! Provides functions for generating and inserting fake school data
+//! into the database.
+
 use fake::faker::address::en::*;
 use fake::{Fake, Faker};
 use rayon::prelude::*;
