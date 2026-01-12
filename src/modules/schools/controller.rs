@@ -232,7 +232,7 @@ pub async fn get_school_students(
     responses(
         (status = 200, description = "Paginated list of admins", body = PaginatedBasicUsersResponse),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden - requires schools:read permission (system admin only)"),
+        (status = 403, description = "Forbidden - requires schools:read permission (system admins or school admin for own school)"),
         (status = 404, description = "School not found")
     ),
     tag = "Schools",
@@ -248,15 +248,21 @@ pub async fn get_school_admins(
     let Query(filters) = filters
         .map_err(|e| AppError::bad_request(anyhow::anyhow!("Invalid query parameters: {}", e)))?;
 
-    // Only system admins can view school admins
-    if !is_system_admin_jwt(&auth_user) {
-        warn!("Non-system admin attempted to view school admins");
-        return Err(AppError::forbidden(
-            "Only system admins can view school admins".to_string(),
-        ));
-    }
-
     let school_id = SchoolId::from(school_id);
+
+    // System admins can view any school's admins
+    // School admins can only view admins for their own school
+    if !is_system_admin_jwt(&auth_user) {
+        let user_school_id = auth_user
+            .school_id()
+            .ok_or_else(|| AppError::forbidden("User has no associated school".to_string()))?;
+        if user_school_id != school_id {
+            warn!("School admin attempted to view admins for different school");
+            return Err(AppError::forbidden(
+                "You can only view admins for your own school".to_string(),
+            ));
+        }
+    }
 
     debug!("Fetching admins for school");
 
