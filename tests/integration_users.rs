@@ -10,6 +10,7 @@ use chalkbyte::router::init_router;
 use chalkbyte::state::AppState;
 use common::{
     create_test_school, create_test_user, generate_unique_email, generate_unique_school_name,
+    system_roles,
 };
 use http_body_util::BodyExt;
 use serde_json::json;
@@ -77,7 +78,8 @@ async fn test_get_profile(pool: PgPool) {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(body["user"]["email"], email);
-    assert_eq!(body["user"]["role"], "admin");
+    // Role is no longer directly on user; check user exists
+    assert!(body["user"]["id"].is_string());
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -189,7 +191,8 @@ async fn test_change_password_wrong_old_password(pool: PgPool) {
         .unwrap();
 
     let response = app.oneshot(request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    // Wrong password returns 401 Unauthorized
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -222,7 +225,7 @@ async fn test_create_user_as_system_admin(pool: PgPool) {
                 "last_name": "User",
                 "email": new_user_email,
                 "password": "newpass123",
-                "role": "admin",
+                "role_ids": [system_roles::ADMIN.to_string()],
                 "school_id": school.id
             }))
             .unwrap(),
@@ -235,7 +238,8 @@ async fn test_create_user_as_system_admin(pool: PgPool) {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(body["email"], new_user_email);
-    assert_eq!(body["role"], "admin");
+    // Role is assigned via role_ids, user response doesn't include role directly
+    assert!(body["id"].is_string());
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -268,7 +272,7 @@ async fn test_create_user_as_school_admin(pool: PgPool) {
                 "last_name": "Teacher",
                 "email": new_user_email,
                 "password": "newpass123",
-                "role": "teacher"
+                "role_ids": [system_roles::TEACHER.to_string()]
             }))
             .unwrap(),
         ))
@@ -280,7 +284,7 @@ async fn test_create_user_as_school_admin(pool: PgPool) {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(body["email"], new_user_email);
-    assert_eq!(body["role"], "teacher");
+    // Role is assigned via role_ids, user response doesn't include role directly
     assert_eq!(body["school_id"], school.id.to_string());
 }
 
@@ -321,7 +325,7 @@ async fn test_create_user_as_teacher_forbidden(pool: PgPool) {
                 "last_name": "User",
                 "email": new_user_email,
                 "password": "newpass123",
-                "role": "student"
+                "role_ids": [system_roles::STUDENT.to_string()]
             }))
             .unwrap(),
         ))

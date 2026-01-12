@@ -274,6 +274,7 @@ mod tests {
             email: "refresh@test.com".to_string(),
             exp: 1234567890,
             iat: 1234567800,
+            jti: "test-jti-123".to_string(),
         };
         let serialized = serde_json::to_string(&claims).unwrap();
         assert!(serialized.contains(r#""sub":"user-123""#));

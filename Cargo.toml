@@ -197,6 +197,7 @@ rayon.workspace = true
 fake.workspace = true
 
 [dev-dependencies]
+chalkbyte = { path = ".", features = ["test-utils"] }
 reqwest = { version = "0.12", features = ["json"] }
 tokio-test = "0.4"
 tower = { version = "0.5", features = ["util"] }

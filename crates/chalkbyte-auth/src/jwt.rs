@@ -269,6 +269,7 @@ pub fn create_refresh_token(
         email: email.to_string(),
         exp,
         iat: now,
+        jti: Uuid::new_v4().to_string(),
     };
 
     encode(

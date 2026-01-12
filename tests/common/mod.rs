@@ -194,3 +194,57 @@ pub fn generate_unique_level_name() -> String {
 pub fn generate_unique_branch_name() -> String {
     format!("Branch {}", Uuid::new_v4())
 }
+
+#[allow(dead_code)]
+pub struct TestRole {
+    pub id: Uuid,
+    pub name: String,
+    pub slug: String,
+    pub school_id: Option<Uuid>,
+    pub is_system_role: bool,
+}
+
+#[allow(dead_code)]
+pub async fn create_test_role(
+    tx: &mut Transaction<'_, Postgres>,
+    name: &str,
+    school_id: Option<Uuid>,
+    is_system_role: bool,
+) -> TestRole {
+    // Truncate slug to fit VARCHAR(50) column
+    let slug: String = name
+        .to_lowercase()
+        .replace(' ', "_")
+        .replace('-', "_")
+        .chars()
+        .take(50)
+        .collect();
+
+    let role = sqlx::query!(
+        r#"
+        INSERT INTO roles (name, slug, school_id, is_system_role)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, name, slug, school_id, is_system_role
+        "#,
+        name,
+        slug,
+        school_id,
+        is_system_role
+    )
+    .fetch_one(&mut **tx)
+    .await
+    .unwrap();
+
+    TestRole {
+        id: role.id,
+        name: role.name,
+        slug: role.slug,
+        school_id: role.school_id,
+        is_system_role: role.is_system_role,
+    }
+}
+
+#[allow(dead_code)]
+pub fn generate_unique_role_name() -> String {
+    format!("Role {}", Uuid::new_v4())
+}

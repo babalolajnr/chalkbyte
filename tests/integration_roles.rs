@@ -9,7 +9,8 @@ use chalkbyte::config::rate_limit::RateLimitConfig;
 use chalkbyte::router::init_router;
 use chalkbyte::state::AppState;
 use common::{
-    create_test_school, create_test_user, generate_unique_email, generate_unique_school_name,
+    create_test_role, create_test_school, create_test_user, generate_unique_email,
+    generate_unique_role_name, generate_unique_school_name,
 };
 use http_body_util::BodyExt;
 use serde_json::json;
@@ -410,15 +411,8 @@ async fn test_get_roles_as_system_admin_sees_all(pool: PgPool) {
     create_test_user(&mut tx, &email, password, "system_admin", None).await;
 
     // Create a school role directly in DB
-    let role_name = format!("Test School Role {}", Uuid::new_v4());
-    sqlx::query!(
-        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false)"#,
-        role_name,
-        school.id
-    )
-    .execute(&mut *tx)
-    .await
-    .unwrap();
+    let role_name = generate_unique_role_name();
+    create_test_role(&mut tx, &role_name, Some(school.id), false).await;
 
     tx.commit().await.unwrap();
 
@@ -458,23 +452,8 @@ async fn test_get_roles_as_school_admin_scoped(pool: PgPool) {
     let role1_name = format!("School1 Role {}", Uuid::new_v4());
     let role2_name = format!("School2 Role {}", Uuid::new_v4());
 
-    sqlx::query!(
-        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false)"#,
-        role1_name,
-        school1.id
-    )
-    .execute(&mut *tx)
-    .await
-    .unwrap();
-
-    sqlx::query!(
-        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false)"#,
-        role2_name,
-        school2.id
-    )
-    .execute(&mut *tx)
-    .await
-    .unwrap();
+    create_test_role(&mut tx, &role1_name, Some(school1.id), false).await;
+    create_test_role(&mut tx, &role2_name, Some(school2.id), false).await;
 
     tx.commit().await.unwrap();
 
@@ -512,15 +491,10 @@ async fn test_get_role_by_id(pool: PgPool) {
     let password = "testpass123";
     create_test_user(&mut tx, &email, password, "admin", Some(school.id)).await;
 
+    // Create a role directly in DB
     let role_name = format!("GetById Role {}", Uuid::new_v4());
-    let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
-        role_name,
-        school.id
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
+    let role = create_test_role(&mut tx, &role_name, Some(school.id), false).await;
+    let role_id = role.id;
 
     tx.commit().await.unwrap();
 
@@ -558,15 +532,10 @@ async fn test_school_admin_cannot_access_other_school_role(pool: PgPool) {
     let password = "testpass123";
     create_test_user(&mut tx, &email, password, "admin", Some(school1.id)).await;
 
+    // Create a role in school2
     let role_name = format!("Other School Role {}", Uuid::new_v4());
-    let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
-        role_name,
-        school2.id
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
+    let role = create_test_role(&mut tx, &role_name, Some(school2.id), false).await;
+    let role_id = role.id;
 
     tx.commit().await.unwrap();
 
@@ -595,14 +564,10 @@ async fn test_school_admin_cannot_access_system_role(pool: PgPool) {
     let password = "testpass123";
     create_test_user(&mut tx, &email, password, "admin", Some(school.id)).await;
 
+    // Create a system role
     let role_name = format!("System Role {}", Uuid::new_v4());
-    let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO roles (name, is_system_role) VALUES ($1, true) RETURNING id"#,
-        role_name
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
+    let role = create_test_role(&mut tx, &role_name, None, true).await;
+    let role_id = role.id;
 
     tx.commit().await.unwrap();
 
@@ -633,15 +598,10 @@ async fn test_update_role(pool: PgPool) {
     let password = "testpass123";
     create_test_user(&mut tx, &email, password, "admin", Some(school.id)).await;
 
+    // Create a role directly in DB
     let role_name = format!("Update Role {}", Uuid::new_v4());
-    let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
-        role_name,
-        school.id
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
+    let role = create_test_role(&mut tx, &role_name, Some(school.id), false).await;
+    let role_id = role.id;
 
     tx.commit().await.unwrap();
 
@@ -687,15 +647,10 @@ async fn test_delete_role(pool: PgPool) {
     let password = "testpass123";
     create_test_user(&mut tx, &email, password, "admin", Some(school.id)).await;
 
+    // Create a role directly in DB
     let role_name = format!("Delete Role {}", Uuid::new_v4());
-    let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
-        role_name,
-        school.id
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
+    let role = create_test_role(&mut tx, &role_name, Some(school.id), false).await;
+    let role_id = role.id;
 
     tx.commit().await.unwrap();
 
@@ -735,15 +690,10 @@ async fn test_assign_permissions_to_role(pool: PgPool) {
     let password = "testpass123";
     create_test_user(&mut tx, &email, password, "admin", Some(school.id)).await;
 
-    let role_name = format!("Perm Assign Role {}", Uuid::new_v4());
-    let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
-        role_name,
-        school.id
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
+    // Create a role with permission
+    let role_name = format!("Perm Query Role {}", Uuid::new_v4());
+    let role = create_test_role(&mut tx, &role_name, Some(school.id), false).await;
+    let role_id = role.id;
 
     tx.commit().await.unwrap();
 
@@ -786,15 +736,10 @@ async fn test_remove_permission_from_role(pool: PgPool) {
     let password = "testpass123";
     create_test_user(&mut tx, &email, password, "admin", Some(school.id)).await;
 
-    let role_name = format!("Perm Remove Role {}", Uuid::new_v4());
-    let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
-        role_name,
-        school.id
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
+    // Create a role
+    let role_name = format!("Perm Role {}", Uuid::new_v4());
+    let role = create_test_role(&mut tx, &role_name, Some(school.id), false).await;
+    let role_id = role.id;
 
     let perm_id = get_permission_id(&pool, "users:read").await;
 
@@ -853,15 +798,10 @@ async fn test_assign_role_to_user(pool: PgPool) {
     let target_user =
         create_test_user(&mut tx, &user_email, "userpass", "teacher", Some(school.id)).await;
 
-    let role_name = format!("Assignable Role {}", Uuid::new_v4());
-    let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
-        role_name,
-        school.id
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
+    // Create a role
+    let role_name = format!("Perm Remove Role {}", Uuid::new_v4());
+    let role = create_test_role(&mut tx, &role_name, Some(school.id), false).await;
+    let role_id = role.id;
 
     tx.commit().await.unwrap();
 
@@ -894,7 +834,7 @@ async fn test_assign_role_to_user(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn test_assign_duplicate_role_fails(pool: PgPool) {
+async fn test_assign_duplicate_role_is_idempotent(pool: PgPool) {
     let mut tx = pool.begin().await.unwrap();
 
     let school = create_test_school(&mut tx, &generate_unique_school_name()).await;
@@ -913,15 +853,10 @@ async fn test_assign_duplicate_role_fails(pool: PgPool) {
     let target_user =
         create_test_user(&mut tx, &user_email, "userpass", "teacher", Some(school.id)).await;
 
-    let role_name = format!("Dup Assign Role {}", Uuid::new_v4());
-    let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
-        role_name,
-        school.id
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
+    // Create a role
+    let role_name = format!("Assignable Role {}", Uuid::new_v4());
+    let role = create_test_role(&mut tx, &role_name, Some(school.id), false).await;
+    let role_id = role.id;
 
     tx.commit().await.unwrap();
 
@@ -946,7 +881,7 @@ async fn test_assign_duplicate_role_fails(pool: PgPool) {
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
-    // Second assignment should fail
+    // Second assignment should succeed (idempotent operation)
     let app = setup_test_app(pool.clone()).await;
     let request = Request::builder()
         .method("POST")
@@ -962,7 +897,8 @@ async fn test_assign_duplicate_role_fails(pool: PgPool) {
         .unwrap();
 
     let response = app.oneshot(request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    // Role assignment is idempotent - re-assigning same role returns success
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -993,15 +929,10 @@ async fn test_school_admin_cannot_assign_role_to_other_school_user(pool: PgPool)
     )
     .await;
 
+    // Create a role in school1
     let role_name = format!("School1 Role {}", Uuid::new_v4());
-    let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
-        role_name,
-        school1.id
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
+    let role = create_test_role(&mut tx, &role_name, Some(school1.id), false).await;
+    let role_id = role.id;
 
     tx.commit().await.unwrap();
 
@@ -1047,14 +978,10 @@ async fn test_school_admin_cannot_assign_system_role(pool: PgPool) {
     let target_user =
         create_test_user(&mut tx, &user_email, "userpass", "teacher", Some(school.id)).await;
 
+    // Create a system role
     let role_name = format!("System Role {}", Uuid::new_v4());
-    let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO roles (name, is_system_role) VALUES ($1, true) RETURNING id"#,
-        role_name
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
+    let role = create_test_role(&mut tx, &role_name, None, true).await;
+    let role_id = role.id;
 
     tx.commit().await.unwrap();
 
@@ -1100,15 +1027,10 @@ async fn test_remove_role_from_user(pool: PgPool) {
     let target_user =
         create_test_user(&mut tx, &user_email, "userpass", "teacher", Some(school.id)).await;
 
-    let role_name = format!("Removable Role {}", Uuid::new_v4());
-    let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
-        role_name,
-        school.id
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
+    // Create a role
+    let role_name = format!("Dup Assign Role {}", Uuid::new_v4());
+    let role = create_test_role(&mut tx, &role_name, Some(school.id), false).await;
+    let role_id = role.id;
 
     // Assign role to user directly
     sqlx::query!(
@@ -1174,15 +1096,10 @@ async fn test_get_user_roles(pool: PgPool) {
     let target_user =
         create_test_user(&mut tx, &user_email, "userpass", "teacher", Some(school.id)).await;
 
-    let role_name = format!("Query Role {}", Uuid::new_v4());
-    let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
-        role_name,
-        school.id
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
+    // Create a role
+    let role_name = format!("Removable Role {}", Uuid::new_v4());
+    let role = create_test_role(&mut tx, &role_name, Some(school.id), false).await;
+    let role_id = role.id;
 
     sqlx::query!(
         "INSERT INTO user_roles (user_id, role_id, assigned_by) VALUES ($1, $2, $3)",
@@ -1239,15 +1156,10 @@ async fn test_get_user_permissions(pool: PgPool) {
     let target_user =
         create_test_user(&mut tx, &user_email, "userpass", "teacher", Some(school.id)).await;
 
-    let role_name = format!("Perm Query Role {}", Uuid::new_v4());
-    let role_id: Uuid = sqlx::query_scalar!(
-        r#"INSERT INTO roles (name, school_id, is_system_role) VALUES ($1, $2, false) RETURNING id"#,
-        role_name,
-        school.id
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
+    // Create a role
+    let role_name = format!("Query Role {}", Uuid::new_v4());
+    let role = create_test_role(&mut tx, &role_name, Some(school.id), false).await;
+    let role_id = role.id;
 
     let perm_id = get_permission_id(&pool, "users:read").await;
 

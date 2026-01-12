@@ -43,8 +43,9 @@ pub fn generate_slug(name: &str) -> String {
         }
     }
 
-    // Trim trailing underscores
-    result.trim_end_matches('_').to_string()
+    // Trim trailing underscores and truncate to 50 chars (VARCHAR(50) column)
+    let result = result.trim_end_matches('_');
+    result.chars().take(50).collect()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]

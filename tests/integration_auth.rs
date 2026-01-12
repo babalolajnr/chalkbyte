@@ -189,5 +189,9 @@ async fn test_login_returns_correct_role(pool: PgPool) {
 
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(body["user"]["role"], "admin");
+
+    // Roles are in a separate array, not in user object
+    let roles = body["roles"].as_array().expect("roles should be an array");
+    assert!(!roles.is_empty(), "user should have at least one role");
+    assert_eq!(roles[0]["name"], "Admin");
 }

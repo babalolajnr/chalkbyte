@@ -461,6 +461,7 @@ dependencies = [
  "axum 0.8.8",
  "axum-extra",
  "bcrypt",
+ "chalkbyte",
  "chalkbyte-auth",
  "chalkbyte-cli",
  "chalkbyte-config",
