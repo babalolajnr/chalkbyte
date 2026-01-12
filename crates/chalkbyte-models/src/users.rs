@@ -4,6 +4,7 @@
 //! including user entities, request/response DTOs, and system role definitions.
 
 use crate::ids::{BranchId, LevelId, RoleId, SchoolId, UserId};
+use crate::value_types::Email;
 use chalkbyte_core::serde::deserialize_optional_uuid;
 use chalkbyte_core::{PaginationMeta, PaginationParams};
 use serde::{Deserialize, Serialize};
@@ -22,7 +23,7 @@ pub struct User {
     pub id: UserId,
     pub first_name: String,
     pub last_name: String,
-    pub email: String,
+    pub email: Email,
     pub school_id: Option<SchoolId>,
     pub level_id: Option<LevelId>,
     pub branch_id: Option<BranchId>,
@@ -43,8 +44,7 @@ pub struct CreateUserDto {
     pub first_name: String,
     #[validate(length(min = 1))]
     pub last_name: String,
-    #[validate(email)]
-    pub email: String,
+    pub email: Email,
     #[validate(length(min = 8))]
     pub password: String,
     /// Role IDs to assign to the user. If empty, no roles are assigned.
@@ -134,7 +134,7 @@ pub struct UserWithRelations {
     pub id: UserId,
     pub first_name: String,
     pub last_name: String,
-    pub email: String,
+    pub email: Email,
     pub date_of_birth: Option<chrono::NaiveDate>,
     pub grade_level: Option<String>,
     pub school: Option<SchoolInfo>,

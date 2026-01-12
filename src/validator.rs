@@ -68,6 +68,14 @@ where
                     );
                 }
 
+                // Handle Email/PhoneNumber value type validation errors
+                if error_msg.contains("Invalid email") || error_msg.contains("Invalid phone") {
+                    return AppError::new(
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        anyhow!("{}", error_msg),
+                    );
+                }
+
                 AppError::new(StatusCode::BAD_REQUEST, anyhow!("Invalid request body"))
             })?;
 

@@ -4,6 +4,7 @@
 //! including student entities, request/response DTOs, and filtering parameters.
 
 use crate::ids::{SchoolId, UserId};
+use crate::value_types::Email;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::{IntoParams, ToSchema};
@@ -60,7 +61,7 @@ pub struct Student {
     pub id: UserId,
     pub first_name: String,
     pub last_name: String,
-    pub email: String,
+    pub email: Email,
     pub school_id: Option<SchoolId>,
     #[sqlx(default)]
     pub date_of_birth: Option<chrono::NaiveDate>,
@@ -81,8 +82,7 @@ pub struct CreateStudentDto {
     pub first_name: String,
     #[validate(length(min = 1, max = 100))]
     pub last_name: String,
-    #[validate(email)]
-    pub email: String,
+    pub email: Email,
     #[validate(length(min = 8))]
     pub password: String,
     pub date_of_birth: Option<chrono::NaiveDate>,
@@ -101,8 +101,7 @@ pub struct UpdateStudentDto {
     pub first_name: Option<String>,
     #[validate(length(min = 1, max = 100))]
     pub last_name: Option<String>,
-    #[validate(email)]
-    pub email: Option<String>,
+    pub email: Option<Email>,
     #[validate(length(min = 8))]
     pub password: Option<String>,
     pub date_of_birth: Option<chrono::NaiveDate>,
@@ -154,7 +153,7 @@ mod tests {
         let valid_dto = CreateStudentDto {
             first_name: "John".to_string(),
             last_name: "Doe".to_string(),
-            email: "john.doe@example.com".to_string(),
+            email: Email::new("john.doe@example.com").unwrap(),
             password: "password123".to_string(),
             date_of_birth: None,
             grade_level: Some("10".to_string()),
@@ -164,25 +163,11 @@ mod tests {
     }
 
     #[test]
-    fn test_create_student_dto_invalid_email() {
-        let invalid_dto = CreateStudentDto {
-            first_name: "John".to_string(),
-            last_name: "Doe".to_string(),
-            email: "invalid-email".to_string(),
-            password: "password123".to_string(),
-            date_of_birth: None,
-            grade_level: None,
-            school_id: None,
-        };
-        assert!(invalid_dto.validate().is_err());
-    }
-
-    #[test]
     fn test_create_student_dto_short_password() {
         let invalid_dto = CreateStudentDto {
             first_name: "John".to_string(),
             last_name: "Doe".to_string(),
-            email: "john.doe@example.com".to_string(),
+            email: Email::new("john.doe@example.com").unwrap(),
             password: "short".to_string(),
             date_of_birth: None,
             grade_level: None,
@@ -196,7 +181,7 @@ mod tests {
         let invalid_dto = CreateStudentDto {
             first_name: "".to_string(),
             last_name: "Doe".to_string(),
-            email: "john.doe@example.com".to_string(),
+            email: Email::new("john.doe@example.com").unwrap(),
             password: "password123".to_string(),
             date_of_birth: None,
             grade_level: None,
@@ -210,7 +195,7 @@ mod tests {
         let invalid_dto = CreateStudentDto {
             first_name: "x".repeat(101),
             last_name: "Doe".to_string(),
-            email: "john.doe@example.com".to_string(),
+            email: Email::new("john.doe@example.com").unwrap(),
             password: "password123".to_string(),
             date_of_birth: None,
             grade_level: None,
@@ -243,19 +228,6 @@ mod tests {
             grade_level: None,
         };
         assert!(empty_dto.validate().is_ok());
-    }
-
-    #[test]
-    fn test_update_student_dto_invalid_email() {
-        let invalid_dto = UpdateStudentDto {
-            first_name: None,
-            last_name: None,
-            email: Some("invalid-email".to_string()),
-            password: None,
-            date_of_birth: None,
-            grade_level: None,
-        };
-        assert!(invalid_dto.validate().is_err());
     }
 
     #[test]

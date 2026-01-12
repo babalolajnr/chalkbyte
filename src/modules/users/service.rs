@@ -36,7 +36,7 @@ impl UserService {
         )
         .bind(&dto.first_name)
         .bind(&dto.last_name)
-        .bind(&dto.email)
+        .bind(dto.email.as_str())
         .bind(&password_hash)
         .bind(dto.school_id)
         .fetch_one(db)

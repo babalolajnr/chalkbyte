@@ -11,6 +11,7 @@ use validator::Validate;
 use crate::ids::UserId;
 use crate::roles::{Permission, RoleWithPermissions};
 use crate::users::{BranchInfo, LevelInfo, SchoolInfo};
+use crate::value_types::Email;
 
 // Re-export JWT claim types from chalkbyte-auth for backward compatibility
 pub use chalkbyte_auth::{Claims, MfaTempClaims, RefreshTokenClaims};
@@ -22,8 +23,7 @@ pub use chalkbyte_auth::{Claims, MfaTempClaims, RefreshTokenClaims};
 /// of a [`LoginResponse`].
 #[derive(Debug, Clone, Deserialize, Validate, ToSchema)]
 pub struct LoginRequest {
-    #[validate(email)]
-    pub email: String,
+    pub email: Email,
     #[validate(length(min = 1))]
     #[schema(example = "password123")]
     pub password: String,
@@ -35,7 +35,7 @@ pub struct LoginUser {
     pub id: UserId,
     pub first_name: String,
     pub last_name: String,
-    pub email: String,
+    pub email: Email,
     pub date_of_birth: Option<chrono::NaiveDate>,
     pub grade_level: Option<String>,
     pub school: Option<SchoolInfo>,
@@ -110,9 +110,7 @@ pub struct RefreshTokenRequest {
 /// if the email exists in the system.
 #[derive(Debug, Clone, Deserialize, Validate, ToSchema)]
 pub struct ForgotPasswordRequest {
-    #[validate(email)]
-    #[schema(example = "user@example.com")]
-    pub email: String,
+    pub email: Email,
 }
 
 /// Reset password request to complete password reset.
@@ -187,7 +185,7 @@ mod tests {
     #[test]
     fn test_login_request_valid_email() {
         let request = LoginRequest {
-            email: "valid@example.com".to_string(),
+            email: Email::new("valid@example.com").unwrap(),
             password: "password123".to_string(),
         };
         assert!(request.validate().is_ok());
@@ -195,17 +193,14 @@ mod tests {
 
     #[test]
     fn test_login_request_invalid_email() {
-        let request = LoginRequest {
-            email: "invalid-email".to_string(),
-            password: "password123".to_string(),
-        };
-        assert!(request.validate().is_err());
+        // Email type validates on construction, so invalid emails cannot be created
+        assert!(Email::new("invalid-email").is_err());
     }
 
     #[test]
     fn test_login_request_empty_password() {
         let request = LoginRequest {
-            email: "test@example.com".to_string(),
+            email: Email::new("test@example.com").unwrap(),
             password: "".to_string(),
         };
         assert!(request.validate().is_err());
@@ -328,7 +323,7 @@ mod tests {
     #[test]
     fn test_login_request_special_characters_email() {
         let request = LoginRequest {
-            email: "test+tag@example.co.uk".to_string(),
+            email: Email::new("test+tag@example.co.uk").unwrap(),
             password: "password123".to_string(),
         };
         assert!(request.validate().is_ok());

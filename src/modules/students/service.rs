@@ -4,6 +4,7 @@ use crate::{
     utils::{errors::AppError, password::hash_password},
 };
 use anyhow::Context;
+use chalkbyte_models::Email;
 use sqlx::PgPool;
 use tracing::instrument;
 use uuid::Uuid;
@@ -29,7 +30,7 @@ impl StudentService {
         )
         .bind(&dto.first_name)
         .bind(&dto.last_name)
-        .bind(&dto.email)
+        .bind(dto.email.as_str())
         .bind(&hashed_password)
         .bind(school_id)
         .bind(dto.date_of_birth)
@@ -181,7 +182,7 @@ impl StudentService {
 
         let first_name = dto.first_name.unwrap_or(existing.first_name);
         let last_name = dto.last_name.unwrap_or(existing.last_name);
-        let email = dto.email.unwrap_or(existing.email);
+        let email: Email = dto.email.unwrap_or(existing.email);
         let date_of_birth = dto.date_of_birth.or(existing.date_of_birth);
         let grade_level = dto.grade_level.or(existing.grade_level);
 
@@ -200,7 +201,7 @@ impl StudentService {
             )
             .bind(&first_name)
             .bind(&last_name)
-            .bind(&email)
+            .bind(email.as_str())
             .bind(&hashed_password)
             .bind(date_of_birth)
             .bind(&grade_level)
@@ -221,7 +222,7 @@ impl StudentService {
             )
             .bind(&first_name)
             .bind(&last_name)
-            .bind(&email)
+            .bind(email.as_str())
             .bind(date_of_birth)
             .bind(&grade_level)
             .bind(id)
@@ -343,7 +344,7 @@ impl StudentService {
 
         let first_name = dto.first_name.unwrap_or(existing.first_name);
         let last_name = dto.last_name.unwrap_or(existing.last_name);
-        let email = dto.email.unwrap_or(existing.email);
+        let email: Email = dto.email.unwrap_or(existing.email);
         let date_of_birth = dto.date_of_birth.or(existing.date_of_birth);
         let grade_level = dto.grade_level.or(existing.grade_level);
 
@@ -362,7 +363,7 @@ impl StudentService {
             )
             .bind(&first_name)
             .bind(&last_name)
-            .bind(&email)
+            .bind(email.as_str())
             .bind(&hashed_password)
             .bind(date_of_birth)
             .bind(&grade_level)
@@ -382,7 +383,7 @@ impl StudentService {
             )
             .bind(&first_name)
             .bind(&last_name)
-            .bind(&email)
+            .bind(email.as_str())
             .bind(date_of_birth)
             .bind(&grade_level)
             .bind(id)

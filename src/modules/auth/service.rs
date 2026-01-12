@@ -3,6 +3,8 @@ use sqlx::{PgPool, Row};
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
+use chalkbyte_models::Email;
+
 use chalkbyte_auth::{
     create_access_token, create_mfa_temp_token, create_refresh_token, verify_mfa_temp_token,
     verify_refresh_token,
@@ -92,7 +94,7 @@ async fn fetch_user_with_relations(db: &PgPool, user_id: Uuid) -> Result<UserFor
             id: UserId::from(id),
             first_name: row.get("first_name"),
             last_name: row.get("last_name"),
-            email,
+            email: Email::new_unchecked(email),
             date_of_birth: row.get("date_of_birth"),
             grade_level: row.get("grade_level"),
             school,
@@ -127,7 +129,7 @@ impl AuthService {
             LEFT JOIN branches b ON u.branch_id = b.id
             WHERE u.email = $1"#,
         )
-        .bind(&dto.email)
+        .bind(dto.email.as_str())
         .fetch_optional(db)
         .await?
         .ok_or_else(|| {
@@ -241,7 +243,7 @@ impl AuthService {
             id: UserId::from(user_id),
             first_name,
             last_name,
-            email,
+            email: Email::new_unchecked(email),
             date_of_birth,
             grade_level,
             school,
@@ -401,7 +403,7 @@ impl AuthService {
         // Check if user exists
         let user_exists =
             sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)")
-                .bind(&dto.email)
+                .bind(dto.email.as_str())
                 .fetch_one(db)
                 .await?;
 
@@ -427,7 +429,7 @@ impl AuthService {
         )
         .bind(&token)
         .bind(expires_at)
-        .bind(&dto.email)
+        .bind(dto.email.as_str())
         .execute(db)
         .await?;
 
@@ -620,6 +622,7 @@ impl AuthService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chalkbyte_models::Email;
     use sqlx::PgPool;
 
     // Helper to create a test user in the database
@@ -668,7 +671,7 @@ mod tests {
         };
 
         let dto = LoginRequest {
-            email: email.clone(),
+            email: Email::new(&email).unwrap(),
             password: "testpassword123".to_string(),
         };
 
@@ -679,7 +682,7 @@ mod tests {
         assert!(login_result.is_ok());
 
         let response = login_result.unwrap();
-        assert_eq!(response.user.email, email);
+        assert_eq!(response.user.email.as_str(), email);
         assert_eq!(response.user.first_name, "Test");
         assert_eq!(response.user.last_name, "User");
         assert!(!response.access_token.is_empty());
@@ -700,7 +703,7 @@ mod tests {
         let user_id = create_test_user(&db, &email).await;
 
         let dto = ForgotPasswordRequest {
-            email: email.clone(),
+            email: Email::new(&email).unwrap(),
         };
 
         let result = AuthService::forgot_password(&db, dto).await;
@@ -722,7 +725,7 @@ mod tests {
 
         // First login to get refresh token
         let login_dto = LoginRequest {
-            email: email.clone(),
+            email: Email::new(&email).unwrap(),
             password: "testpassword123".to_string(),
         };
 
@@ -740,7 +743,7 @@ mod tests {
         assert!(result.is_ok(), "Refresh failed: {:?}", result.err());
 
         let response = result.unwrap();
-        assert_eq!(response.user.email, email);
+        assert_eq!(response.user.email.as_str(), email);
         assert!(!response.access_token.is_empty());
 
         cleanup_test_user(&db, user_id).await;

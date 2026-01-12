@@ -48,11 +48,15 @@ pub mod mfa;
 pub mod roles;
 pub mod students;
 pub mod users;
+pub mod value_types;
 
 // Re-export ID types at crate root for convenience
 pub use ids::{
     BranchId, LevelId, PermissionId, RoleId, RolePermissionId, SchoolId, UserId, UserRoleId,
 };
+
+// Re-export value types at crate root for convenience
+pub use value_types::{Email, PhoneNumber, ValueTypeError};
 
 // Re-export commonly used types at crate root for convenience
 pub use auth::{
