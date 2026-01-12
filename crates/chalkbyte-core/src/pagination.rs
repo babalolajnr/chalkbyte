@@ -84,7 +84,7 @@ where
 ///   }
 /// }
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct PaginationMeta {
     /// Total number of items across all pages
     pub total: i64,
@@ -128,7 +128,7 @@ pub struct PaginationMeta {
 /// assert_eq!(params.limit(), 20);
 /// assert_eq!(params.offset(), 40); // (page - 1) * limit
 /// ```
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Hash, Deserialize, ToSchema)]
 pub struct PaginationParams {
     /// Maximum number of items to return (1-100, default: 10)
     #[serde(default, deserialize_with = "deserialize_optional_i64")]

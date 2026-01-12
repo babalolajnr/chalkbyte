@@ -164,7 +164,7 @@ pub struct PaginatedSchoolsResponse {
 /// Query parameters for filtering users.
 ///
 /// All filters are optional and can be combined.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Hash, Deserialize, ToSchema)]
 pub struct UserFilterParams {
     pub first_name: Option<String>,
     pub last_name: Option<String>,
@@ -179,7 +179,7 @@ pub struct UserFilterParams {
 }
 
 /// Paginated response containing users with full relations.
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PaginatedUsersResponse {
     pub data: Vec<UserWithRelations>,
     pub meta: PaginationMeta,

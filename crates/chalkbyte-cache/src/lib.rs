@@ -35,7 +35,7 @@ pub mod middleware;
 pub mod redis;
 
 pub use config::CacheConfig;
-pub use keys::invalidate;
+pub use keys::{hash_filters, invalidate};
 pub use middleware::{
     CacheControlConfig, CacheableRoute, cache_control, cache_control_duration, etag_middleware,
 };

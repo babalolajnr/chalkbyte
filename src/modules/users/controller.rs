@@ -140,7 +140,13 @@ pub async fn get_users(
         Some(get_admin_school_id(&state.db, &auth_user).await?)
     };
 
-    let response = UserService::get_users_paginated(&state.db, filters, school_id_filter).await?;
+    let response = UserService::get_users_paginated(
+        &state.db,
+        filters,
+        school_id_filter,
+        state.cache.as_ref(),
+    )
+    .await?;
 
     debug!(
         total = %response.meta.total,
@@ -175,7 +181,7 @@ pub async fn get_profile(
         uuid::Uuid::parse_str(&auth_user.0.sub)
             .map_err(|_| AppError::bad_request(anyhow::anyhow!("Invalid user ID")))?,
     );
-    let user = UserService::get_user_with_school(&state.db, user_id).await?;
+    let user = UserService::get_user_with_school(&state.db, user_id, state.cache.as_ref()).await?;
 
     Ok(Json(user))
 }
@@ -217,7 +223,7 @@ pub async fn update_profile(
 
     UserService::update_profile(&state.db, user_id, dto, state.cache.as_ref()).await?;
 
-    let user = UserService::get_user_with_school(&state.db, user_id).await?;
+    let user = UserService::get_user_with_school(&state.db, user_id, state.cache.as_ref()).await?;
 
     info!(user.id = %user_id, "Profile updated successfully");
 

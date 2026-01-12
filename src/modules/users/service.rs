@@ -12,7 +12,7 @@ use crate::{
     },
 };
 use anyhow::Context;
-use chalkbyte_cache::{RedisCache, invalidate};
+use chalkbyte_cache::{RedisCache, hash_filters, invalidate, keys};
 use chalkbyte_models::ids::{BranchId, LevelId, RoleId, SchoolId, UserId};
 use sqlx::{PgPool, Row};
 use std::collections::HashMap;
@@ -93,12 +93,27 @@ impl UserService {
         Ok(user)
     }
 
-    #[instrument(skip(db), fields(school_id = ?school_id_filter))]
+    #[instrument(skip(db, cache), fields(school_id = ?school_id_filter))]
     pub async fn get_users_paginated(
         db: &PgPool,
         filters: UserFilterParams,
         school_id_filter: Option<SchoolId>,
+        cache: Option<&RedisCache>,
     ) -> Result<PaginatedUsersResponse, AppError> {
+        // Try cache first
+        let cache_key = if let Some(sid) = school_id_filter {
+            keys::users::by_school(sid.into(), &hash_filters(&(&filters, sid)))
+        } else {
+            keys::users::list(&hash_filters(&filters))
+        };
+
+        if let Some(cache) = cache {
+            if let Some(cached) = cache.get::<PaginatedUsersResponse>(&cache_key).await {
+                debug!("Cache hit for users list");
+                return Ok(cached);
+            }
+        }
+
         let limit = filters.pagination.limit();
         let offset = filters.pagination.offset();
         let page = filters.pagination.page();
@@ -397,12 +412,34 @@ impl UserService {
             "Users fetched successfully"
         );
 
-        Ok(PaginatedUsersResponse { data: users, meta })
+        let response = PaginatedUsersResponse { data: users, meta };
+
+        // Cache the result
+        if let Some(cache) = cache {
+            if let Err(e) = cache.set(&cache_key, &response).await {
+                warn!(error = %e, "Failed to cache users list");
+            }
+        }
+
+        Ok(response)
     }
 
-    #[instrument(skip(db), fields(user.id = %id))]
-    pub async fn get_user(db: &PgPool, id: UserId) -> Result<User, AppError> {
+    #[instrument(skip(db, cache), fields(user.id = %id))]
+    pub async fn get_user(
+        db: &PgPool,
+        id: UserId,
+        cache: Option<&RedisCache>,
+    ) -> Result<User, AppError> {
         debug!("Fetching user by ID");
+
+        // Try cache first
+        let cache_key = keys::users::by_id(id.into());
+        if let Some(cache) = cache {
+            if let Some(cached) = cache.get::<User>(&cache_key).await {
+                debug!("Cache hit for user");
+                return Ok(cached);
+            }
+        }
 
         let user = sqlx::query_as::<_, User>(
             r#"
@@ -424,14 +461,26 @@ impl UserService {
         })?;
 
         debug!(user.email = %user.email, "User fetched successfully");
+
+        // Cache the result
+        if let Some(cache) = cache {
+            if let Err(e) = cache.set(&cache_key, &user).await {
+                warn!(error = %e, "Failed to cache user");
+            }
+        }
+
         Ok(user)
     }
 
-    #[instrument(skip(db), fields(user.id = %id))]
-    pub async fn get_user_with_school(db: &PgPool, id: UserId) -> Result<UserWithSchool, AppError> {
+    #[instrument(skip(db, cache), fields(user.id = %id))]
+    pub async fn get_user_with_school(
+        db: &PgPool,
+        id: UserId,
+        cache: Option<&RedisCache>,
+    ) -> Result<UserWithSchool, AppError> {
         debug!("Fetching user with school information");
 
-        let user = Self::get_user(db, id).await?;
+        let user = Self::get_user(db, id, cache).await?;
 
         let school = if let Some(school_id) = user.school_id {
             sqlx::query_as::<_, School>(
@@ -482,7 +531,7 @@ impl UserService {
         }
 
         if updates.is_empty() {
-            return Self::get_user(db, user_id).await;
+            return Self::get_user(db, user_id, cache).await;
         }
 
         updates.push("updated_at = NOW()".to_string());
