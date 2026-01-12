@@ -2,7 +2,7 @@ use crate::docs::ApiDoc;
 use crate::logging::is_observability_enabled;
 use crate::logging::logging_middleware;
 use crate::metrics::metrics_middleware;
-use crate::middleware::role::{require_admin, require_system_admin};
+use crate::middleware::role::require_admin;
 use crate::modules::auth::router::init_auth_router;
 use crate::modules::branches::router::{init_branches_router, init_level_branches_router};
 use crate::modules::levels::router::init_levels_router;
@@ -71,10 +71,8 @@ pub fn init_router(state: AppState) -> Router {
                 )
                 .nest(
                     "/schools",
-                    init_schools_router().route_layer(middleware::from_fn_with_state(
-                        state.clone(),
-                        require_system_admin,
-                    )),
+                    init_schools_router()
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
                 )
                 .nest(
                     "/students",
@@ -173,10 +171,8 @@ pub fn init_router(state: AppState) -> Router {
                 .nest("/mfa", init_mfa_router())
                 .nest(
                     "/schools",
-                    init_schools_router().route_layer(middleware::from_fn_with_state(
-                        state.clone(),
-                        require_system_admin,
-                    )),
+                    init_schools_router()
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
                 )
                 .nest(
                     "/students",
