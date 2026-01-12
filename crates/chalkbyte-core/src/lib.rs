@@ -30,6 +30,7 @@
 pub mod errors;
 pub mod pagination;
 pub mod password;
+pub mod permissions;
 pub mod serde;
 
 // Re-export commonly used types at crate root
