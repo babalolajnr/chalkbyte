@@ -3,10 +3,10 @@
 //! This module contains all data structures related to student management,
 //! including student entities, request/response DTOs, and filtering parameters.
 
+use crate::ids::{SchoolId, UserId};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::{IntoParams, ToSchema};
-use uuid::Uuid;
 use validator::Validate;
 
 /// Pagination metadata for student responses.
@@ -31,7 +31,7 @@ pub struct QueryParams {
     pub page: Option<i64>,
     pub limit: Option<i64>,
     /// Required for system admins to specify which school's students to fetch
-    pub school_id: Option<Uuid>,
+    pub school_id: Option<SchoolId>,
 }
 
 impl QueryParams {
@@ -57,11 +57,11 @@ impl QueryParams {
 /// Students are a specialized type of user associated with a school.
 #[derive(Serialize, FromRow, Debug, ToSchema)]
 pub struct Student {
-    pub id: Uuid,
+    pub id: UserId,
     pub first_name: String,
     pub last_name: String,
     pub email: String,
-    pub school_id: Option<Uuid>,
+    pub school_id: Option<SchoolId>,
     #[sqlx(default)]
     pub date_of_birth: Option<chrono::NaiveDate>,
     #[sqlx(default)]
@@ -89,7 +89,7 @@ pub struct CreateStudentDto {
     #[validate(length(max = 10))]
     pub grade_level: Option<String>,
     /// Required for system admins to specify which school to create the student in
-    pub school_id: Option<Uuid>,
+    pub school_id: Option<SchoolId>,
 }
 
 /// DTO for updating an existing student.

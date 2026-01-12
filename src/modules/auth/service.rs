@@ -18,6 +18,7 @@ use crate::modules::auth::model::{
 };
 use crate::modules::roles::service as roles_service;
 use crate::modules::users::model::{BranchInfo, LevelInfo, SchoolInfo};
+use chalkbyte_models::ids::{BranchId, LevelId, SchoolId, UserId};
 
 pub struct AuthService;
 
@@ -58,7 +59,7 @@ async fn fetch_user_with_relations(db: &PgPool, user_id: Uuid) -> Result<UserFor
         .ok()
         .flatten()
         .map(|sid| SchoolInfo {
-            id: sid,
+            id: SchoolId::from(sid),
             name: row.get("school_name"),
             address: row.get("school_address"),
         });
@@ -68,7 +69,7 @@ async fn fetch_user_with_relations(db: &PgPool, user_id: Uuid) -> Result<UserFor
         .ok()
         .flatten()
         .map(|lid| LevelInfo {
-            id: lid,
+            id: LevelId::from(lid),
             name: row.get("level_name"),
             description: row.get("level_description"),
         });
@@ -78,7 +79,7 @@ async fn fetch_user_with_relations(db: &PgPool, user_id: Uuid) -> Result<UserFor
         .ok()
         .flatten()
         .map(|bid| BranchInfo {
-            id: bid,
+            id: BranchId::from(bid),
             name: row.get("branch_name"),
             description: row.get("branch_description"),
         });
@@ -88,7 +89,7 @@ async fn fetch_user_with_relations(db: &PgPool, user_id: Uuid) -> Result<UserFor
         email: email.clone(),
         school_id,
         login_user: LoginUser {
-            id,
+            id: UserId::from(id),
             first_name: row.get("first_name"),
             last_name: row.get("last_name"),
             email,
@@ -151,7 +152,7 @@ impl AuthService {
             .ok()
             .flatten()
             .map(|id| SchoolInfo {
-                id,
+                id: SchoolId::from(id),
                 name: row.get("school_name"),
                 address: row.get("school_address"),
             });
@@ -161,7 +162,7 @@ impl AuthService {
             .ok()
             .flatten()
             .map(|id| LevelInfo {
-                id,
+                id: LevelId::from(id),
                 name: row.get("level_name"),
                 description: row.get("level_description"),
             });
@@ -171,7 +172,7 @@ impl AuthService {
             .ok()
             .flatten()
             .map(|id| BranchInfo {
-                id,
+                id: BranchId::from(id),
                 name: row.get("branch_name"),
                 description: row.get("branch_description"),
             });
@@ -199,11 +200,11 @@ impl AuthService {
 
         // No MFA, proceed with normal login
         // Fetch roles and permissions first (needed for JWT)
-        let roles = roles_service::get_user_roles_internal(db, user_id).await?;
-        let permissions = roles_service::get_user_permissions(db, user_id).await?;
+        let roles = roles_service::get_user_roles_internal(db, UserId::from(user_id)).await?;
+        let permissions = roles_service::get_user_permissions(db, UserId::from(user_id)).await?;
 
-        // Extract role IDs and permission names for JWT
-        let role_ids = roles.iter().map(|r| r.role.id).collect();
+        // Extract role IDs and permission names for JWT (convert RoleId to Uuid for Claims)
+        let role_ids = roles.iter().map(|r| r.role.id.into_inner()).collect();
         let permission_names = permissions.iter().map(|p| p.name.clone()).collect();
 
         let access_token = create_access_token(
@@ -237,7 +238,7 @@ impl AuthService {
             .await?;
 
         let user = LoginUser {
-            id: user_id,
+            id: UserId::from(user_id),
             first_name,
             last_name,
             email,
@@ -286,11 +287,12 @@ impl AuthService {
         let user_data = fetch_user_with_relations(db, user_id).await?;
 
         // Fetch roles and permissions for JWT
-        let roles = roles_service::get_user_roles_internal(db, user_data.id).await?;
-        let permissions = roles_service::get_user_permissions(db, user_data.id).await?;
+        let roles = roles_service::get_user_roles_internal(db, UserId::from(user_data.id)).await?;
+        let permissions =
+            roles_service::get_user_permissions(db, UserId::from(user_data.id)).await?;
 
         // Extract role IDs and permission names for JWT
-        let role_ids: Vec<Uuid> = roles.iter().map(|r| r.role.id).collect();
+        let role_ids: Vec<Uuid> = roles.iter().map(|r| r.role.id.into_inner()).collect();
         let permission_names: Vec<String> = permissions.iter().map(|p| p.name.clone()).collect();
 
         // Generate final access token with roles and permissions
@@ -352,11 +354,12 @@ impl AuthService {
         let user_data = fetch_user_with_relations(db, user_id).await?;
 
         // Fetch roles and permissions for JWT
-        let roles = roles_service::get_user_roles_internal(db, user_data.id).await?;
-        let permissions = roles_service::get_user_permissions(db, user_data.id).await?;
+        let roles = roles_service::get_user_roles_internal(db, UserId::from(user_data.id)).await?;
+        let permissions =
+            roles_service::get_user_permissions(db, UserId::from(user_data.id)).await?;
 
         // Extract role IDs and permission names for JWT
-        let role_ids: Vec<Uuid> = roles.iter().map(|r| r.role.id).collect();
+        let role_ids: Vec<Uuid> = roles.iter().map(|r| r.role.id.into_inner()).collect();
         let permission_names: Vec<String> = permissions.iter().map(|p| p.name.clone()).collect();
 
         // Generate final access token with roles and permissions
@@ -550,11 +553,12 @@ impl AuthService {
         let user_data = fetch_user_with_relations(db, user_id).await?;
 
         // Fetch roles and permissions for new access token
-        let roles = roles_service::get_user_roles_internal(db, user_data.id).await?;
-        let permissions = roles_service::get_user_permissions(db, user_data.id).await?;
+        let roles = roles_service::get_user_roles_internal(db, UserId::from(user_data.id)).await?;
+        let permissions =
+            roles_service::get_user_permissions(db, UserId::from(user_data.id)).await?;
 
         // Extract role IDs and permission names for JWT
-        let role_ids: Vec<Uuid> = roles.iter().map(|r| r.role.id).collect();
+        let role_ids: Vec<Uuid> = roles.iter().map(|r| r.role.id.into_inner()).collect();
         let permission_names: Vec<String> = permissions.iter().map(|p| p.name.clone()).collect();
 
         // Generate new access token with roles and permissions

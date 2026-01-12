@@ -5,6 +5,7 @@ use axum::{
 use uuid::Uuid;
 
 use chalkbyte_core::AppError;
+use chalkbyte_models::ids::{PermissionId, RoleId, SchoolId, UserId};
 
 use crate::middleware::auth::{
     RequireRolesAssign, RequireRolesCreate, RequireRolesDelete, RequireRolesRead,
@@ -71,7 +72,8 @@ pub async fn get_permission_by_id(
     RequireRolesRead(_auth_user): RequireRolesRead,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Permission>, AppError> {
-    let permission = service::get_permission_by_id(&state.db, id).await?;
+    let permission_id = PermissionId::from(id);
+    let permission = service::get_permission_by_id(&state.db, permission_id).await?;
     Ok(Json(permission))
 }
 
@@ -165,6 +167,7 @@ pub async fn get_role_by_id(
     RequireRolesRead(auth_user): RequireRolesRead,
     Path(id): Path<Uuid>,
 ) -> Result<Json<RoleWithPermissions>, AppError> {
+    let role_id = RoleId::from(id);
     let is_sys_admin = is_system_admin_jwt(&auth_user);
 
     let school_id = if is_sys_admin {
@@ -173,7 +176,7 @@ pub async fn get_role_by_id(
         Some(get_admin_school_id(&state.db, &auth_user).await?)
     };
 
-    let role = service::get_role_by_id(&state.db, id, school_id, is_sys_admin).await?;
+    let role = service::get_role_by_id(&state.db, role_id, school_id, is_sys_admin).await?;
 
     Ok(Json(role))
 }
@@ -201,6 +204,7 @@ pub async fn update_role(
     Path(id): Path<Uuid>,
     ValidatedJson(dto): ValidatedJson<UpdateRoleDto>,
 ) -> Result<Json<RoleWithPermissions>, AppError> {
+    let role_id = RoleId::from(id);
     let is_sys_admin = is_system_admin_jwt(&auth_user);
 
     let school_id = if is_sys_admin {
@@ -210,14 +214,15 @@ pub async fn update_role(
     };
 
     // Cannot update system roles unless you're a system admin
-    let role = service::get_role_by_id(&state.db, id, school_id, is_sys_admin).await?;
+    let role = service::get_role_by_id(&state.db, role_id, school_id, is_sys_admin).await?;
     if role.role.is_system_role && !is_sys_admin {
         return Err(AppError::forbidden(
             "Only system admins can update system roles".to_string(),
         ));
     }
 
-    let updated_role = service::update_role(&state.db, id, dto, school_id, is_sys_admin).await?;
+    let updated_role =
+        service::update_role(&state.db, role_id, dto, school_id, is_sys_admin).await?;
 
     Ok(Json(updated_role))
 }
@@ -242,10 +247,11 @@ pub async fn delete_role(
     RequireRolesDelete(auth_user): RequireRolesDelete,
     Path(id): Path<Uuid>,
 ) -> Result<(), AppError> {
+    let role_id = RoleId::from(id);
     let is_sys_admin = is_system_admin_jwt(&auth_user);
 
     // Cannot delete system roles
-    if system_roles::is_system_role(&id) {
+    if system_roles::is_system_role(&role_id) {
         return Err(AppError::forbidden(
             "Cannot delete built-in system roles".to_string(),
         ));
@@ -257,7 +263,7 @@ pub async fn delete_role(
         Some(get_admin_school_id(&state.db, &auth_user).await?)
     };
 
-    service::delete_role(&state.db, id, school_id, is_sys_admin).await?;
+    service::delete_role(&state.db, role_id, school_id, is_sys_admin).await?;
 
     Ok(())
 }
@@ -285,6 +291,7 @@ pub async fn assign_permissions(
     Path(id): Path<Uuid>,
     Json(dto): Json<AssignPermissionsDto>,
 ) -> Result<Json<RoleWithPermissions>, AppError> {
+    let role_id = RoleId::from(id);
     let is_sys_admin = is_system_admin_jwt(&auth_user);
 
     let school_id = if is_sys_admin {
@@ -294,7 +301,7 @@ pub async fn assign_permissions(
     };
 
     // Check if user can modify this role
-    let role = service::get_role_by_id(&state.db, id, school_id, is_sys_admin).await?;
+    let role = service::get_role_by_id(&state.db, role_id, school_id, is_sys_admin).await?;
     if role.role.is_system_role && !is_sys_admin {
         return Err(AppError::forbidden(
             "Only system admins can modify system role permissions".to_string(),
@@ -303,7 +310,7 @@ pub async fn assign_permissions(
 
     let updated_role = service::assign_permissions_to_role(
         &state.db,
-        id,
+        role_id,
         dto.permission_ids,
         school_id,
         is_sys_admin,
@@ -334,6 +341,8 @@ pub async fn remove_permission(
     RequireRolesUpdate(auth_user): RequireRolesUpdate,
     Path((role_id, permission_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<RoleWithPermissions>, AppError> {
+    let role_id = RoleId::from(role_id);
+    let permission_id = PermissionId::from(permission_id);
     let is_sys_admin = is_system_admin_jwt(&auth_user);
 
     let school_id = if is_sys_admin {
@@ -387,6 +396,7 @@ pub async fn assign_role_to_user(
     Path(target_user_id): Path<Uuid>,
     Json(dto): Json<AssignRoleToUserDto>,
 ) -> Result<Json<RoleAssignmentResponse>, AppError> {
+    let target_user_id = UserId::from(target_user_id);
     let requester_id = auth_user.user_id()?;
     let is_sys_admin = is_system_admin_jwt(&auth_user);
 
@@ -405,11 +415,15 @@ pub async fn assign_role_to_user(
 
     // Verify target user is in the same school (unless system admin)
     if !is_sys_admin {
-        let target_user = sqlx::query!("SELECT school_id FROM users WHERE id = $1", target_user_id)
-            .fetch_one(&state.db)
-            .await?;
+        let target_user = sqlx::query!(
+            "SELECT school_id FROM users WHERE id = $1",
+            target_user_id.into_inner()
+        )
+        .fetch_one(&state.db)
+        .await?;
 
-        if target_user.school_id != school_id {
+        let target_school_id = target_user.school_id.map(SchoolId::from);
+        if target_school_id != school_id {
             return Err(AppError::forbidden(
                 "You can only assign roles to users in your school".to_string(),
             ));
@@ -450,6 +464,8 @@ pub async fn remove_role_from_user(
     RequireRolesAssign(auth_user): RequireRolesAssign,
     Path((target_user_id, role_id)): Path<(Uuid, Uuid)>,
 ) -> Result<(), AppError> {
+    let target_user_id = UserId::from(target_user_id);
+    let role_id = RoleId::from(role_id);
     let is_sys_admin = is_system_admin_jwt(&auth_user);
 
     let school_id = if is_sys_admin {
@@ -491,6 +507,7 @@ pub async fn get_user_roles(
     RequireRolesRead(auth_user): RequireRolesRead,
     Path(target_user_id): Path<Uuid>,
 ) -> Result<Json<Vec<RoleWithPermissions>>, AppError> {
+    let target_user_id = UserId::from(target_user_id);
     let requester_id = auth_user.user_id()?;
     let is_sys_admin = is_system_admin_jwt(&auth_user);
 
@@ -498,11 +515,15 @@ pub async fn get_user_roles(
     if requester_id != target_user_id && !is_sys_admin {
         let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
-        let target_user = sqlx::query!("SELECT school_id FROM users WHERE id = $1", target_user_id)
-            .fetch_one(&state.db)
-            .await?;
+        let target_user = sqlx::query!(
+            "SELECT school_id FROM users WHERE id = $1",
+            target_user_id.into_inner()
+        )
+        .fetch_one(&state.db)
+        .await?;
 
-        if target_user.school_id != Some(school_id) {
+        let target_school_id = target_user.school_id.map(SchoolId::from);
+        if target_school_id != Some(school_id) {
             return Err(AppError::forbidden(
                 "You can only view roles for users in your school".to_string(),
             ));
@@ -534,6 +555,7 @@ pub async fn get_user_permissions(
     RequireRolesRead(auth_user): RequireRolesRead,
     Path(target_user_id): Path<Uuid>,
 ) -> Result<Json<Vec<Permission>>, AppError> {
+    let target_user_id = UserId::from(target_user_id);
     let requester_id = auth_user.user_id()?;
     let is_sys_admin = is_system_admin_jwt(&auth_user);
 
@@ -541,11 +563,15 @@ pub async fn get_user_permissions(
     if requester_id != target_user_id && !is_sys_admin {
         let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
-        let target_user = sqlx::query!("SELECT school_id FROM users WHERE id = $1", target_user_id)
-            .fetch_one(&state.db)
-            .await?;
+        let target_user = sqlx::query!(
+            "SELECT school_id FROM users WHERE id = $1",
+            target_user_id.into_inner()
+        )
+        .fetch_one(&state.db)
+        .await?;
 
-        if target_user.school_id != Some(school_id) {
+        let target_school_id = target_user.school_id.map(SchoolId::from);
+        if target_school_id != Some(school_id) {
             return Err(AppError::forbidden(
                 "You can only view permissions for users in your school".to_string(),
             ));

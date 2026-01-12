@@ -4,18 +4,18 @@
 //! (staff and students) into the database.
 
 use chalkbyte_models::users::system_roles;
+use chalkbyte_models::{BranchId, LevelId, RoleId, SchoolId, UserId};
 use fake::Fake;
 use fake::faker::name::en::*;
 use rayon::prelude::*;
 use sqlx::{PgPool, Postgres, Transaction};
 use std::time::Instant;
-use uuid::Uuid;
 
 use super::models::UserSeed;
 
 /// Generates admin and teacher users for schools
 pub fn generate_staff_users(
-    school_ids: &[Uuid],
+    school_ids: &[SchoolId],
     admins_per_school: usize,
     teachers_per_school: usize,
     password_hash: &str,
@@ -61,7 +61,7 @@ pub fn generate_staff_users(
 
 /// Generates student users assigned to branches and levels
 pub fn generate_students(
-    branches_with_levels: &[(Uuid, Uuid, Uuid)], // (branch_id, level_id, school_id)
+    branches_with_levels: &[(BranchId, LevelId, SchoolId)], // (branch_id, level_id, school_id)
     students_per_branch: usize,
     password_hash: &str,
 ) -> Vec<UserSeed> {
@@ -89,10 +89,10 @@ pub fn generate_students(
 
 #[allow(clippy::too_many_arguments)]
 fn generate_user(
-    role_id: Uuid,
-    school_id: Option<Uuid>,
-    level_id: Option<Uuid>,
-    branch_id: Option<Uuid>,
+    role_id: RoleId,
+    school_id: Option<SchoolId>,
+    level_id: Option<LevelId>,
+    branch_id: Option<BranchId>,
     group_idx: usize,
     user_idx: usize,
     role_prefix: &str,
@@ -124,11 +124,11 @@ fn generate_user(
 /// Seeds staff users (admins and teachers) into the database
 pub async fn seed_staff_users(
     db: &PgPool,
-    school_ids: &[Uuid],
+    school_ids: &[SchoolId],
     admins_per_school: usize,
     teachers_per_school: usize,
     password_hash: &str,
-) -> Result<Vec<(Uuid, Uuid)>, Box<dyn std::error::Error>> {
+) -> Result<Vec<(UserId, RoleId)>, Box<dyn std::error::Error>> {
     let start_time = Instant::now();
     let total_staff = school_ids.len() * (admins_per_school + teachers_per_school);
     println!(
@@ -156,10 +156,10 @@ pub async fn seed_staff_users(
 /// Seeds student users into the database
 pub async fn seed_students(
     db: &PgPool,
-    branches_with_levels: &[(Uuid, Uuid, Uuid)], // (branch_id, level_id, school_id)
+    branches_with_levels: &[(BranchId, LevelId, SchoolId)], // (branch_id, level_id, school_id)
     students_per_branch: usize,
     password_hash: &str,
-) -> Result<Vec<(Uuid, Uuid)>, Box<dyn std::error::Error>> {
+) -> Result<Vec<(UserId, RoleId)>, Box<dyn std::error::Error>> {
     let start_time = Instant::now();
     let total_students = branches_with_levels.len() * students_per_branch;
     println!(
@@ -183,7 +183,7 @@ pub async fn seed_students(
 pub async fn insert_users_batch(
     db: &PgPool,
     users: &[UserSeed],
-) -> Result<Vec<(Uuid, Uuid)>, Box<dyn std::error::Error>> {
+) -> Result<Vec<(UserId, RoleId)>, Box<dyn std::error::Error>> {
     let mut tx = db.begin().await?;
 
     // 7 params per user
@@ -205,7 +205,7 @@ pub async fn insert_users_batch(
 async fn insert_users_chunk(
     tx: &mut Transaction<'_, Postgres>,
     users: &[UserSeed],
-) -> Result<Vec<Uuid>, Box<dyn std::error::Error>> {
+) -> Result<Vec<UserId>, Box<dyn std::error::Error>> {
     if users.is_empty() {
         return Ok(Vec::new());
     }
@@ -245,14 +245,14 @@ async fn insert_users_chunk(
             .bind(user.branch_id);
     }
 
-    let ids = q.fetch_all(&mut **tx).await?;
+    let ids: Vec<UserId> = q.fetch_all(&mut **tx).await?;
     Ok(ids)
 }
 
 /// Assigns roles to users in batches
 pub async fn assign_roles_batch(
     db: &PgPool,
-    user_roles: &[(Uuid, Uuid)],
+    user_roles: &[(UserId, RoleId)],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let start_time = Instant::now();
     println!("🔐 Assigning roles to {} users...", user_roles.len());
@@ -274,7 +274,7 @@ pub async fn assign_roles_batch(
 
 async fn assign_roles_chunk(
     tx: &mut Transaction<'_, Postgres>,
-    user_roles: &[(Uuid, Uuid)],
+    user_roles: &[(UserId, RoleId)],
 ) -> Result<(), Box<dyn std::error::Error>> {
     if user_roles.is_empty() {
         return Ok(());
@@ -314,7 +314,7 @@ pub async fn clear_users(db: &PgPool) -> Result<u64, Box<dyn std::error::Error>>
             WHERE ur.user_id = u.id
             AND ur.role_id = $1
         )"#,
-        system_roles::SYSTEM_ADMIN
+        system_roles::SYSTEM_ADMIN as RoleId
     )
     .execute(db)
     .await?

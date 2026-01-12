@@ -1,6 +1,6 @@
 use chalkbyte_core::AppError;
 use chalkbyte_db::PgPool;
-use uuid::Uuid;
+use chalkbyte_models::ids::{SchoolId, UserId};
 
 use crate::middleware::auth::AuthUser;
 use crate::middleware::role::is_system_admin_jwt;
@@ -11,7 +11,7 @@ use crate::middleware::role::is_system_admin_jwt;
 /// 1. Check JWT claims for school_id (fast, no DB query)
 /// 2. For system admins without school_id, return error (they must specify school)
 /// 3. Fallback to database lookup (for edge cases)
-pub async fn get_admin_school_id(db: &PgPool, auth_user: &AuthUser) -> Result<Uuid, AppError> {
+pub async fn get_admin_school_id(db: &PgPool, auth_user: &AuthUser) -> Result<SchoolId, AppError> {
     // First, try to get school_id from JWT claims (fast path)
     if let Some(school_id) = auth_user.school_id() {
         return Ok(school_id);
@@ -29,7 +29,7 @@ pub async fn get_admin_school_id(db: &PgPool, auth_user: &AuthUser) -> Result<Uu
     let user_id = auth_user.user_id()?;
 
     let school_id =
-        sqlx::query_scalar::<_, Option<Uuid>>("SELECT school_id FROM users WHERE id = $1")
+        sqlx::query_scalar::<_, Option<SchoolId>>("SELECT school_id FROM users WHERE id = $1")
             .bind(user_id)
             .fetch_one(db)
             .await?
@@ -45,8 +45,8 @@ pub async fn get_admin_school_id(db: &PgPool, auth_user: &AuthUser) -> Result<Uu
 pub async fn get_school_id_for_scoped_operation(
     db: &PgPool,
     auth_user: &AuthUser,
-    specified_school_id: Option<Uuid>,
-) -> Result<Uuid, AppError> {
+    specified_school_id: Option<SchoolId>,
+) -> Result<SchoolId, AppError> {
     // System admin must specify school_id for scoped operations
     if is_system_admin_jwt(auth_user) {
         return specified_school_id.ok_or_else(|| {
@@ -67,7 +67,7 @@ pub async fn get_school_id_for_scoped_operation(
 pub async fn get_optional_school_id_for_resource_operation(
     db: &PgPool,
     auth_user: &AuthUser,
-) -> Result<Option<Uuid>, AppError> {
+) -> Result<Option<SchoolId>, AppError> {
     // System admins can access any resource - no school scoping needed
     if is_system_admin_jwt(auth_user) {
         return Ok(None);
@@ -87,8 +87,8 @@ pub async fn get_optional_school_id_for_resource_operation(
 pub async fn get_school_id_with_override(
     db: &PgPool,
     auth_user: &AuthUser,
-    specified_school_id: Option<Uuid>,
-) -> Result<Uuid, AppError> {
+    specified_school_id: Option<SchoolId>,
+) -> Result<SchoolId, AppError> {
     // System admin can specify any school
     if is_system_admin_jwt(auth_user) {
         return specified_school_id.ok_or_else(|| {
@@ -108,7 +108,7 @@ pub async fn get_school_id_with_override(
 pub async fn verify_school_access(
     db: &PgPool,
     auth_user: &AuthUser,
-    resource_school_id: Uuid,
+    resource_school_id: SchoolId,
 ) -> Result<(), AppError> {
     // System admins can access any school's resources
     if is_system_admin_jwt(auth_user) {
@@ -131,13 +131,18 @@ mod tests {
     use super::*;
     use crate::modules::users::model::system_roles;
     use chalkbyte_auth::Claims;
+    use uuid::Uuid;
 
-    fn create_test_auth_user(school_id: Option<Uuid>, role_ids: Vec<Uuid>) -> AuthUser {
+    fn create_test_auth_user(
+        school_id: Option<SchoolId>,
+        role_ids: Vec<chalkbyte_models::ids::RoleId>,
+    ) -> AuthUser {
+        let uuid_role_ids: Vec<Uuid> = role_ids.iter().map(|r| r.into_inner()).collect();
         AuthUser(Claims {
             sub: Uuid::new_v4().to_string(),
             email: "test@example.com".to_string(),
-            school_id,
-            role_ids,
+            school_id: school_id.map(|s| s.into_inner()),
+            role_ids: uuid_role_ids,
             permissions: vec![],
             exp: 9999999999,
             iat: 1234567890,
@@ -146,7 +151,8 @@ mod tests {
 
     #[test]
     fn test_school_id_from_jwt() {
-        let school_id = Uuid::new_v4();
+        let school_uuid = Uuid::new_v4();
+        let school_id = SchoolId::from(school_uuid);
         let auth_user = create_test_auth_user(Some(school_id), vec![system_roles::ADMIN]);
 
         assert_eq!(auth_user.school_id(), Some(school_id));
@@ -162,7 +168,8 @@ mod tests {
 
     #[test]
     fn test_school_admin_has_school_id() {
-        let school_id = Uuid::new_v4();
+        let school_uuid = Uuid::new_v4();
+        let school_id = SchoolId::from(school_uuid);
         let auth_user = create_test_auth_user(Some(school_id), vec![system_roles::ADMIN]);
 
         assert_eq!(auth_user.school_id(), Some(school_id));
@@ -181,7 +188,7 @@ mod tests {
     #[tokio::test]
     async fn test_verify_school_access_system_admin() {
         let auth_user = create_test_auth_user(None, vec![system_roles::SYSTEM_ADMIN]);
-        let _any_school_id = Uuid::new_v4();
+        let _any_school_id = SchoolId::from(Uuid::new_v4());
 
         // System admin should pass verification for any school (mocked - no DB)
         assert!(is_system_admin_jwt(&auth_user));

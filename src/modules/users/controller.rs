@@ -1,4 +1,5 @@
 use chalkbyte_core::AppError;
+use chalkbyte_models::ids::UserId;
 
 use crate::middleware::auth::{AuthUser, RequireUsersCreate, RequireUsersRead};
 use crate::middleware::role::is_system_admin_jwt;
@@ -64,7 +65,7 @@ pub async fn create_user(
         let requester_school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
         // Ensure the new user is assigned to the same school
-        dto.school_id = Some(requester_school_id);
+        dto.school_id = Some(requester_school_id.into_inner().into());
 
         // School admins cannot create system admins
         if dto.role_ids.contains(&system_roles::SYSTEM_ADMIN) {
@@ -79,9 +80,9 @@ pub async fn create_user(
     }
 
     // Validate school_id exists if provided
-    if let Some(school_id) = dto.school_id {
+    if let Some(school_id) = &dto.school_id {
         use crate::modules::schools::service::SchoolService;
-        SchoolService::get_school_by_id(&state.db, school_id).await?;
+        SchoolService::get_school_by_id(&state.db, school_id.into_inner()).await?;
     }
 
     let user = UserService::create_user(&state.db, dto).await?;
@@ -169,12 +170,11 @@ pub async fn get_profile(
 ) -> Result<Json<UserWithSchool>, AppError> {
     debug!("Fetching user profile");
 
-    let user = UserService::get_user_with_school(
-        &state.db,
+    let user_id = UserId::from(
         uuid::Uuid::parse_str(&auth_user.0.sub)
             .map_err(|_| AppError::bad_request(anyhow::anyhow!("Invalid user ID")))?,
-    )
-    .await?;
+    );
+    let user = UserService::get_user_with_school(&state.db, user_id).await?;
 
     Ok(Json(user))
 }
@@ -209,8 +209,10 @@ pub async fn update_profile(
     dto.validate()
         .map_err(|e| AppError::bad_request(anyhow::anyhow!("Validation error: {}", e)))?;
 
-    let user_id = uuid::Uuid::parse_str(&auth_user.0.sub)
-        .map_err(|_| AppError::bad_request(anyhow::anyhow!("Invalid user ID")))?;
+    let user_id = UserId::from(
+        uuid::Uuid::parse_str(&auth_user.0.sub)
+            .map_err(|_| AppError::bad_request(anyhow::anyhow!("Invalid user ID")))?,
+    );
 
     UserService::update_profile(&state.db, user_id, dto).await?;
 
@@ -247,8 +249,10 @@ pub async fn change_password(
     dto.validate()
         .map_err(|e| AppError::unprocessable(anyhow::anyhow!("Validation error: {}", e)))?;
 
-    let user_id = uuid::Uuid::parse_str(&auth_user.0.sub)
-        .map_err(|_| AppError::bad_request(anyhow::anyhow!("Invalid user ID")))?;
+    let user_id = UserId::from(
+        uuid::Uuid::parse_str(&auth_user.0.sub)
+            .map_err(|_| AppError::bad_request(anyhow::anyhow!("Invalid user ID")))?,
+    );
 
     UserService::change_password(&state.db, user_id, dto).await?;
 

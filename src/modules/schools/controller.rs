@@ -5,6 +5,7 @@ use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
 use chalkbyte_core::AppError;
+use chalkbyte_models::ids::{LevelId, SchoolId};
 
 use crate::middleware::auth::{
     AuthUser, RequireSchoolsCreate, RequireSchoolsDelete, RequireSchoolsRead,
@@ -186,6 +187,8 @@ pub async fn get_school_students(
     let Query(filters) = filters
         .map_err(|e| AppError::bad_request(anyhow::anyhow!("Invalid query parameters: {}", e)))?;
 
+    let school_id = SchoolId::from(school_id);
+
     // School admins can only view students from their own school
     if !is_system_admin_jwt(&auth_user) {
         let admin_school_id = get_admin_school_id(&state.db, &auth_user).await?;
@@ -203,7 +206,8 @@ pub async fn get_school_students(
 
     debug!("Fetching students for school");
 
-    let students = SchoolService::get_school_students(&state.db, school_id, filters).await?;
+    let students =
+        SchoolService::get_school_students(&state.db, school_id.into_inner(), filters).await?;
 
     debug!(
         total = %students.meta.total,
@@ -252,9 +256,12 @@ pub async fn get_school_admins(
         ));
     }
 
+    let school_id = SchoolId::from(school_id);
+
     debug!("Fetching admins for school");
 
-    let admins = SchoolService::get_school_admins(&state.db, school_id, filters).await?;
+    let admins =
+        SchoolService::get_school_admins(&state.db, school_id.into_inner(), filters).await?;
 
     debug!(
         total = %admins.meta.total,
@@ -286,6 +293,8 @@ pub async fn get_school_full_info(
     RequireSchoolsRead(auth_user): RequireSchoolsRead,
     Path(school_id): Path<Uuid>,
 ) -> Result<Json<SchoolFullInfo>, AppError> {
+    let school_id = SchoolId::from(school_id);
+
     // School admins can only view full info for their own school
     if !is_system_admin_jwt(&auth_user) {
         let admin_school_id = get_admin_school_id(&state.db, &auth_user).await?;
@@ -303,7 +312,8 @@ pub async fn get_school_full_info(
 
     debug!("Fetching full school information");
 
-    let school_info = SchoolService::get_school_full_info(&state.db, school_id).await?;
+    let school_info =
+        SchoolService::get_school_full_info(&state.db, school_id.into_inner()).await?;
 
     debug!(
         school.name = %school_info.name,
@@ -344,6 +354,8 @@ pub async fn get_school_levels(
     let Query(filters) = filters
         .map_err(|e| AppError::bad_request(anyhow::anyhow!("Invalid query parameters: {}", e)))?;
 
+    let school_id = SchoolId::from(school_id);
+
     // School admins can only view levels from their own school
     if !is_system_admin_jwt(&auth_user) {
         let admin_school_id = get_admin_school_id(&state.db, &auth_user).await?;
@@ -360,7 +372,7 @@ pub async fn get_school_levels(
     }
 
     // Verify school exists
-    SchoolService::get_school_by_id(&state.db, school_id).await?;
+    SchoolService::get_school_by_id(&state.db, school_id.into_inner()).await?;
 
     debug!("Fetching levels for school");
 
@@ -404,6 +416,9 @@ pub async fn get_school_level_branches(
     let Query(filters) = filters
         .map_err(|e| AppError::bad_request(anyhow::anyhow!("Invalid query parameters: {}", e)))?;
 
+    let school_id = SchoolId::from(school_id);
+    let level_id = LevelId::from(level_id);
+
     // School admins can only view branches from their own school
     if !is_system_admin_jwt(&auth_user) {
         let admin_school_id = get_admin_school_id(&state.db, &auth_user).await?;
@@ -420,7 +435,7 @@ pub async fn get_school_level_branches(
     }
 
     // Verify school exists
-    SchoolService::get_school_by_id(&state.db, school_id).await?;
+    SchoolService::get_school_by_id(&state.db, school_id.into_inner()).await?;
 
     debug!("Fetching branches for level");
 

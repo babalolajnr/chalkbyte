@@ -301,6 +301,7 @@ async fn test_disable_mfa_validation_empty_password(pool: PgPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn test_mfa_login_verification_returns_all_user_fields(pool: PgPool) {
     use chalkbyte::modules::users::model::User;
+    use chalkbyte_models::ids::UserId;
 
     let mut tx = pool.begin().await.unwrap();
 
@@ -336,7 +337,7 @@ async fn test_mfa_login_verification_returns_all_user_fields(pool: PgPool) {
 
     let user = user_result.unwrap();
     assert_eq!(user.email, email);
-    assert_eq!(user.id, user_id);
+    assert_eq!(user.id, UserId::from(user_id));
     assert_eq!(user.first_name, "Test");
     assert_eq!(user.last_name, "User");
     assert!(user.school_id.is_none());

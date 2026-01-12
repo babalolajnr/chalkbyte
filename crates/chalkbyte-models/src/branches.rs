@@ -3,30 +3,30 @@
 //! This module contains all data structures related to school branches,
 //! including branch entities, request/response DTOs, and filtering parameters.
 
+use crate::ids::{BranchId, LevelId, UserId};
 use chalkbyte_core::{PaginationMeta, PaginationParams};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
-use uuid::Uuid;
 use validator::Validate;
 
 #[derive(Debug, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct Branch {
-    pub id: Uuid,
+    pub id: BranchId,
     pub name: String,
     pub description: Option<String>,
-    pub level_id: Uuid,
+    pub level_id: LevelId,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct BranchWithStats {
-    pub id: Uuid,
+    pub id: BranchId,
     pub name: String,
     pub description: Option<String>,
-    pub level_id: Uuid,
+    pub level_id: LevelId,
     pub student_count: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -62,18 +62,18 @@ pub struct PaginatedBranchesResponse {
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct AssignStudentsToBranchDto {
     #[validate(length(min = 1))]
-    pub student_ids: Vec<Uuid>,
+    pub student_ids: Vec<UserId>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct MoveStudentToBranchDto {
-    pub branch_id: Option<Uuid>,
+    pub branch_id: Option<BranchId>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct BulkAssignResponse {
     pub assigned_count: usize,
-    pub failed_ids: Vec<Uuid>,
+    pub failed_ids: Vec<UserId>,
 }
 
 #[cfg(test)]
@@ -119,7 +119,7 @@ mod tests {
     #[test]
     fn test_assign_students_dto_validation() {
         let valid_dto = AssignStudentsToBranchDto {
-            student_ids: vec![Uuid::new_v4()],
+            student_ids: vec![UserId::new()],
         };
         assert!(valid_dto.validate().is_ok());
 

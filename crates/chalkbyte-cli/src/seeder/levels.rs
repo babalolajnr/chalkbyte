@@ -3,10 +3,10 @@
 //! Provides functions for generating and inserting fake level data
 //! into the database.
 
+use chalkbyte_models::{LevelId, SchoolId};
 use rayon::prelude::*;
 use sqlx::{PgPool, Postgres, Transaction};
 use std::time::Instant;
-use uuid::Uuid;
 
 use super::models::LevelSeed;
 
@@ -16,7 +16,7 @@ const LEVEL_NAMES: [&str; 12] = [
 ];
 
 /// Generates level data for schools
-pub fn generate_levels(school_ids: &[Uuid], levels_per_school: usize) -> Vec<LevelSeed> {
+pub fn generate_levels(school_ids: &[SchoolId], levels_per_school: usize) -> Vec<LevelSeed> {
     school_ids
         .par_iter()
         .flat_map(|&school_id| {
@@ -42,9 +42,9 @@ pub fn generate_levels(school_ids: &[Uuid], levels_per_school: usize) -> Vec<Lev
 /// Seeds levels into the database for given schools
 pub async fn seed_levels(
     db: &PgPool,
-    school_ids: &[Uuid],
+    school_ids: &[SchoolId],
     levels_per_school: usize,
-) -> Result<Vec<Uuid>, Box<dyn std::error::Error>> {
+) -> Result<Vec<LevelId>, Box<dyn std::error::Error>> {
     let start_time = Instant::now();
     let total_levels = school_ids.len() * levels_per_school;
     println!(
@@ -68,7 +68,7 @@ pub async fn seed_levels(
 pub async fn insert_levels_batch(
     db: &PgPool,
     levels: &[LevelSeed],
-) -> Result<Vec<Uuid>, Box<dyn std::error::Error>> {
+) -> Result<Vec<LevelId>, Box<dyn std::error::Error>> {
     let mut tx = db.begin().await?;
 
     const BATCH_SIZE: usize = 500;
@@ -86,7 +86,7 @@ pub async fn insert_levels_batch(
 async fn insert_levels_chunk(
     tx: &mut Transaction<'_, Postgres>,
     levels: &[LevelSeed],
-) -> Result<Vec<Uuid>, Box<dyn std::error::Error>> {
+) -> Result<Vec<LevelId>, Box<dyn std::error::Error>> {
     if levels.is_empty() {
         return Ok(Vec::new());
     }
@@ -116,7 +116,7 @@ async fn insert_levels_chunk(
             .bind(level.school_id);
     }
 
-    let ids = q.fetch_all(&mut **tx).await?;
+    let ids: Vec<LevelId> = q.fetch_all(&mut **tx).await?;
     Ok(ids)
 }
 
@@ -143,14 +143,17 @@ pub async fn clear_levels(db: &PgPool) -> Result<u64, Box<dyn std::error::Error>
 #[allow(dead_code)]
 pub async fn get_levels_for_school(
     db: &PgPool,
-    school_id: Uuid,
-) -> Result<Vec<Uuid>, Box<dyn std::error::Error>> {
-    let ids = sqlx::query_scalar!(
+    school_id: SchoolId,
+) -> Result<Vec<LevelId>, Box<dyn std::error::Error>> {
+    let ids: Vec<LevelId> = sqlx::query_scalar!(
         r#"SELECT id FROM levels WHERE school_id = $1 ORDER BY name"#,
-        school_id
+        school_id as SchoolId
     )
     .fetch_all(db)
-    .await?;
+    .await?
+    .into_iter()
+    .map(LevelId::from)
+    .collect();
 
     Ok(ids)
 }

@@ -3,6 +3,7 @@
 //! This module contains all data structures related to user management,
 //! including user entities, request/response DTOs, and system role definitions.
 
+use crate::ids::{BranchId, LevelId, RoleId, SchoolId, UserId};
 use chalkbyte_core::serde::deserialize_optional_uuid;
 use chalkbyte_core::{PaginationMeta, PaginationParams};
 use serde::{Deserialize, Serialize};
@@ -18,13 +19,13 @@ use validator::Validate;
 /// have multiple roles assigned.
 #[derive(Serialize, Deserialize, FromRow, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub struct User {
-    pub id: Uuid,
+    pub id: UserId,
     pub first_name: String,
     pub last_name: String,
     pub email: String,
-    pub school_id: Option<Uuid>,
-    pub level_id: Option<Uuid>,
-    pub branch_id: Option<Uuid>,
+    pub school_id: Option<SchoolId>,
+    pub level_id: Option<LevelId>,
+    pub branch_id: Option<BranchId>,
     pub date_of_birth: Option<chrono::NaiveDate>,
     pub grade_level: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -48,8 +49,8 @@ pub struct CreateUserDto {
     pub password: String,
     /// Role IDs to assign to the user. If empty, no roles are assigned.
     #[serde(default)]
-    pub role_ids: Vec<Uuid>,
-    pub school_id: Option<Uuid>,
+    pub role_ids: Vec<RoleId>,
+    pub school_id: Option<SchoolId>,
 }
 
 /// A school entity.
@@ -58,7 +59,7 @@ pub struct CreateUserDto {
 /// users are associated with exactly one school.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct School {
-    pub id: Uuid,
+    pub id: SchoolId,
     pub name: String,
     pub address: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -88,7 +89,7 @@ pub struct UserWithSchool {
 /// Used in user responses to include assigned role details.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, ToSchema)]
 pub struct RoleInfo {
-    pub id: Uuid,
+    pub id: RoleId,
     pub name: String,
     pub description: Option<String>,
     pub is_system_role: bool,
@@ -99,7 +100,7 @@ pub struct RoleInfo {
 /// Used in user responses to include level details.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, ToSchema)]
 pub struct LevelInfo {
-    pub id: Uuid,
+    pub id: LevelId,
     pub name: String,
     pub description: Option<String>,
 }
@@ -109,7 +110,7 @@ pub struct LevelInfo {
 /// Used in user responses to include branch details.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, ToSchema)]
 pub struct BranchInfo {
-    pub id: Uuid,
+    pub id: BranchId,
     pub name: String,
     pub description: Option<String>,
 }
@@ -119,7 +120,7 @@ pub struct BranchInfo {
 /// Used in responses where full school details aren't needed.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, ToSchema)]
 pub struct SchoolInfo {
-    pub id: Uuid,
+    pub id: SchoolId,
     pub name: String,
     pub address: Option<String>,
 }
@@ -130,7 +131,7 @@ pub struct SchoolInfo {
 /// level, branch, and all assigned roles.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct UserWithRelations {
-    pub id: Uuid,
+    pub id: UserId,
     pub first_name: String,
     pub last_name: String,
     pub email: String,
@@ -194,7 +195,7 @@ pub struct PaginatedBasicUsersResponse {
 /// School information with user counts by role.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SchoolFullInfo {
-    pub id: Uuid,
+    pub id: SchoolId,
     pub name: String,
     pub address: Option<String>,
     pub total_students: i64,
@@ -234,7 +235,7 @@ pub struct ChangePasswordDto {
 /// the four system-defined roles. These roles have fixed UUIDs and cannot
 /// be deleted or modified.
 pub mod system_roles {
-    use uuid::Uuid;
+    use crate::ids::RoleId;
 
     /// Role slugs - use these for lookups instead of hardcoded UUIDs
     #[allow(dead_code)]
@@ -246,16 +247,16 @@ pub mod system_roles {
     }
 
     /// System Admin role - full system access
-    pub const SYSTEM_ADMIN: Uuid = Uuid::from_u128(0x00000000_0000_0000_0000_000000000001);
+    pub const SYSTEM_ADMIN: RoleId = RoleId::from_u128(0x00000000_0000_0000_0000_000000000001);
     /// Admin role - school-scoped management
-    pub const ADMIN: Uuid = Uuid::from_u128(0x00000000_0000_0000_0000_000000000002);
+    pub const ADMIN: RoleId = RoleId::from_u128(0x00000000_0000_0000_0000_000000000002);
     /// Teacher role - teaching-related permissions
-    pub const TEACHER: Uuid = Uuid::from_u128(0x00000000_0000_0000_0000_000000000003);
+    pub const TEACHER: RoleId = RoleId::from_u128(0x00000000_0000_0000_0000_000000000003);
     /// Student role - basic read permissions
-    pub const STUDENT: Uuid = Uuid::from_u128(0x00000000_0000_0000_0000_000000000004);
+    pub const STUDENT: RoleId = RoleId::from_u128(0x00000000_0000_0000_0000_000000000004);
 
     /// Get all system role IDs
-    pub fn all() -> Vec<Uuid> {
+    pub fn all() -> Vec<RoleId> {
         vec![SYSTEM_ADMIN, ADMIN, TEACHER, STUDENT]
     }
 
@@ -271,7 +272,7 @@ pub mod system_roles {
     }
 
     /// Check if a role ID is a system role
-    pub fn is_system_role(role_id: &Uuid) -> bool {
+    pub fn is_system_role(role_id: &RoleId) -> bool {
         all().contains(role_id)
     }
 
@@ -282,7 +283,7 @@ pub mod system_roles {
     }
 
     /// Get role name by ID
-    pub fn get_name(role_id: &Uuid) -> Option<&'static str> {
+    pub fn get_name(role_id: &RoleId) -> Option<&'static str> {
         match *role_id {
             id if id == SYSTEM_ADMIN => Some("System Admin"),
             id if id == ADMIN => Some("Admin"),
@@ -294,7 +295,7 @@ pub mod system_roles {
 
     /// Get role slug by ID
     #[allow(dead_code)]
-    pub fn get_slug(role_id: &Uuid) -> Option<&'static str> {
+    pub fn get_slug(role_id: &RoleId) -> Option<&'static str> {
         match *role_id {
             id if id == SYSTEM_ADMIN => Some(slugs::SYSTEM_ADMIN),
             id if id == ADMIN => Some(slugs::ADMIN),
@@ -306,7 +307,7 @@ pub mod system_roles {
 
     /// Get role ID by slug
     #[allow(dead_code)]
-    pub fn get_id_by_slug(slug: &str) -> Option<Uuid> {
+    pub fn get_id_by_slug(slug: &str) -> Option<RoleId> {
         match slug {
             slugs::SYSTEM_ADMIN => Some(SYSTEM_ADMIN),
             slugs::ADMIN => Some(ADMIN),
@@ -325,19 +326,19 @@ mod tests {
     fn test_system_roles_ids() {
         assert_eq!(
             system_roles::SYSTEM_ADMIN,
-            Uuid::from_u128(0x00000000_0000_0000_0000_000000000001)
+            RoleId::from_u128(0x00000000_0000_0000_0000_000000000001)
         );
         assert_eq!(
             system_roles::ADMIN,
-            Uuid::from_u128(0x00000000_0000_0000_0000_000000000002)
+            RoleId::from_u128(0x00000000_0000_0000_0000_000000000002)
         );
         assert_eq!(
             system_roles::TEACHER,
-            Uuid::from_u128(0x00000000_0000_0000_0000_000000000003)
+            RoleId::from_u128(0x00000000_0000_0000_0000_000000000003)
         );
         assert_eq!(
             system_roles::STUDENT,
-            Uuid::from_u128(0x00000000_0000_0000_0000_000000000004)
+            RoleId::from_u128(0x00000000_0000_0000_0000_000000000004)
         );
     }
 
@@ -345,7 +346,7 @@ mod tests {
     fn test_is_system_role() {
         assert!(system_roles::is_system_role(&system_roles::SYSTEM_ADMIN));
         assert!(system_roles::is_system_role(&system_roles::ADMIN));
-        assert!(!system_roles::is_system_role(&Uuid::new_v4()));
+        assert!(!system_roles::is_system_role(&RoleId::new()));
     }
 
     #[test]
@@ -363,7 +364,7 @@ mod tests {
             system_roles::get_name(&system_roles::STUDENT),
             Some("Student")
         );
-        assert_eq!(system_roles::get_name(&Uuid::new_v4()), None);
+        assert_eq!(system_roles::get_name(&RoleId::new()), None);
     }
 
     #[test]

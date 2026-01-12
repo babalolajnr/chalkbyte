@@ -3,17 +3,17 @@
 //! Provides functions for generating and inserting fake branch data
 //! into the database.
 
+use chalkbyte_models::{BranchId, LevelId, SchoolId};
 use rayon::prelude::*;
 use sqlx::{PgPool, Postgres, Transaction};
 use std::time::Instant;
-use uuid::Uuid;
 
 use super::models::BranchSeed;
 
 const BRANCH_NAMES: [&str; 10] = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
 
 /// Generates branch data for levels
-pub fn generate_branches(level_ids: &[Uuid], branches_per_level: usize) -> Vec<BranchSeed> {
+pub fn generate_branches(level_ids: &[LevelId], branches_per_level: usize) -> Vec<BranchSeed> {
     level_ids
         .par_iter()
         .flat_map(|&level_id| {
@@ -39,9 +39,9 @@ pub fn generate_branches(level_ids: &[Uuid], branches_per_level: usize) -> Vec<B
 /// Seeds branches into the database for given levels
 pub async fn seed_branches(
     db: &PgPool,
-    level_ids: &[Uuid],
+    level_ids: &[LevelId],
     branches_per_level: usize,
-) -> Result<Vec<Uuid>, Box<dyn std::error::Error>> {
+) -> Result<Vec<BranchId>, Box<dyn std::error::Error>> {
     let start_time = Instant::now();
     let total_branches = level_ids.len() * branches_per_level;
     println!(
@@ -65,7 +65,7 @@ pub async fn seed_branches(
 pub async fn insert_branches_batch(
     db: &PgPool,
     branches: &[BranchSeed],
-) -> Result<Vec<Uuid>, Box<dyn std::error::Error>> {
+) -> Result<Vec<BranchId>, Box<dyn std::error::Error>> {
     let mut tx = db.begin().await?;
 
     const BATCH_SIZE: usize = 500;
@@ -83,7 +83,7 @@ pub async fn insert_branches_batch(
 async fn insert_branches_chunk(
     tx: &mut Transaction<'_, Postgres>,
     branches: &[BranchSeed],
-) -> Result<Vec<Uuid>, Box<dyn std::error::Error>> {
+) -> Result<Vec<BranchId>, Box<dyn std::error::Error>> {
     if branches.is_empty() {
         return Ok(Vec::new());
     }
@@ -113,7 +113,7 @@ async fn insert_branches_chunk(
             .bind(branch.level_id);
     }
 
-    let ids = q.fetch_all(&mut **tx).await?;
+    let ids: Vec<BranchId> = q.fetch_all(&mut **tx).await?;
     Ok(ids)
 }
 
@@ -140,14 +140,17 @@ pub async fn clear_branches(db: &PgPool) -> Result<u64, Box<dyn std::error::Erro
 #[allow(dead_code)]
 pub async fn get_branches_for_level(
     db: &PgPool,
-    level_id: Uuid,
-) -> Result<Vec<Uuid>, Box<dyn std::error::Error>> {
-    let ids = sqlx::query_scalar!(
+    level_id: LevelId,
+) -> Result<Vec<BranchId>, Box<dyn std::error::Error>> {
+    let ids: Vec<BranchId> = sqlx::query_scalar!(
         r#"SELECT id FROM branches WHERE level_id = $1 ORDER BY name"#,
-        level_id
+        level_id as LevelId
     )
     .fetch_all(db)
-    .await?;
+    .await?
+    .into_iter()
+    .map(BranchId::from)
+    .collect();
 
     Ok(ids)
 }
@@ -156,8 +159,8 @@ pub async fn get_branches_for_level(
 #[allow(dead_code)]
 pub async fn get_branches_by_level_for_school(
     db: &PgPool,
-    school_id: Uuid,
-) -> Result<Vec<(Uuid, Uuid)>, Box<dyn std::error::Error>> {
+    school_id: SchoolId,
+) -> Result<Vec<(BranchId, LevelId)>, Box<dyn std::error::Error>> {
     let rows = sqlx::query!(
         r#"
         SELECT b.id as branch_id, b.level_id
@@ -166,10 +169,13 @@ pub async fn get_branches_by_level_for_school(
         WHERE l.school_id = $1
         ORDER BY l.name, b.name
         "#,
-        school_id
+        school_id as SchoolId
     )
     .fetch_all(db)
     .await?;
 
-    Ok(rows.iter().map(|r| (r.branch_id, r.level_id)).collect())
+    Ok(rows
+        .iter()
+        .map(|r| (BranchId::from(r.branch_id), LevelId::from(r.level_id)))
+        .collect())
 }

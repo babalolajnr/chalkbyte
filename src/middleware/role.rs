@@ -13,12 +13,12 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use uuid::Uuid;
 
 use crate::middleware::auth::AuthUser;
 use crate::modules::roles::service as roles_service;
 use crate::modules::users::model::system_roles;
 use chalkbyte_core::AppError;
+use chalkbyte_models::ids::{RoleId, SchoolId, UserId};
 
 use crate::modules::users::service::UserService;
 use crate::state::AppState;
@@ -87,7 +87,7 @@ pub async fn require_roles(
     State(state): State<AppState>,
     mut req: Request,
     next: Next,
-    allowed_role_ids: Vec<Uuid>,
+    allowed_role_ids: Vec<RoleId>,
 ) -> Result<Response, AppError> {
     let (mut parts, body) = req.into_parts();
 
@@ -197,7 +197,7 @@ pub async fn require_teacher(State(state): State<AppState>, req: Request, next: 
 /// Uses JWT-embedded role_ids for fast checking.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct RequireSystemAdmin(pub Uuid);
+pub struct RequireSystemAdmin(pub UserId);
 
 impl FromRequestParts<AppState> for RequireSystemAdmin {
     type Rejection = AppError;
@@ -231,7 +231,7 @@ impl FromRequestParts<AppState> for RequireSystemAdmin {
 /// Uses JWT-embedded role_ids for fast checking.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct RequireAdmin(pub Uuid);
+pub struct RequireAdmin(pub UserId);
 
 impl FromRequestParts<AppState> for RequireAdmin {
     type Rejection = AppError;
@@ -270,7 +270,7 @@ impl FromRequestParts<AppState> for RequireAdmin {
 /// Uses JWT-embedded role_ids for fast checking.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct RequireTeacher(pub Uuid);
+pub struct RequireTeacher(pub UserId);
 
 impl FromRequestParts<AppState> for RequireTeacher {
     type Rejection = AppError;
@@ -319,13 +319,13 @@ impl FromRequestParts<AppState> for RequireTeacher {
 
 /// Get the user ID from auth claims
 #[allow(dead_code)]
-pub fn get_user_id_from_auth(auth_user: &AuthUser) -> Result<Uuid, AppError> {
+pub fn get_user_id_from_auth(auth_user: &AuthUser) -> Result<UserId, AppError> {
     auth_user.user_id()
 }
 
 /// Check if user has any of the specified roles using JWT claims (fast, no DB)
 #[allow(dead_code)]
-pub fn check_user_has_any_role_jwt(auth_user: &AuthUser, role_ids: &[Uuid]) -> bool {
+pub fn check_user_has_any_role_jwt(auth_user: &AuthUser, role_ids: &[RoleId]) -> bool {
     auth_user.has_any_role(role_ids)
 }
 
@@ -339,8 +339,8 @@ pub fn check_user_has_permission_jwt(auth_user: &AuthUser, permission_name: &str
 #[allow(dead_code)]
 pub async fn check_user_has_any_role(
     db: &sqlx::PgPool,
-    user_id: Uuid,
-    role_ids: &[Uuid],
+    user_id: UserId,
+    role_ids: &[RoleId],
 ) -> Result<bool, AppError> {
     UserService::user_has_any_role(db, user_id, role_ids).await
 }
@@ -349,7 +349,7 @@ pub async fn check_user_has_any_role(
 #[allow(dead_code)]
 pub async fn check_user_has_permission(
     db: &sqlx::PgPool,
-    user_id: Uuid,
+    user_id: UserId,
     permission_name: &str,
 ) -> Result<bool, AppError> {
     roles_service::user_has_permission(db, user_id, permission_name).await
@@ -357,7 +357,7 @@ pub async fn check_user_has_permission(
 
 /// Check if user is a system admin (database query)
 #[allow(dead_code)]
-pub async fn is_system_admin(db: &sqlx::PgPool, user_id: Uuid) -> Result<bool, AppError> {
+pub async fn is_system_admin(db: &sqlx::PgPool, user_id: UserId) -> Result<bool, AppError> {
     UserService::is_system_admin(db, user_id).await
 }
 
@@ -368,7 +368,7 @@ pub fn is_system_admin_jwt(auth_user: &AuthUser) -> bool {
 
 /// Check if user is an admin (school admin or system admin) using database
 #[allow(dead_code)]
-pub async fn is_admin(db: &sqlx::PgPool, user_id: Uuid) -> Result<bool, AppError> {
+pub async fn is_admin(db: &sqlx::PgPool, user_id: UserId) -> Result<bool, AppError> {
     UserService::user_has_any_role(
         db,
         user_id,
@@ -385,7 +385,7 @@ pub fn is_admin_jwt(auth_user: &AuthUser) -> bool {
 
 /// Check if user is at least a teacher (teacher, admin, or system admin) using database
 #[allow(dead_code)]
-pub async fn is_teacher_or_above(db: &sqlx::PgPool, user_id: Uuid) -> Result<bool, AppError> {
+pub async fn is_teacher_or_above(db: &sqlx::PgPool, user_id: UserId) -> Result<bool, AppError> {
     UserService::user_has_any_role(
         db,
         user_id,
@@ -410,21 +410,23 @@ pub fn is_teacher_or_above_jwt(auth_user: &AuthUser) -> bool {
 
 /// Get the school_id from auth user (from JWT claims)
 #[allow(dead_code)]
-pub fn get_school_id_from_auth(auth_user: &AuthUser) -> Option<Uuid> {
+pub fn get_school_id_from_auth(auth_user: &AuthUser) -> Option<SchoolId> {
     auth_user.school_id()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::auth::model::Claims;
+    use chalkbyte_auth::Claims;
+    use uuid::Uuid;
 
-    fn create_test_auth_user(role_ids: Vec<Uuid>, permissions: Vec<String>) -> AuthUser {
+    fn create_test_auth_user(role_ids: Vec<RoleId>, permissions: Vec<String>) -> AuthUser {
+        let uuid_role_ids: Vec<Uuid> = role_ids.iter().map(|r| r.into_inner()).collect();
         AuthUser(Claims {
             sub: Uuid::new_v4().to_string(),
             email: "test@example.com".to_string(),
             school_id: None,
-            role_ids,
+            role_ids: uuid_role_ids,
             permissions,
             exp: 9999999999,
             iat: 1234567890,
@@ -457,7 +459,7 @@ mod tests {
         assert!(system_roles::is_system_role(&system_roles::ADMIN));
         assert!(system_roles::is_system_role(&system_roles::TEACHER));
         assert!(system_roles::is_system_role(&system_roles::STUDENT));
-        assert!(!system_roles::is_system_role(&Uuid::new_v4()));
+        assert!(!system_roles::is_system_role(&RoleId::from(Uuid::new_v4())));
     }
 
     #[test]
@@ -476,7 +478,7 @@ mod tests {
 
         let result = get_user_id_from_auth(&auth_user);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), user_id);
+        assert_eq!(result.unwrap(), UserId::from(user_id));
     }
 
     #[test]
@@ -560,12 +562,13 @@ mod tests {
 
     #[test]
     fn test_get_school_id_from_auth() {
-        let school_id = Uuid::new_v4();
+        let school_uuid = Uuid::new_v4();
+        let school_id = SchoolId::from(school_uuid);
         let claims = Claims {
             sub: Uuid::new_v4().to_string(),
             email: "test@example.com".to_string(),
-            school_id: Some(school_id),
-            role_ids: vec![system_roles::ADMIN],
+            school_id: Some(school_uuid),
+            role_ids: vec![system_roles::ADMIN.into_inner()],
             permissions: vec![],
             exp: 9999999999,
             iat: 1234567890,
@@ -581,7 +584,7 @@ mod tests {
             sub: Uuid::new_v4().to_string(),
             email: "sysadmin@example.com".to_string(),
             school_id: None,
-            role_ids: vec![system_roles::SYSTEM_ADMIN],
+            role_ids: vec![system_roles::SYSTEM_ADMIN.into_inner()],
             permissions: vec![],
             exp: 9999999999,
             iat: 1234567890,

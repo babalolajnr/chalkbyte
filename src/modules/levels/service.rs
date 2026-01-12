@@ -1,8 +1,8 @@
 use sqlx::PgPool;
 use tracing::instrument;
-use uuid::Uuid;
 
 use chalkbyte_core::{AppError, PaginationMeta};
+use chalkbyte_models::ids::{LevelId, SchoolId, UserId};
 
 use crate::modules::levels::model::{
     AssignStudentsToLevelDto, BulkAssignResponse, CreateLevelDto, Level, LevelFilterParams,
@@ -16,7 +16,7 @@ impl LevelService {
     #[instrument]
     pub async fn create_level(
         db: &PgPool,
-        school_id: Uuid,
+        school_id: SchoolId,
         dto: CreateLevelDto,
     ) -> Result<Level, AppError> {
         let level = sqlx::query_as::<_, Level>(
@@ -46,7 +46,7 @@ impl LevelService {
     #[instrument]
     pub async fn get_levels_by_school(
         db: &PgPool,
-        school_id: Uuid,
+        school_id: SchoolId,
         filters: LevelFilterParams,
     ) -> Result<PaginatedLevelsResponse, AppError> {
         let limit = filters.pagination.limit();
@@ -115,8 +115,8 @@ impl LevelService {
     #[instrument]
     pub async fn get_level_by_id(
         db: &PgPool,
-        level_id: Uuid,
-        school_id: Uuid,
+        level_id: LevelId,
+        school_id: SchoolId,
     ) -> Result<LevelWithStats, AppError> {
         let student_role_id = system_roles::STUDENT;
         let level = sqlx::query_as::<_, LevelWithStats>(
@@ -148,7 +148,7 @@ impl LevelService {
     #[instrument]
     pub async fn get_level_by_id_no_school_filter(
         db: &PgPool,
-        level_id: Uuid,
+        level_id: LevelId,
     ) -> Result<LevelWithStats, AppError> {
         let student_role_id = system_roles::STUDENT;
         let level = sqlx::query_as::<_, LevelWithStats>(
@@ -178,8 +178,8 @@ impl LevelService {
     #[instrument]
     pub async fn update_level(
         db: &PgPool,
-        level_id: Uuid,
-        school_id: Uuid,
+        level_id: LevelId,
+        school_id: SchoolId,
         dto: UpdateLevelDto,
     ) -> Result<Level, AppError> {
         let existing_level = sqlx::query_as::<_, Level>(
@@ -228,7 +228,7 @@ impl LevelService {
     #[instrument]
     pub async fn update_level_no_school_filter(
         db: &PgPool,
-        level_id: Uuid,
+        level_id: LevelId,
         dto: UpdateLevelDto,
     ) -> Result<Level, AppError> {
         let existing_level = sqlx::query_as::<_, Level>(
@@ -274,8 +274,8 @@ impl LevelService {
     #[instrument]
     pub async fn delete_level(
         db: &PgPool,
-        level_id: Uuid,
-        school_id: Uuid,
+        level_id: LevelId,
+        school_id: SchoolId,
     ) -> Result<(), AppError> {
         let result = sqlx::query("DELETE FROM levels WHERE id = $1 AND school_id = $2")
             .bind(level_id)
@@ -294,7 +294,7 @@ impl LevelService {
     #[instrument]
     pub async fn delete_level_no_school_filter(
         db: &PgPool,
-        level_id: Uuid,
+        level_id: LevelId,
     ) -> Result<(), AppError> {
         let result = sqlx::query("DELETE FROM levels WHERE id = $1")
             .bind(level_id)
@@ -311,8 +311,8 @@ impl LevelService {
     #[instrument]
     pub async fn assign_students_to_level(
         db: &PgPool,
-        level_id: Uuid,
-        school_id: Uuid,
+        level_id: LevelId,
+        school_id: SchoolId,
         dto: AssignStudentsToLevelDto,
     ) -> Result<BulkAssignResponse, AppError> {
         let level_exists = sqlx::query_scalar::<_, bool>(
@@ -374,7 +374,7 @@ impl LevelService {
     #[instrument]
     pub async fn assign_students_to_level_no_school_filter(
         db: &PgPool,
-        level_id: Uuid,
+        level_id: LevelId,
         dto: AssignStudentsToLevelDto,
     ) -> Result<BulkAssignResponse, AppError> {
         let level_exists =
@@ -428,8 +428,8 @@ impl LevelService {
     #[instrument]
     pub async fn move_student_to_level(
         db: &PgPool,
-        student_id: Uuid,
-        school_id: Uuid,
+        student_id: UserId,
+        school_id: SchoolId,
         dto: MoveStudentToLevelDto,
     ) -> Result<(), AppError> {
         if let Some(new_level_id) = dto.level_id {
@@ -486,7 +486,7 @@ impl LevelService {
     #[instrument]
     pub async fn move_student_to_level_no_school_filter(
         db: &PgPool,
-        student_id: Uuid,
+        student_id: UserId,
         dto: MoveStudentToLevelDto,
     ) -> Result<(), AppError> {
         if let Some(new_level_id) = dto.level_id {
@@ -531,8 +531,8 @@ impl LevelService {
     #[instrument]
     pub async fn get_students_in_level(
         db: &PgPool,
-        level_id: Uuid,
-        school_id: Uuid,
+        level_id: LevelId,
+        school_id: SchoolId,
     ) -> Result<Vec<crate::modules::users::model::User>, AppError> {
         let level_exists = sqlx::query_scalar::<_, bool>(
             "SELECT EXISTS(SELECT 1 FROM levels WHERE id = $1 AND school_id = $2)",
@@ -567,7 +567,7 @@ impl LevelService {
     #[instrument]
     pub async fn get_students_in_level_no_school_filter(
         db: &PgPool,
-        level_id: Uuid,
+        level_id: LevelId,
     ) -> Result<Vec<crate::modules::users::model::User>, AppError> {
         let level_exists =
             sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM levels WHERE id = $1)")
@@ -598,8 +598,8 @@ impl LevelService {
     #[instrument]
     pub async fn remove_student_from_level(
         db: &PgPool,
-        student_id: Uuid,
-        school_id: Uuid,
+        student_id: UserId,
+        school_id: SchoolId,
     ) -> Result<(), AppError> {
         // Check if user is a student
         let student_role_id = system_roles::STUDENT;
@@ -640,7 +640,7 @@ impl LevelService {
     #[instrument]
     pub async fn remove_student_from_level_no_school_filter(
         db: &PgPool,
-        student_id: Uuid,
+        student_id: UserId,
     ) -> Result<(), AppError> {
         let student_role_id = system_roles::STUDENT;
         let is_student = sqlx::query_scalar::<_, bool>(
@@ -674,8 +674,9 @@ mod tests {
     use super::*;
     use axum::http::StatusCode;
     use chalkbyte_core::PaginationParams;
+    use uuid::Uuid;
 
-    async fn create_test_school(pool: &PgPool, name: &str) -> Uuid {
+    async fn create_test_school(pool: &PgPool, name: &str) -> SchoolId {
         sqlx::query_scalar!(
             r#"INSERT INTO schools (name, address) VALUES ($1, $2) RETURNING id"#,
             name,
@@ -684,24 +685,26 @@ mod tests {
         .fetch_one(pool)
         .await
         .unwrap()
+        .into()
     }
 
-    async fn create_test_student(pool: &PgPool, school_id: Uuid, email: &str) -> Uuid {
-        let user_id = sqlx::query_scalar!(
+    async fn create_test_student(pool: &PgPool, school_id: SchoolId, email: &str) -> UserId {
+        let user_id: UserId = sqlx::query_scalar!(
             r#"INSERT INTO users (first_name, last_name, email, password, school_id)
                VALUES ('Test', 'Student', $1, 'hashed', $2) RETURNING id"#,
             email,
-            school_id
+            school_id.into_inner()
         )
         .fetch_one(pool)
         .await
-        .unwrap();
+        .unwrap()
+        .into();
 
         // Assign student role
         sqlx::query!(
             "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)",
-            user_id,
-            crate::modules::users::model::system_roles::STUDENT
+            user_id.into_inner(),
+            crate::modules::users::model::system_roles::STUDENT.into_inner()
         )
         .execute(pool)
         .await
@@ -920,7 +923,7 @@ mod tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn test_get_level_by_id_not_found(pool: PgPool) {
         let school_id = create_test_school(&pool, &format!("School {}", Uuid::new_v4())).await;
-        let random_id = Uuid::new_v4();
+        let random_id = LevelId::new();
 
         let result = LevelService::get_level_by_id(&pool, random_id, school_id).await;
 
@@ -1011,7 +1014,7 @@ mod tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn test_update_level_not_found(pool: PgPool) {
         let school_id = create_test_school(&pool, &format!("School {}", Uuid::new_v4())).await;
-        let random_id = Uuid::new_v4();
+        let random_id = LevelId::new();
 
         let update_dto = UpdateLevelDto {
             name: Some("Grade 11".to_string()),
@@ -1050,7 +1053,7 @@ mod tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn test_delete_level_not_found(pool: PgPool) {
         let school_id = create_test_school(&pool, &format!("School {}", Uuid::new_v4())).await;
-        let random_id = Uuid::new_v4();
+        let random_id = LevelId::new();
 
         let result = LevelService::delete_level(&pool, random_id, school_id).await;
 
@@ -1105,7 +1108,7 @@ mod tests {
 
         let student_id =
             create_test_student(&pool, school_id, &format!("s1-{}@test.com", Uuid::new_v4())).await;
-        let invalid_id = Uuid::new_v4();
+        let invalid_id = UserId::new();
 
         let assign_dto = AssignStudentsToLevelDto {
             student_ids: vec![student_id, invalid_id],
@@ -1124,7 +1127,7 @@ mod tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn test_assign_students_to_nonexistent_level(pool: PgPool) {
         let school_id = create_test_school(&pool, &format!("School {}", Uuid::new_v4())).await;
-        let random_level_id = Uuid::new_v4();
+        let random_level_id = LevelId::new();
 
         let student_id =
             create_test_student(&pool, school_id, &format!("s1-{}@test.com", Uuid::new_v4())).await;
@@ -1280,7 +1283,7 @@ mod tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn test_get_students_in_nonexistent_level(pool: PgPool) {
         let school_id = create_test_school(&pool, &format!("School {}", Uuid::new_v4())).await;
-        let random_level_id = Uuid::new_v4();
+        let random_level_id = LevelId::new();
 
         let result = LevelService::get_students_in_level(&pool, random_level_id, school_id).await;
 
@@ -1332,7 +1335,7 @@ mod tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn test_remove_nonexistent_student_from_level(pool: PgPool) {
         let school_id = create_test_school(&pool, &format!("School {}", Uuid::new_v4())).await;
-        let random_student_id = Uuid::new_v4();
+        let random_student_id = UserId::new();
 
         let result =
             LevelService::remove_student_from_level(&pool, random_student_id, school_id).await;

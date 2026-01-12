@@ -12,6 +12,7 @@ use crate::{
     },
 };
 use anyhow::Context;
+use chalkbyte_models::ids::{BranchId, LevelId, RoleId, SchoolId, UserId};
 use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 use tracing::{debug, error, info, instrument, warn};
@@ -26,19 +27,18 @@ impl UserService {
 
         let password_hash = hash_password(&dto.password)?;
 
-        let user = sqlx::query_as!(
-            User,
+        let user = sqlx::query_as::<_, User>(
             r#"
             INSERT INTO users (first_name, last_name, email, password, school_id)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING id, first_name, last_name, email, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at
             "#,
-            dto.first_name,
-            dto.last_name,
-            dto.email,
-            password_hash,
-            dto.school_id
         )
+        .bind(&dto.first_name)
+        .bind(&dto.last_name)
+        .bind(&dto.email)
+        .bind(&password_hash)
+        .bind(dto.school_id)
         .fetch_one(db)
         .await
         .map_err(|e| {
@@ -89,7 +89,7 @@ impl UserService {
     pub async fn get_users_paginated(
         db: &PgPool,
         filters: UserFilterParams,
-        school_id_filter: Option<Uuid>,
+        school_id_filter: Option<SchoolId>,
     ) -> Result<PaginatedUsersResponse, AppError> {
         let limit = filters.pagination.limit();
         let offset = filters.pagination.offset();
@@ -236,20 +236,21 @@ impl UserService {
             })?;
 
         // Collect user IDs for batch role fetch
-        let user_ids: Vec<Uuid> = rows
+        let user_ids: Vec<UserId> = rows
             .iter()
-            .filter_map(|row| row.try_get::<Uuid, _>("id").ok())
+            .filter_map(|row| row.try_get::<UserId, _>("id").ok())
             .collect();
 
         // Fetch roles for all users in one query
-        let roles_map: HashMap<Uuid, Vec<RoleInfo>> = if !user_ids.is_empty() {
+        let roles_map: HashMap<UserId, Vec<RoleInfo>> = if !user_ids.is_empty() {
+            let uuid_user_ids: Vec<Uuid> = user_ids.iter().map(|id| id.into_inner()).collect();
             let roles_rows = sqlx::query(
                 r#"SELECT ur.user_id, r.id, r.name, r.description, r.is_system_role
                    FROM user_roles ur
                    INNER JOIN roles r ON ur.role_id = r.id
                    WHERE ur.user_id = ANY($1)"#,
             )
-            .bind(&user_ids)
+            .bind(&uuid_user_ids)
             .fetch_all(db)
             .await
             .context("Failed to fetch user roles")
@@ -258,11 +259,17 @@ impl UserService {
                 AppError::database(e)
             })?;
 
-            let mut map: HashMap<Uuid, Vec<RoleInfo>> = HashMap::new();
+            let mut map: HashMap<UserId, Vec<RoleInfo>> = HashMap::new();
             for row in roles_rows {
-                let user_id: Uuid = row.try_get("user_id").unwrap_or_default();
+                let user_id: UserId = row
+                    .try_get::<Uuid, _>("user_id")
+                    .map(UserId::from)
+                    .unwrap_or_default();
                 let role = RoleInfo {
-                    id: row.try_get("id").unwrap_or_default(),
+                    id: row
+                        .try_get::<Uuid, _>("id")
+                        .map(RoleId::from)
+                        .unwrap_or_default(),
                     name: row.try_get("name").unwrap_or_default(),
                     description: row.try_get("description").ok(),
                     is_system_role: row.try_get("is_system_role").unwrap_or(false),
@@ -277,16 +284,19 @@ impl UserService {
         let users: Result<Vec<UserWithRelations>, AppError> = rows
             .iter()
             .map(|row| {
-                let user_id: Uuid = row.try_get("id").map_err(|e| {
-                    AppError::database(anyhow::Error::new(e).context("Failed to get id"))
-                })?;
+                let user_id: UserId =
+                    row.try_get::<Uuid, _>("id")
+                        .map(UserId::from)
+                        .map_err(|e| {
+                            AppError::database(anyhow::Error::new(e).context("Failed to get id"))
+                        })?;
 
                 let school = row
                     .try_get::<Option<Uuid>, _>("school_id")
                     .ok()
                     .flatten()
                     .map(|id| SchoolInfo {
-                        id,
+                        id: SchoolId::from(id),
                         name: row.try_get("school_name").unwrap_or_default(),
                         address: row.try_get("school_address").ok(),
                     });
@@ -296,7 +306,7 @@ impl UserService {
                     .ok()
                     .flatten()
                     .map(|id| LevelInfo {
-                        id,
+                        id: LevelId::from(id),
                         name: row.try_get("level_name").unwrap_or_default(),
                         description: row.try_get("level_description").ok(),
                     });
@@ -306,7 +316,7 @@ impl UserService {
                     .ok()
                     .flatten()
                     .map(|id| BranchInfo {
-                        id,
+                        id: BranchId::from(id),
                         name: row.try_get("branch_name").unwrap_or_default(),
                         description: row.try_get("branch_description").ok(),
                     });
@@ -383,17 +393,16 @@ impl UserService {
     }
 
     #[instrument(skip(db), fields(user.id = %id))]
-    pub async fn get_user(db: &PgPool, id: Uuid) -> Result<User, AppError> {
+    pub async fn get_user(db: &PgPool, id: UserId) -> Result<User, AppError> {
         debug!("Fetching user by ID");
 
-        let user = sqlx::query_as!(
-            User,
+        let user = sqlx::query_as::<_, User>(
             r#"
             SELECT id, first_name, last_name, email, school_id, level_id, branch_id, date_of_birth, grade_level, created_at, updated_at
             FROM users WHERE id = $1
             "#,
-            id
         )
+        .bind(id)
         .fetch_optional(db)
         .await
         .context("Failed to fetch user")
@@ -411,17 +420,16 @@ impl UserService {
     }
 
     #[instrument(skip(db), fields(user.id = %id))]
-    pub async fn get_user_with_school(db: &PgPool, id: Uuid) -> Result<UserWithSchool, AppError> {
+    pub async fn get_user_with_school(db: &PgPool, id: UserId) -> Result<UserWithSchool, AppError> {
         debug!("Fetching user with school information");
 
         let user = Self::get_user(db, id).await?;
 
         let school = if let Some(school_id) = user.school_id {
-            sqlx::query_as!(
-                School,
+            sqlx::query_as::<_, School>(
                 r#"SELECT id, name, address, created_at, updated_at FROM schools WHERE id = $1"#,
-                school_id
             )
+            .bind(school_id)
             .fetch_optional(db)
             .await
             .context("Failed to fetch school")
@@ -445,7 +453,7 @@ impl UserService {
     #[instrument(skip(db, dto), fields(user.id = %user_id))]
     pub async fn update_profile(
         db: &PgPool,
-        user_id: Uuid,
+        user_id: UserId,
         dto: UpdateProfileDto,
     ) -> Result<User, AppError> {
         debug!("Updating user profile");
@@ -501,7 +509,7 @@ impl UserService {
     #[instrument(skip(db, dto), fields(user.id = %user_id))]
     pub async fn change_password(
         db: &PgPool,
-        user_id: Uuid,
+        user_id: UserId,
         dto: ChangePasswordDto,
     ) -> Result<(), AppError> {
         debug!("Changing user password");
@@ -547,8 +555,8 @@ impl UserService {
     #[allow(dead_code)]
     pub async fn user_has_system_role(
         db: &PgPool,
-        user_id: Uuid,
-        role_id: Uuid,
+        user_id: UserId,
+        role_id: RoleId,
     ) -> Result<bool, AppError> {
         let has_role = sqlx::query_scalar::<_, bool>(
             "SELECT EXISTS(SELECT 1 FROM user_roles WHERE user_id = $1 AND role_id = $2)",
@@ -567,9 +575,9 @@ impl UserService {
     #[allow(dead_code)]
     pub async fn get_user_primary_role(
         db: &PgPool,
-        user_id: Uuid,
-    ) -> Result<Option<Uuid>, AppError> {
-        let role_id = sqlx::query_scalar::<_, Uuid>(
+        user_id: UserId,
+    ) -> Result<Option<RoleId>, AppError> {
+        let role_id = sqlx::query_scalar::<_, RoleId>(
             r#"
             SELECT ur.role_id
             FROM user_roles ur
@@ -590,31 +598,32 @@ impl UserService {
 
     /// Check if user is a system admin
     #[allow(dead_code)]
-    pub async fn is_system_admin(db: &PgPool, user_id: Uuid) -> Result<bool, AppError> {
+    pub async fn is_system_admin(db: &PgPool, user_id: UserId) -> Result<bool, AppError> {
         Self::user_has_system_role(db, user_id, system_roles::SYSTEM_ADMIN).await
     }
 
     /// Check if user is an admin (school admin)
     #[allow(dead_code)]
-    pub async fn is_admin(db: &PgPool, user_id: Uuid) -> Result<bool, AppError> {
+    pub async fn is_admin(db: &PgPool, user_id: UserId) -> Result<bool, AppError> {
         Self::user_has_system_role(db, user_id, system_roles::ADMIN).await
     }
 
     /// Check if user has any of the specified roles
     pub async fn user_has_any_role(
         db: &PgPool,
-        user_id: Uuid,
-        role_ids: &[Uuid],
+        user_id: UserId,
+        role_ids: &[RoleId],
     ) -> Result<bool, AppError> {
         if role_ids.is_empty() {
             return Ok(false);
         }
 
+        let uuid_role_ids: Vec<Uuid> = role_ids.iter().map(|id| id.into_inner()).collect();
         let has_role = sqlx::query_scalar::<_, bool>(
             "SELECT EXISTS(SELECT 1 FROM user_roles WHERE user_id = $1 AND role_id = ANY($2))",
         )
         .bind(user_id)
-        .bind(role_ids)
+        .bind(&uuid_role_ids)
         .fetch_one(db)
         .await
         .context("Failed to check user roles")

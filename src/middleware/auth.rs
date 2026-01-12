@@ -101,6 +101,8 @@ use axum::{
 
 use chalkbyte_auth::{Claims, verify_token};
 use chalkbyte_core::AppError;
+use chalkbyte_models::ids::{RoleId, SchoolId, UserId};
+use uuid::Uuid;
 
 use crate::state::AppState;
 
@@ -212,7 +214,7 @@ impl AuthUser {
     ///
     /// # Arguments
     ///
-    /// * `role_id` - The UUID of the role to check
+    /// * `role_id` - The RoleId to check
     ///
     /// # Returns
     ///
@@ -228,23 +230,25 @@ impl AuthUser {
     /// }
     /// ```
     #[must_use]
-    pub fn has_role(&self, role_id: &uuid::Uuid) -> bool {
-        self.0.role_ids.contains(role_id)
+    pub fn has_role(&self, role_id: &RoleId) -> bool {
+        self.0.role_ids.contains(&role_id.into_inner())
     }
 
     /// Checks if the user has any of the specified roles.
     ///
     /// # Arguments
     ///
-    /// * `role_ids` - A slice of role UUIDs to check
+    /// * `role_ids` - A slice of RoleIds to check
     ///
     /// # Returns
     ///
     /// `true` if the user has at least one of the roles, `false` otherwise.
     #[allow(dead_code)]
     #[must_use]
-    pub fn has_any_role(&self, role_ids: &[uuid::Uuid]) -> bool {
-        role_ids.iter().any(|r| self.has_role(r))
+    pub fn has_any_role(&self, role_ids: &[RoleId]) -> bool {
+        role_ids
+            .iter()
+            .any(|r| self.0.role_ids.contains(&r.into_inner()))
     }
 
     /// Gets the user's school ID.
@@ -269,22 +273,23 @@ impl AuthUser {
     /// }
     /// ```
     #[must_use]
-    pub fn school_id(&self) -> Option<uuid::Uuid> {
-        self.0.school_id
+    pub fn school_id(&self) -> Option<SchoolId> {
+        self.0.school_id.map(SchoolId::from)
     }
 
-    /// Gets the user ID as a UUID.
+    /// Gets the user ID as a UserId.
     ///
     /// # Returns
     ///
-    /// The user's UUID on success.
+    /// The user's UserId on success.
     ///
     /// # Errors
     ///
     /// Returns an unauthorized error if the user ID in the token is not a valid UUID.
     /// This should not happen with properly issued tokens.
-    pub fn user_id(&self) -> Result<uuid::Uuid, AppError> {
-        uuid::Uuid::parse_str(&self.0.sub)
+    pub fn user_id(&self) -> Result<UserId, AppError> {
+        Uuid::parse_str(&self.0.sub)
+            .map(UserId::from)
             .map_err(|_| AppError::unauthorized("Invalid user ID in token".to_string()))
     }
 
@@ -434,8 +439,7 @@ require_permission!(RequireSettingsUpdate, "settings:update");
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::auth::model::Claims;
-    use uuid::Uuid;
+    use chalkbyte_auth::Claims;
 
     fn create_test_claims(permissions: Vec<String>, role_ids: Vec<Uuid>) -> Claims {
         Claims {
@@ -489,23 +493,25 @@ mod tests {
 
     #[test]
     fn test_has_role() {
-        let role_id = Uuid::new_v4();
-        let claims = create_test_claims(vec![], vec![role_id]);
+        let role_uuid = Uuid::new_v4();
+        let role_id = RoleId::from(role_uuid);
+        let claims = create_test_claims(vec![], vec![role_uuid]);
         let auth_user = AuthUser(claims);
 
         assert!(auth_user.has_role(&role_id));
-        assert!(!auth_user.has_role(&Uuid::new_v4()));
+        assert!(!auth_user.has_role(&RoleId::from(Uuid::new_v4())));
     }
 
     #[test]
     fn test_has_any_role() {
-        let role_id1 = Uuid::new_v4();
-        let role_id2 = Uuid::new_v4();
-        let claims = create_test_claims(vec![], vec![role_id1]);
+        let role_uuid1 = Uuid::new_v4();
+        let role_id1 = RoleId::from(role_uuid1);
+        let role_id2 = RoleId::from(Uuid::new_v4());
+        let claims = create_test_claims(vec![], vec![role_uuid1]);
         let auth_user = AuthUser(claims);
 
         assert!(auth_user.has_any_role(&[role_id1, role_id2]));
-        assert!(!auth_user.has_any_role(&[Uuid::new_v4()]));
+        assert!(!auth_user.has_any_role(&[RoleId::from(Uuid::new_v4())]));
     }
 
     #[test]
@@ -522,16 +528,17 @@ mod tests {
         };
         let auth_user = AuthUser(claims);
 
-        assert_eq!(auth_user.user_id().unwrap(), user_id);
+        assert_eq!(auth_user.user_id().unwrap(), UserId::from(user_id));
     }
 
     #[test]
     fn test_school_id() {
-        let school_id = Uuid::new_v4();
+        let school_uuid = Uuid::new_v4();
+        let school_id = SchoolId::from(school_uuid);
         let claims = Claims {
             sub: Uuid::new_v4().to_string(),
             email: "test@example.com".to_string(),
-            school_id: Some(school_id),
+            school_id: Some(school_uuid),
             role_ids: vec![],
             permissions: vec![],
             exp: 9999999999,

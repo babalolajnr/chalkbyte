@@ -1,9 +1,9 @@
 use anyhow::anyhow;
 use sqlx::PgPool;
 use tracing::instrument;
-use uuid::Uuid;
 
 use chalkbyte_core::{AppError, PaginationMeta};
+use chalkbyte_models::ids::{PermissionId, RoleId, SchoolId, UserId};
 
 use super::model::{
     CreateRoleDto, PaginatedPermissionsResponse, PaginatedRolesResponse, Permission,
@@ -63,13 +63,12 @@ pub async fn get_all_permissions(
 }
 
 #[instrument(skip(db))]
-pub async fn get_permission_by_id(db: &PgPool, id: Uuid) -> Result<Permission, AppError> {
-    sqlx::query_as!(
-        Permission,
+pub async fn get_permission_by_id(db: &PgPool, id: PermissionId) -> Result<Permission, AppError> {
+    sqlx::query_as::<_, Permission>(
         r#"SELECT id, name, description, category, created_at, updated_at
         FROM permissions WHERE id = $1"#,
-        id
     )
+    .bind(id)
     .fetch_optional(db)
     .await?
     .ok_or_else(|| AppError::not_found(anyhow!("Permission not found")))
@@ -83,15 +82,14 @@ pub async fn get_permission_by_id(db: &PgPool, id: Uuid) -> Result<Permission, A
 pub async fn get_role_by_slug(
     db: &PgPool,
     slug: &str,
-    school_id: Option<Uuid>,
+    school_id: Option<SchoolId>,
 ) -> Result<RoleWithPermissions, AppError> {
-    let role = sqlx::query_as!(
-        Role,
+    let role = sqlx::query_as::<_, Role>(
         r#"SELECT id, name, slug, description, school_id, is_system_role, created_at, updated_at
         FROM roles WHERE slug = $1 AND (school_id = $2 OR (school_id IS NULL AND $2 IS NULL))"#,
-        slug,
-        school_id
     )
+    .bind(slug)
+    .bind(school_id)
     .fetch_optional(db)
     .await?
     .ok_or_else(|| AppError::not_found(anyhow!("Role not found")))?;
@@ -117,13 +115,13 @@ pub async fn get_system_role_by_slug(
 pub async fn get_role_id_by_slug(
     db: &PgPool,
     slug: &str,
-    school_id: Option<Uuid>,
-) -> Result<Uuid, AppError> {
-    sqlx::query_scalar!(
+    school_id: Option<SchoolId>,
+) -> Result<RoleId, AppError> {
+    sqlx::query_scalar::<_, RoleId>(
         r#"SELECT id FROM roles WHERE slug = $1 AND (school_id = $2 OR (school_id IS NULL AND $2 IS NULL))"#,
-        slug,
-        school_id
     )
+    .bind(slug)
+    .bind(school_id)
     .fetch_optional(db)
     .await?
     .ok_or_else(|| AppError::not_found(anyhow!("Role not found")))
@@ -132,21 +130,21 @@ pub async fn get_role_id_by_slug(
 /// Get system role ID by slug
 #[allow(dead_code)]
 #[instrument(skip(db))]
-pub async fn get_system_role_id_by_slug(db: &PgPool, slug: &str) -> Result<Uuid, AppError> {
+pub async fn get_system_role_id_by_slug(db: &PgPool, slug: &str) -> Result<RoleId, AppError> {
     get_role_id_by_slug(db, slug, None).await
 }
 
 #[instrument(skip(db))]
 pub async fn get_permissions_by_ids(
     db: &PgPool,
-    ids: &[Uuid],
+    ids: &[PermissionId],
 ) -> Result<Vec<Permission>, AppError> {
-    let permissions = sqlx::query_as!(
-        Permission,
+    let uuid_ids: Vec<uuid::Uuid> = ids.iter().map(|id| id.into_inner()).collect();
+    let permissions = sqlx::query_as::<_, Permission>(
         r#"SELECT id, name, description, category, created_at, updated_at
         FROM permissions WHERE id = ANY($1)"#,
-        ids
     )
+    .bind(&uuid_ids)
     .fetch_all(db)
     .await?;
 
@@ -159,9 +157,9 @@ pub async fn get_permissions_by_ids(
 pub async fn create_role(
     db: &PgPool,
     dto: CreateRoleDto,
-    requester_school_id: Option<Uuid>,
+    requester_school_id: Option<SchoolId>,
     is_system_admin: bool,
-    _created_by: Uuid,
+    _created_by: UserId,
 ) -> Result<RoleWithPermissions, AppError> {
     // Determine if this is a system role
     let is_system_role = is_system_admin && dto.school_id.is_none();
@@ -184,17 +182,16 @@ pub async fn create_role(
     let slug = generate_slug(&dto.name);
 
     // Create the role
-    let role = sqlx::query_as!(
-        Role,
+    let role = sqlx::query_as::<_, Role>(
         r#"INSERT INTO roles (name, slug, description, school_id, is_system_role)
         VALUES ($1, $2, $3, $4, $5)
         RETURNING id, name, slug, description, school_id, is_system_role, created_at, updated_at"#,
-        dto.name,
-        slug,
-        dto.description,
-        school_id,
-        is_system_role
     )
+    .bind(&dto.name)
+    .bind(&slug)
+    .bind(&dto.description)
+    .bind(school_id)
+    .bind(is_system_role)
     .fetch_one(db)
     .await
     .map_err(|e| {
@@ -222,7 +219,7 @@ pub async fn create_role(
 pub async fn get_roles(
     db: &PgPool,
     params: RoleFilterParams,
-    requester_school_id: Option<Uuid>,
+    requester_school_id: Option<SchoolId>,
     is_system_admin: bool,
 ) -> Result<PaginatedRolesResponse, AppError> {
     let limit = params.pagination.limit();
@@ -233,60 +230,55 @@ pub async fn get_roles(
         // System admin can see all roles
         if let Some(is_system) = params.is_system_role {
             if is_system {
-                sqlx::query_as!(
-                    Role,
+                sqlx::query_as::<_, Role>(
                     r#"SELECT id, name, slug, description, school_id, is_system_role, created_at, updated_at
                     FROM roles WHERE is_system_role = true
                     ORDER BY name LIMIT $1 OFFSET $2"#,
-                    limit,
-                    offset
                 )
+                .bind(limit)
+                .bind(offset)
                 .fetch_all(db)
                 .await?
             } else if let Some(school_id) = params.school_id {
-                sqlx::query_as!(
-                    Role,
+                sqlx::query_as::<_, Role>(
                     r#"SELECT id, name, slug, description, school_id, is_system_role, created_at, updated_at
                     FROM roles WHERE school_id = $1
                     ORDER BY name LIMIT $2 OFFSET $3"#,
-                    school_id,
-                    limit,
-                    offset
                 )
+                .bind(school_id)
+                .bind(limit)
+                .bind(offset)
                 .fetch_all(db)
                 .await?
             } else {
-                sqlx::query_as!(
-                    Role,
+                sqlx::query_as::<_, Role>(
                     r#"SELECT id, name, slug, description, school_id, is_system_role, created_at, updated_at
                     FROM roles WHERE is_system_role = false
                     ORDER BY name LIMIT $1 OFFSET $2"#,
-                    limit,
-                    offset
                 )
+                .bind(limit)
+                .bind(offset)
                 .fetch_all(db)
                 .await?
             }
         } else if let Some(school_id) = params.school_id {
-            sqlx::query_as!(
-                Role,
+            sqlx::query_as::<_, Role>(
                 r#"SELECT id, name, slug, description, school_id, is_system_role, created_at, updated_at
                 FROM roles WHERE school_id = $1
                 ORDER BY name LIMIT $2 OFFSET $3"#,
-                school_id,
-                limit,
-                offset
             )
+            .bind(school_id)
+            .bind(limit)
+            .bind(offset)
             .fetch_all(db)
             .await?
         } else {
-            sqlx::query_as!(
-                Role,
+            sqlx::query_as::<_, Role>(
                 r#"SELECT id, name, slug, description, school_id, is_system_role, created_at, updated_at
                 FROM roles ORDER BY name LIMIT $1 OFFSET $2"#,
-                limit,
-                offset
             )
+            .bind(limit)
+            .bind(offset)
             .fetch_all(db)
             .await?
         }
@@ -295,15 +287,14 @@ pub async fn get_roles(
         let school_id = requester_school_id
             .ok_or_else(|| AppError::bad_request(anyhow!("School admin must have a school_id")))?;
 
-        sqlx::query_as!(
-            Role,
+        sqlx::query_as::<_, Role>(
             r#"SELECT id, name, slug, description, school_id, is_system_role, created_at, updated_at
             FROM roles WHERE school_id = $1
             ORDER BY name LIMIT $2 OFFSET $3"#,
-            school_id,
-            limit,
-            offset
         )
+        .bind(school_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(db)
         .await?
     };
@@ -312,38 +303,39 @@ pub async fn get_roles(
     let total: i64 = if is_system_admin {
         if let Some(is_system) = params.is_system_role {
             if is_system {
-                sqlx::query_scalar!("SELECT COUNT(*) FROM roles WHERE is_system_role = true")
-                    .fetch_one(db)
-                    .await?
-                    .unwrap_or(0)
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM roles WHERE is_system_role = true",
+                )
+                .fetch_one(db)
+                .await?
             } else if let Some(school_id) = params.school_id {
-                sqlx::query_scalar!("SELECT COUNT(*) FROM roles WHERE school_id = $1", school_id)
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM roles WHERE school_id = $1")
+                    .bind(school_id)
                     .fetch_one(db)
                     .await?
-                    .unwrap_or(0)
             } else {
-                sqlx::query_scalar!("SELECT COUNT(*) FROM roles WHERE is_system_role = false")
-                    .fetch_one(db)
-                    .await?
-                    .unwrap_or(0)
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM roles WHERE is_system_role = false",
+                )
+                .fetch_one(db)
+                .await?
             }
         } else if let Some(school_id) = params.school_id {
-            sqlx::query_scalar!("SELECT COUNT(*) FROM roles WHERE school_id = $1", school_id)
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM roles WHERE school_id = $1")
+                .bind(school_id)
                 .fetch_one(db)
                 .await?
-                .unwrap_or(0)
         } else {
-            sqlx::query_scalar!("SELECT COUNT(*) FROM roles")
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM roles")
                 .fetch_one(db)
                 .await?
-                .unwrap_or(0)
         }
     } else {
         let school_id = requester_school_id.unwrap();
-        sqlx::query_scalar!("SELECT COUNT(*) FROM roles WHERE school_id = $1", school_id)
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM roles WHERE school_id = $1")
+            .bind(school_id)
             .fetch_one(db)
             .await?
-            .unwrap_or(0)
     };
 
     // Calculate has_more before consuming roles
@@ -374,16 +366,15 @@ pub async fn get_roles(
 #[instrument(skip(db))]
 pub async fn get_role_by_id(
     db: &PgPool,
-    id: Uuid,
-    requester_school_id: Option<Uuid>,
+    id: RoleId,
+    requester_school_id: Option<SchoolId>,
     is_system_admin: bool,
 ) -> Result<RoleWithPermissions, AppError> {
-    let role = sqlx::query_as!(
-        Role,
+    let role = sqlx::query_as::<_, Role>(
         r#"SELECT id, name, slug, description, school_id, is_system_role, created_at, updated_at
         FROM roles WHERE id = $1"#,
-        id
     )
+    .bind(id)
     .fetch_optional(db)
     .await?
     .ok_or_else(|| AppError::not_found(anyhow!("Role not found")))?;
@@ -410,9 +401,9 @@ pub async fn get_role_by_id(
 #[instrument(skip(db))]
 pub async fn update_role(
     db: &PgPool,
-    id: Uuid,
+    id: RoleId,
     dto: UpdateRoleDto,
-    requester_school_id: Option<Uuid>,
+    requester_school_id: Option<SchoolId>,
     is_system_admin: bool,
 ) -> Result<RoleWithPermissions, AppError> {
     // First verify the role exists and user has access
@@ -428,16 +419,15 @@ pub async fn update_role(
     };
     let description = dto.description.or(existing.role.description);
 
-    let role = sqlx::query_as!(
-        Role,
+    let role = sqlx::query_as::<_, Role>(
         r#"UPDATE roles SET name = $1, slug = $2, description = $3, updated_at = NOW()
         WHERE id = $4
         RETURNING id, name, slug, description, school_id, is_system_role, created_at, updated_at"#,
-        name,
-        slug,
-        description,
-        id
     )
+    .bind(&name)
+    .bind(&slug)
+    .bind(&description)
+    .bind(id)
     .fetch_one(db)
     .await
     .map_err(|e| {
@@ -459,14 +449,15 @@ pub async fn update_role(
 #[instrument(skip(db))]
 pub async fn delete_role(
     db: &PgPool,
-    id: Uuid,
-    requester_school_id: Option<Uuid>,
+    id: RoleId,
+    requester_school_id: Option<SchoolId>,
     is_system_admin: bool,
 ) -> Result<(), AppError> {
     // First verify the role exists and user has access
     let _ = get_role_by_id(db, id, requester_school_id, is_system_admin).await?;
 
-    sqlx::query!("DELETE FROM roles WHERE id = $1", id)
+    sqlx::query("DELETE FROM roles WHERE id = $1")
+        .bind(id)
         .execute(db)
         .await?;
 
@@ -476,16 +467,18 @@ pub async fn delete_role(
 // ============ Role Permissions Services ============
 
 #[instrument(skip(db))]
-pub async fn get_role_permissions(db: &PgPool, role_id: Uuid) -> Result<Vec<Permission>, AppError> {
-    let permissions = sqlx::query_as!(
-        Permission,
+pub async fn get_role_permissions(
+    db: &PgPool,
+    role_id: RoleId,
+) -> Result<Vec<Permission>, AppError> {
+    let permissions = sqlx::query_as::<_, Permission>(
         r#"SELECT p.id, p.name, p.description, p.category, p.created_at, p.updated_at
         FROM permissions p
         INNER JOIN role_permissions rp ON p.id = rp.permission_id
         WHERE rp.role_id = $1
         ORDER BY p.category, p.name"#,
-        role_id
     )
+    .bind(role_id)
     .fetch_all(db)
     .await?;
 
@@ -494,18 +487,18 @@ pub async fn get_role_permissions(db: &PgPool, role_id: Uuid) -> Result<Vec<Perm
 
 async fn assign_permissions_to_role_internal(
     db: &PgPool,
-    role_id: Uuid,
-    permission_ids: &[Uuid],
+    role_id: RoleId,
+    permission_ids: &[PermissionId],
 ) -> Result<Vec<Permission>, AppError> {
     // Insert permissions (ignore duplicates)
     for permission_id in permission_ids {
-        sqlx::query!(
+        sqlx::query(
             r#"INSERT INTO role_permissions (role_id, permission_id)
             VALUES ($1, $2)
             ON CONFLICT (role_id, permission_id) DO NOTHING"#,
-            role_id,
-            permission_id
         )
+        .bind(role_id)
+        .bind(*permission_id)
         .execute(db)
         .await?;
     }
@@ -516,9 +509,9 @@ async fn assign_permissions_to_role_internal(
 #[instrument(skip(db))]
 pub async fn assign_permissions_to_role(
     db: &PgPool,
-    role_id: Uuid,
-    permission_ids: Vec<Uuid>,
-    requester_school_id: Option<Uuid>,
+    role_id: RoleId,
+    permission_ids: Vec<PermissionId>,
+    requester_school_id: Option<SchoolId>,
     is_system_admin: bool,
 ) -> Result<RoleWithPermissions, AppError> {
     // Verify role exists and user has access
@@ -553,21 +546,19 @@ pub async fn assign_permissions_to_role(
 #[instrument(skip(db))]
 pub async fn remove_permission_from_role(
     db: &PgPool,
-    role_id: Uuid,
-    permission_id: Uuid,
-    requester_school_id: Option<Uuid>,
+    role_id: RoleId,
+    permission_id: PermissionId,
+    requester_school_id: Option<SchoolId>,
     is_system_admin: bool,
 ) -> Result<RoleWithPermissions, AppError> {
     // Verify role exists and user has access
     let role = get_role_by_id(db, role_id, requester_school_id, is_system_admin).await?;
 
-    sqlx::query!(
-        "DELETE FROM role_permissions WHERE role_id = $1 AND permission_id = $2",
-        role_id,
-        permission_id
-    )
-    .execute(db)
-    .await?;
+    sqlx::query("DELETE FROM role_permissions WHERE role_id = $1 AND permission_id = $2")
+        .bind(role_id)
+        .bind(permission_id)
+        .execute(db)
+        .await?;
 
     let permissions = get_role_permissions(db, role_id).await?;
 
@@ -579,23 +570,32 @@ pub async fn remove_permission_from_role(
 
 // ============ User Role Assignment Services ============
 
+#[derive(sqlx::FromRow)]
+struct UserSchoolRow {
+    #[allow(dead_code)]
+    id: UserId,
+    school_id: Option<SchoolId>,
+}
+
 #[instrument(skip(db))]
 pub async fn assign_role_to_user(
     db: &PgPool,
-    user_id: Uuid,
-    role_id: Uuid,
-    assigned_by: Uuid,
-    requester_school_id: Option<Uuid>,
+    user_id: UserId,
+    role_id: RoleId,
+    assigned_by: UserId,
+    requester_school_id: Option<SchoolId>,
     is_system_admin: bool,
 ) -> Result<RoleAssignmentResponse, AppError> {
     // Verify role exists and requester has access
     let role = get_role_by_id(db, role_id, requester_school_id, is_system_admin).await?;
 
     // Verify the target user exists
-    let target_user = sqlx::query!("SELECT id, school_id FROM users WHERE id = $1", user_id)
-        .fetch_optional(db)
-        .await?
-        .ok_or_else(|| AppError::not_found(anyhow!("User not found")))?;
+    let target_user =
+        sqlx::query_as::<_, UserSchoolRow>("SELECT id, school_id FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(db)
+            .await?
+            .ok_or_else(|| AppError::not_found(anyhow!("User not found")))?;
 
     // Authorization checks for non-system admins
     if !is_system_admin && role.role.is_system_role {
@@ -612,14 +612,14 @@ pub async fn assign_role_to_user(
         )));
     }
 
-    sqlx::query!(
+    sqlx::query(
         r#"INSERT INTO user_roles (user_id, role_id, assigned_by)
         VALUES ($1, $2, $3)
         ON CONFLICT (user_id, role_id) DO NOTHING"#,
-        user_id,
-        role_id,
-        assigned_by
     )
+    .bind(user_id)
+    .bind(role_id)
+    .bind(assigned_by)
     .execute(db)
     .await
     .map_err(|e| {
@@ -641,19 +641,21 @@ pub async fn assign_role_to_user(
 #[instrument(skip(db))]
 pub async fn remove_role_from_user(
     db: &PgPool,
-    user_id: Uuid,
-    role_id: Uuid,
-    requester_school_id: Option<Uuid>,
+    user_id: UserId,
+    role_id: RoleId,
+    requester_school_id: Option<SchoolId>,
     is_system_admin: bool,
 ) -> Result<(), AppError> {
     // Verify role exists and requester has access
     let role = get_role_by_id(db, role_id, requester_school_id, is_system_admin).await?;
 
     // Verify the target user exists and is accessible
-    let target_user = sqlx::query!("SELECT id, school_id FROM users WHERE id = $1", user_id)
-        .fetch_optional(db)
-        .await?
-        .ok_or_else(|| AppError::not_found(anyhow!("User not found")))?;
+    let target_user =
+        sqlx::query_as::<_, UserSchoolRow>("SELECT id, school_id FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(db)
+            .await?
+            .ok_or_else(|| AppError::not_found(anyhow!("User not found")))?;
 
     // Authorization checks
     if !is_system_admin {
@@ -669,13 +671,11 @@ pub async fn remove_role_from_user(
         }
     }
 
-    let result = sqlx::query!(
-        "DELETE FROM user_roles WHERE user_id = $1 AND role_id = $2",
-        user_id,
-        role_id
-    )
-    .execute(db)
-    .await?;
+    let result = sqlx::query("DELETE FROM user_roles WHERE user_id = $1 AND role_id = $2")
+        .bind(user_id)
+        .bind(role_id)
+        .execute(db)
+        .await?;
 
     if result.rows_affected() == 0 {
         return Err(AppError::not_found(anyhow!(
@@ -691,17 +691,16 @@ pub async fn remove_role_from_user(
 #[instrument(skip(db))]
 pub async fn get_user_roles_internal(
     db: &PgPool,
-    user_id: Uuid,
+    user_id: UserId,
 ) -> Result<Vec<RoleWithPermissions>, AppError> {
-    let roles = sqlx::query_as!(
-        Role,
+    let roles = sqlx::query_as::<_, Role>(
         r#"SELECT r.id, r.name, r.slug, r.description, r.school_id, r.is_system_role, r.created_at, r.updated_at
         FROM roles r
         INNER JOIN user_roles ur ON r.id = ur.role_id
         WHERE ur.user_id = $1
         ORDER BY r.name"#,
-        user_id
     )
+    .bind(user_id)
     .fetch_all(db)
     .await?;
 
@@ -717,17 +716,16 @@ pub async fn get_user_roles_internal(
 #[instrument(skip(db))]
 pub async fn get_user_roles(
     db: &PgPool,
-    user_id: Uuid,
+    user_id: UserId,
 ) -> Result<Vec<RoleWithPermissions>, AppError> {
-    let roles = sqlx::query_as!(
-        Role,
+    let roles = sqlx::query_as::<_, Role>(
         r#"SELECT r.id, r.name, r.slug, r.description, r.school_id, r.is_system_role, r.created_at, r.updated_at
         FROM roles r
         INNER JOIN user_roles ur ON r.id = ur.role_id
         WHERE ur.user_id = $1
         ORDER BY r.name"#,
-        user_id
     )
+    .bind(user_id)
     .fetch_all(db)
     .await?;
 
@@ -745,37 +743,39 @@ pub async fn get_user_roles(
 #[instrument(skip(db))]
 pub async fn user_has_permission(
     db: &PgPool,
-    user_id: Uuid,
+    user_id: UserId,
     permission_name: &str,
 ) -> Result<bool, AppError> {
-    let result = sqlx::query_scalar!(
+    let result = sqlx::query_scalar::<_, bool>(
         r#"SELECT EXISTS(
             SELECT 1 FROM user_roles ur
             INNER JOIN role_permissions rp ON ur.role_id = rp.role_id
             INNER JOIN permissions p ON rp.permission_id = p.id
             WHERE ur.user_id = $1 AND p.name = $2
         )"#,
-        user_id,
-        permission_name
     )
+    .bind(user_id)
+    .bind(permission_name)
     .fetch_one(db)
     .await?;
 
-    Ok(result.unwrap_or(false))
+    Ok(result)
 }
 
 #[instrument(skip(db))]
-pub async fn get_user_permissions(db: &PgPool, user_id: Uuid) -> Result<Vec<Permission>, AppError> {
-    let permissions = sqlx::query_as!(
-        Permission,
+pub async fn get_user_permissions(
+    db: &PgPool,
+    user_id: UserId,
+) -> Result<Vec<Permission>, AppError> {
+    let permissions = sqlx::query_as::<_, Permission>(
         r#"SELECT DISTINCT p.id, p.name, p.description, p.category, p.created_at, p.updated_at
         FROM permissions p
         INNER JOIN role_permissions rp ON p.id = rp.permission_id
         INNER JOIN user_roles ur ON rp.role_id = ur.role_id
         WHERE ur.user_id = $1
         ORDER BY p.category, p.name"#,
-        user_id
     )
+    .bind(user_id)
     .fetch_all(db)
     .await?;
 

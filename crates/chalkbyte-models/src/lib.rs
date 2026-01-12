@@ -9,6 +9,7 @@
 //!
 //! - [`auth`]: Authentication models (login, MFA, password reset)
 //! - [`branches`]: School branch models
+//! - [`ids`]: Strongly-typed ID newtypes for type safety
 //! - [`levels`]: Educational level models
 //! - [`mfa`]: Multi-factor authentication models
 //! - [`roles`]: Role and permission models
@@ -21,20 +22,37 @@
 //! use chalkbyte_models::users::{User, CreateUserDto, system_roles};
 //! use chalkbyte_models::auth::{LoginRequest, LoginResponse};
 //! use chalkbyte_models::roles::{Role, Permission};
+//! use chalkbyte_models::ids::{UserId, SchoolId, RoleId};
+//!
+//! // NewType IDs prevent mixing up different ID types
+//! fn get_user(id: UserId) { /* ... */ }
+//! fn get_school(id: SchoolId) { /* ... */ }
+//!
+//! let user_id = UserId::new();
+//! let school_id = SchoolId::new();
+//!
+//! get_user(user_id);    // OK
+//! // get_user(school_id); // Compile error! Type mismatch.
 //!
 //! // Check if a role is a system role
-//! if system_roles::is_system_role(&role_id) {
+//! if system_roles::is_system_role(&system_roles::ADMIN) {
 //!     println!("This is a system role");
 //! }
 //! ```
 
 pub mod auth;
 pub mod branches;
+pub mod ids;
 pub mod levels;
 pub mod mfa;
 pub mod roles;
 pub mod students;
 pub mod users;
+
+// Re-export ID types at crate root for convenience
+pub use ids::{
+    BranchId, LevelId, PermissionId, RoleId, RolePermissionId, SchoolId, UserId, UserRoleId,
+};
 
 // Re-export commonly used types at crate root for convenience
 pub use auth::{

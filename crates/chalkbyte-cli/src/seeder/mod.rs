@@ -49,6 +49,7 @@ pub mod users;
 pub use models::{LevelsPerSchool, SeedConfig, UsersPerSchool};
 
 use bcrypt::hash;
+use chalkbyte_models::{BranchId, LevelId, SchoolId};
 use sqlx::PgPool;
 use std::time::Instant;
 
@@ -134,32 +135,32 @@ pub async fn seed_all(db: &PgPool, config: SeedConfig) -> Result<(), Box<dyn std
 pub async fn seed_schools_only(
     db: &PgPool,
     count: usize,
-) -> Result<Vec<uuid::Uuid>, Box<dyn std::error::Error>> {
+) -> Result<Vec<SchoolId>, Box<dyn std::error::Error>> {
     schools::seed_schools(db, count).await
 }
 
 /// Seeds levels for existing schools
 pub async fn seed_levels_only(
     db: &PgPool,
-    school_ids: &[uuid::Uuid],
+    school_ids: &[SchoolId],
     levels_per_school: usize,
-) -> Result<Vec<uuid::Uuid>, Box<dyn std::error::Error>> {
+) -> Result<Vec<LevelId>, Box<dyn std::error::Error>> {
     levels::seed_levels(db, school_ids, levels_per_school).await
 }
 
 /// Seeds branches for existing levels
 pub async fn seed_branches_only(
     db: &PgPool,
-    level_ids: &[uuid::Uuid],
+    level_ids: &[LevelId],
     branches_per_level: usize,
-) -> Result<Vec<uuid::Uuid>, Box<dyn std::error::Error>> {
+) -> Result<Vec<BranchId>, Box<dyn std::error::Error>> {
     branches::seed_branches(db, level_ids, branches_per_level).await
 }
 
 /// Seeds staff users for existing schools
 pub async fn seed_staff_only(
     db: &PgPool,
-    school_ids: &[uuid::Uuid],
+    school_ids: &[SchoolId],
     admins_per_school: usize,
     teachers_per_school: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -179,7 +180,7 @@ pub async fn seed_staff_only(
 /// Seeds students for existing branches
 pub async fn seed_students_only(
     db: &PgPool,
-    branches_with_context: &[(uuid::Uuid, uuid::Uuid, uuid::Uuid)],
+    branches_with_context: &[(BranchId, LevelId, SchoolId)],
     students_per_branch: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let password_hash = hash_password()?;
@@ -246,12 +247,12 @@ fn hash_password() -> Result<String, Box<dyn std::error::Error>> {
 
 /// Builds (branch_id, level_id, school_id) tuples for student assignment
 fn build_branch_context(
-    school_ids: &[uuid::Uuid],
-    level_ids: &[uuid::Uuid],
-    branch_ids: &[uuid::Uuid],
+    school_ids: &[SchoolId],
+    level_ids: &[LevelId],
+    branch_ids: &[BranchId],
     levels_per_school: usize,
     branches_per_level: usize,
-) -> Vec<(uuid::Uuid, uuid::Uuid, uuid::Uuid)> {
+) -> Vec<(BranchId, LevelId, SchoolId)> {
     let mut result = Vec::with_capacity(branch_ids.len());
 
     for (school_idx, &school_id) in school_ids.iter().enumerate() {

@@ -1,5 +1,6 @@
 use chalkbyte_cli::create_system_admin;
 use chalkbyte_cli::seeder::{self, LevelsPerSchool, SeedConfig, UsersPerSchool};
+use chalkbyte_models::ids::{BranchId, LevelId, SchoolId};
 use clap::{Parser, Subcommand};
 use dialoguer::{Input, Password};
 use dotenvy::dotenv;
@@ -231,17 +232,18 @@ async fn handle_seed_schools(pool: &sqlx::postgres::PgPool, schools: usize) {
 
 async fn handle_seed_levels(pool: &sqlx::postgres::PgPool, levels_per_school: usize) {
     // Get all existing schools
-    let school_ids: Vec<uuid::Uuid> =
+    let school_uuids: Vec<uuid::Uuid> =
         sqlx::query_scalar!("SELECT id FROM schools ORDER BY created_at")
             .fetch_all(pool)
             .await
             .expect("Failed to fetch schools");
 
-    if school_ids.is_empty() {
+    if school_uuids.is_empty() {
         eprintln!("❌ No schools found. Run `seed-schools` first.");
         std::process::exit(1);
     }
 
+    let school_ids: Vec<SchoolId> = school_uuids.into_iter().map(SchoolId::from).collect();
     match seeder::seed_levels_only(pool, &school_ids, levels_per_school).await {
         Ok(ids) => {
             println!("✅ Created {} levels", ids.len());
@@ -255,17 +257,18 @@ async fn handle_seed_levels(pool: &sqlx::postgres::PgPool, levels_per_school: us
 
 async fn handle_seed_branches(pool: &sqlx::postgres::PgPool, branches_per_level: usize) {
     // Get all existing levels
-    let level_ids: Vec<uuid::Uuid> =
+    let level_uuids: Vec<uuid::Uuid> =
         sqlx::query_scalar!("SELECT id FROM levels ORDER BY school_id, name")
             .fetch_all(pool)
             .await
             .expect("Failed to fetch levels");
 
-    if level_ids.is_empty() {
+    if level_uuids.is_empty() {
         eprintln!("❌ No levels found. Run `seed-levels` first.");
         std::process::exit(1);
     }
 
+    let level_ids: Vec<LevelId> = level_uuids.into_iter().map(LevelId::from).collect();
     match seeder::seed_branches_only(pool, &level_ids, branches_per_level).await {
         Ok(ids) => {
             println!("✅ Created {} branches", ids.len());
@@ -283,17 +286,18 @@ async fn handle_seed_staff(
     teachers_per_school: usize,
 ) {
     // Get all existing schools
-    let school_ids: Vec<uuid::Uuid> =
+    let school_uuids: Vec<uuid::Uuid> =
         sqlx::query_scalar!("SELECT id FROM schools ORDER BY created_at")
             .fetch_all(pool)
             .await
             .expect("Failed to fetch schools");
 
-    if school_ids.is_empty() {
+    if school_uuids.is_empty() {
         eprintln!("❌ No schools found. Run `seed-schools` first.");
         std::process::exit(1);
     }
 
+    let school_ids: Vec<SchoolId> = school_uuids.into_iter().map(SchoolId::from).collect();
     match seeder::seed_staff_only(pool, &school_ids, admins_per_school, teachers_per_school).await {
         Ok(_) => {
             let total = school_ids.len() * (admins_per_school + teachers_per_school);
@@ -325,9 +329,15 @@ async fn handle_seed_students(pool: &sqlx::postgres::PgPool, students_per_branch
         std::process::exit(1);
     }
 
-    let branches_with_context: Vec<(uuid::Uuid, uuid::Uuid, uuid::Uuid)> = rows
+    let branches_with_context: Vec<(BranchId, LevelId, SchoolId)> = rows
         .iter()
-        .map(|r| (r.branch_id, r.level_id, r.school_id))
+        .map(|r| {
+            (
+                BranchId::from(r.branch_id),
+                LevelId::from(r.level_id),
+                SchoolId::from(r.school_id),
+            )
+        })
         .collect();
 
     match seeder::seed_students_only(pool, &branches_with_context, students_per_branch).await {

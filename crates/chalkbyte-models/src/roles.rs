@@ -3,11 +3,11 @@
 //! This module contains all data structures related to role-based access control,
 //! including roles, permissions, and their relationships.
 
+use crate::ids::{PermissionId, RoleId, RolePermissionId, SchoolId, UserId, UserRoleId};
 use chalkbyte_core::PaginationParams;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
-use uuid::Uuid;
 use validator::Validate;
 
 /// Generate a slug from a name
@@ -49,7 +49,7 @@ pub fn generate_slug(name: &str) -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct Permission {
-    pub id: Uuid,
+    pub id: PermissionId,
     pub name: String,
     pub description: Option<String>,
     pub category: String,
@@ -59,11 +59,11 @@ pub struct Permission {
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct Role {
-    pub id: Uuid,
+    pub id: RoleId,
     pub name: String,
     pub slug: String,
     pub description: Option<String>,
-    pub school_id: Option<Uuid>,
+    pub school_id: Option<SchoolId>,
     pub is_system_role: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -79,25 +79,25 @@ pub struct RoleWithPermissions {
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct RolePermission {
-    pub id: Uuid,
-    pub role_id: Uuid,
-    pub permission_id: Uuid,
+    pub id: RolePermissionId,
+    pub role_id: RoleId,
+    pub permission_id: PermissionId,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct UserRole {
-    pub id: Uuid,
-    pub user_id: Uuid,
-    pub role_id: Uuid,
+    pub id: UserRoleId,
+    pub user_id: UserId,
+    pub role_id: RoleId,
     pub assigned_at: chrono::DateTime<chrono::Utc>,
-    pub assigned_by: Option<Uuid>,
+    pub assigned_by: Option<UserId>,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct UserWithRoles {
-    pub user_id: Uuid,
+    pub user_id: UserId,
     pub roles: Vec<RoleWithPermissions>,
 }
 
@@ -114,9 +114,9 @@ pub struct CreateRoleDto {
     #[validate(length(max = 500, message = "Description must not exceed 500 characters"))]
     pub description: Option<String>,
     /// If provided, creates a school-scoped role. If null and user is system admin, creates a system role.
-    pub school_id: Option<Uuid>,
+    pub school_id: Option<SchoolId>,
     /// Permission IDs to assign to this role
-    pub permission_ids: Option<Vec<Uuid>>,
+    pub permission_ids: Option<Vec<PermissionId>>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
@@ -133,18 +133,18 @@ pub struct UpdateRoleDto {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AssignPermissionsDto {
-    pub permission_ids: Vec<Uuid>,
+    pub permission_ids: Vec<PermissionId>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AssignRoleToUserDto {
-    pub role_id: Uuid,
+    pub role_id: RoleId,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RoleFilterParams {
     /// Filter by school_id (null for system roles)
-    pub school_id: Option<Uuid>,
+    pub school_id: Option<SchoolId>,
     /// Filter system roles only
     pub is_system_role: Option<bool>,
     /// Search by name
@@ -177,8 +177,8 @@ pub struct PaginatedPermissionsResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct RoleAssignmentResponse {
     pub message: String,
-    pub user_id: Uuid,
-    pub role_id: Uuid,
+    pub user_id: UserId,
+    pub role_id: RoleId,
 }
 
 #[allow(dead_code)]

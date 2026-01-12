@@ -3,30 +3,30 @@
 //! This module contains all data structures related to educational levels,
 //! including level entities, request/response DTOs, and filtering parameters.
 
+use crate::ids::{LevelId, SchoolId, UserId};
 use chalkbyte_core::{PaginationMeta, PaginationParams};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
-use uuid::Uuid;
 use validator::Validate;
 
 #[derive(Debug, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct Level {
-    pub id: Uuid,
+    pub id: LevelId,
     pub name: String,
     pub description: Option<String>,
-    pub school_id: Uuid,
+    pub school_id: SchoolId,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct LevelWithStats {
-    pub id: Uuid,
+    pub id: LevelId,
     pub name: String,
     pub description: Option<String>,
-    pub school_id: Uuid,
+    pub school_id: SchoolId,
     pub student_count: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -38,7 +38,7 @@ pub struct CreateLevelDto {
     pub name: String,
     pub description: Option<String>,
     /// School ID - required for system admins, ignored for school admins
-    pub school_id: Option<Uuid>,
+    pub school_id: Option<SchoolId>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
@@ -52,7 +52,7 @@ pub struct UpdateLevelDto {
 pub struct LevelFilterParams {
     pub name: Option<String>,
     /// School ID - required for system admins to scope the query
-    pub school_id: Option<Uuid>,
+    pub school_id: Option<SchoolId>,
     #[serde(flatten)]
     pub pagination: PaginationParams,
 }
@@ -66,18 +66,18 @@ pub struct PaginatedLevelsResponse {
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct AssignStudentsToLevelDto {
     #[validate(length(min = 1))]
-    pub student_ids: Vec<Uuid>,
+    pub student_ids: Vec<UserId>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct MoveStudentToLevelDto {
-    pub level_id: Option<Uuid>,
+    pub level_id: Option<LevelId>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct BulkAssignResponse {
     pub assigned_count: usize,
-    pub failed_ids: Vec<Uuid>,
+    pub failed_ids: Vec<UserId>,
 }
 
 #[cfg(test)]
@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn test_assign_students_dto_validation() {
         let valid_dto = AssignStudentsToLevelDto {
-            student_ids: vec![Uuid::new_v4()],
+            student_ids: vec![UserId::new()],
         };
         assert!(valid_dto.validate().is_ok());
 

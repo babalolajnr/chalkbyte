@@ -3,12 +3,12 @@
 //! Provides functions for generating and inserting fake school data
 //! into the database.
 
+use chalkbyte_models::SchoolId;
 use fake::faker::address::en::*;
 use fake::{Fake, Faker};
 use rayon::prelude::*;
 use sqlx::{PgPool, Postgres, Transaction};
 use std::time::Instant;
-use uuid::Uuid;
 
 use super::models::SchoolSeed;
 
@@ -35,7 +35,7 @@ pub fn generate_schools(count: usize) -> Vec<SchoolSeed> {
 pub async fn seed_schools(
     db: &PgPool,
     count: usize,
-) -> Result<Vec<Uuid>, Box<dyn std::error::Error>> {
+) -> Result<Vec<SchoolId>, Box<dyn std::error::Error>> {
     let start_time = Instant::now();
     println!("📚 Seeding {} schools...", count);
 
@@ -55,7 +55,7 @@ pub async fn seed_schools(
 pub async fn insert_schools_batch(
     db: &PgPool,
     schools: &[SchoolSeed],
-) -> Result<Vec<Uuid>, Box<dyn std::error::Error>> {
+) -> Result<Vec<SchoolId>, Box<dyn std::error::Error>> {
     let mut tx = db.begin().await?;
 
     const BATCH_SIZE: usize = 500;
@@ -73,7 +73,7 @@ pub async fn insert_schools_batch(
 async fn insert_schools_chunk(
     tx: &mut Transaction<'_, Postgres>,
     schools: &[SchoolSeed],
-) -> Result<Vec<Uuid>, Box<dyn std::error::Error>> {
+) -> Result<Vec<SchoolId>, Box<dyn std::error::Error>> {
     if schools.is_empty() {
         return Ok(Vec::new());
     }
@@ -98,7 +98,7 @@ async fn insert_schools_chunk(
         q = q.bind(param);
     }
 
-    let ids = q.fetch_all(&mut **tx).await?;
+    let ids: Vec<SchoolId> = q.fetch_all(&mut **tx).await?;
     Ok(ids)
 }
 

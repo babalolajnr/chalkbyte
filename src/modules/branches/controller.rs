@@ -8,6 +8,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use chalkbyte_core::AppError;
+use chalkbyte_models::ids::{BranchId, LevelId, UserId};
 
 use crate::middleware::auth::{
     RequireBranchesAssignStudents, RequireBranchesCreate, RequireBranchesDelete,
@@ -47,6 +48,8 @@ pub async fn create_branch(
 ) -> Result<(StatusCode, Json<Branch>), AppError> {
     dto.validate()?;
 
+    let level_id = LevelId::from(level_id);
+
     // System admins can create branches for any level
     if is_system_admin_jwt(&auth_user) {
         let branch =
@@ -82,6 +85,8 @@ pub async fn get_branches(
     Path(level_id): Path<Uuid>,
     Query(filters): Query<BranchFilterParams>,
 ) -> Result<Json<PaginatedBranchesResponse>, AppError> {
+    let level_id = LevelId::from(level_id);
+
     // System admins can view branches for any level
     if is_system_admin_jwt(&auth_user) {
         let branches =
@@ -118,7 +123,9 @@ pub async fn get_branch_by_id(
     RequireBranchesRead(auth_user): RequireBranchesRead,
     Path(id): Path<Uuid>,
 ) -> Result<Json<BranchWithStats>, AppError> {
-    // System admins can access any branch
+    let id = BranchId::from(id);
+
+    // System admins can view any branch
     if is_system_admin_jwt(&auth_user) {
         let branch = BranchService::get_branch_by_id_no_school_filter(&state.db, id).await?;
         return Ok(Json(branch));
@@ -156,6 +163,8 @@ pub async fn update_branch(
 ) -> Result<Json<Branch>, AppError> {
     dto.validate()?;
 
+    let id = BranchId::from(id);
+
     // System admins can update any branch
     if is_system_admin_jwt(&auth_user) {
         let branch = BranchService::update_branch_no_school_filter(&state.db, id, dto).await?;
@@ -189,6 +198,8 @@ pub async fn delete_branch(
     RequireBranchesDelete(auth_user): RequireBranchesDelete,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
+    let id = BranchId::from(id);
+
     // System admins can delete any branch
     if is_system_admin_jwt(&auth_user) {
         BranchService::delete_branch_no_school_filter(&state.db, id).await?;
@@ -227,6 +238,8 @@ pub async fn assign_students_to_branch(
 ) -> Result<Json<BulkAssignResponse>, AppError> {
     dto.validate()?;
 
+    let id = BranchId::from(id);
+
     // System admins can assign students to any branch
     if is_system_admin_jwt(&auth_user) {
         let response =
@@ -261,6 +274,8 @@ pub async fn get_students_in_branch(
     RequireBranchesRead(auth_user): RequireBranchesRead,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<User>>, AppError> {
+    let id = BranchId::from(id);
+
     // System admins can view students in any branch
     if is_system_admin_jwt(&auth_user) {
         let students =
@@ -300,6 +315,8 @@ pub async fn move_student_to_branch(
 ) -> Result<StatusCode, AppError> {
     dto.validate()?;
 
+    let student_id = UserId::from(student_id);
+
     // System admins can move any student
     if is_system_admin_jwt(&auth_user) {
         BranchService::move_student_to_branch_no_school_filter(&state.db, student_id, dto).await?;
@@ -333,6 +350,8 @@ pub async fn remove_student_from_branch(
     RequireBranchesAssignStudents(auth_user): RequireBranchesAssignStudents,
     Path(student_id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
+    let student_id = UserId::from(student_id);
+
     // System admins can remove any student from branch
     if is_system_admin_jwt(&auth_user) {
         BranchService::remove_student_from_branch_no_school_filter(&state.db, student_id).await?;

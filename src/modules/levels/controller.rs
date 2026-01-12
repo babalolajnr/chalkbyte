@@ -8,6 +8,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use chalkbyte_core::AppError;
+use chalkbyte_models::ids::{LevelId, UserId};
 
 use crate::middleware::auth::{
     RequireLevelsAssignStudents, RequireLevelsCreate, RequireLevelsDelete, RequireLevelsRead,
@@ -102,14 +103,16 @@ pub async fn get_level_by_id(
     RequireLevelsRead(auth_user): RequireLevelsRead,
     Path(id): Path<Uuid>,
 ) -> Result<Json<LevelWithStats>, AppError> {
+    let level_id = LevelId::from(id);
+
     // For resource operations, system admins don't need school_id
     if is_system_admin_jwt(&auth_user) {
-        let level = LevelService::get_level_by_id_no_school_filter(&state.db, id).await?;
+        let level = LevelService::get_level_by_id_no_school_filter(&state.db, level_id).await?;
         return Ok(Json(level));
     }
 
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
-    let level = LevelService::get_level_by_id(&state.db, id, school_id).await?;
+    let level = LevelService::get_level_by_id(&state.db, level_id, school_id).await?;
 
     Ok(Json(level))
 }
@@ -139,15 +142,16 @@ pub async fn update_level(
     Json(dto): Json<UpdateLevelDto>,
 ) -> Result<Json<Level>, AppError> {
     dto.validate()?;
+    let level_id = LevelId::from(id);
 
     // For resource operations, system admins don't need school_id
     if is_system_admin_jwt(&auth_user) {
-        let level = LevelService::update_level_no_school_filter(&state.db, id, dto).await?;
+        let level = LevelService::update_level_no_school_filter(&state.db, level_id, dto).await?;
         return Ok(Json(level));
     }
 
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
-    let level = LevelService::update_level(&state.db, id, school_id, dto).await?;
+    let level = LevelService::update_level(&state.db, level_id, school_id, dto).await?;
 
     Ok(Json(level))
 }
@@ -173,14 +177,16 @@ pub async fn delete_level(
     RequireLevelsDelete(auth_user): RequireLevelsDelete,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
+    let level_id = LevelId::from(id);
+
     // For resource operations, system admins don't need school_id
     if is_system_admin_jwt(&auth_user) {
-        LevelService::delete_level_no_school_filter(&state.db, id).await?;
+        LevelService::delete_level_no_school_filter(&state.db, level_id).await?;
         return Ok(StatusCode::NO_CONTENT);
     }
 
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
-    LevelService::delete_level(&state.db, id, school_id).await?;
+    LevelService::delete_level(&state.db, level_id, school_id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -210,16 +216,19 @@ pub async fn assign_students_to_level(
     Json(dto): Json<AssignStudentsToLevelDto>,
 ) -> Result<Json<BulkAssignResponse>, AppError> {
     dto.validate()?;
+    let level_id = LevelId::from(id);
 
     // For resource operations, system admins don't need school_id
     if is_system_admin_jwt(&auth_user) {
         let response =
-            LevelService::assign_students_to_level_no_school_filter(&state.db, id, dto).await?;
+            LevelService::assign_students_to_level_no_school_filter(&state.db, level_id, dto)
+                .await?;
         return Ok(Json(response));
     }
 
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
-    let response = LevelService::assign_students_to_level(&state.db, id, school_id, dto).await?;
+    let response =
+        LevelService::assign_students_to_level(&state.db, level_id, school_id, dto).await?;
 
     Ok(Json(response))
 }
@@ -245,14 +254,17 @@ pub async fn get_students_in_level(
     RequireLevelsRead(auth_user): RequireLevelsRead,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<User>>, AppError> {
+    let level_id = LevelId::from(id);
+
     // For resource operations, system admins don't need school_id
     if is_system_admin_jwt(&auth_user) {
-        let students = LevelService::get_students_in_level_no_school_filter(&state.db, id).await?;
+        let students =
+            LevelService::get_students_in_level_no_school_filter(&state.db, level_id).await?;
         return Ok(Json(students));
     }
 
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
-    let students = LevelService::get_students_in_level(&state.db, id, school_id).await?;
+    let students = LevelService::get_students_in_level(&state.db, level_id, school_id).await?;
 
     Ok(Json(students))
 }
@@ -282,6 +294,7 @@ pub async fn move_student_to_level(
     Json(dto): Json<MoveStudentToLevelDto>,
 ) -> Result<StatusCode, AppError> {
     dto.validate()?;
+    let student_id = UserId::from(student_id);
 
     // For resource operations, system admins don't need school_id
     if is_system_admin_jwt(&auth_user) {
@@ -316,6 +329,8 @@ pub async fn remove_student_from_level(
     RequireLevelsAssignStudents(auth_user): RequireLevelsAssignStudents,
     Path(student_id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
+    let student_id = UserId::from(student_id);
+
     // For resource operations, system admins don't need school_id
     if is_system_admin_jwt(&auth_user) {
         LevelService::remove_student_from_level_no_school_filter(&state.db, student_id).await?;

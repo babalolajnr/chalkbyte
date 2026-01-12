@@ -49,7 +49,7 @@ pub async fn create_student(
     let school_id =
         get_school_id_for_scoped_operation(&state.db, &auth_user, dto.school_id).await?;
 
-    let student = StudentService::create_student(&state.db, dto, school_id).await?;
+    let student = StudentService::create_student(&state.db, dto, school_id.into_inner()).await?;
     Ok(Json(student))
 }
 
@@ -84,7 +84,8 @@ pub async fn get_students(
     let page = params.page();
 
     let (students, total) =
-        StudentService::get_students_by_school(&state.db, school_id, limit, offset).await?;
+        StudentService::get_students_by_school(&state.db, school_id.into_inner(), limit, offset)
+            .await?;
 
     let total_pages = (total as f64 / limit as f64).ceil() as i64;
 
@@ -133,7 +134,7 @@ pub async fn get_student(
 
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
-    let student = StudentService::get_student_by_id(&state.db, id, school_id).await?;
+    let student = StudentService::get_student_by_id(&state.db, id, school_id.into_inner()).await?;
     Ok(Json(student))
 }
 
@@ -175,7 +176,8 @@ pub async fn update_student(
 
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
-    let student = StudentService::update_student(&state.db, id, school_id, dto).await?;
+    let student =
+        StudentService::update_student(&state.db, id, school_id.into_inner(), dto).await?;
     Ok(Json(student))
 }
 
@@ -211,6 +213,6 @@ pub async fn delete_student(
 
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
-    StudentService::delete_student(&state.db, id, school_id).await?;
+    StudentService::delete_student(&state.db, id, school_id.into_inner()).await?;
     Ok(Json(json!({"message": "Student deleted successfully"})))
 }

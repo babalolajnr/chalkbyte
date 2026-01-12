@@ -3,7 +3,7 @@
 //! This module contains configuration structures for controlling how
 //! test data is generated during seeding operations.
 
-use uuid::Uuid;
+use chalkbyte_models::{BranchId, LevelId, RoleId, SchoolId};
 
 /// Seed data for creating a school.
 pub struct SchoolSeed {
@@ -15,14 +15,14 @@ pub struct SchoolSeed {
 pub struct LevelSeed {
     pub name: String,
     pub description: Option<String>,
-    pub school_id: Uuid,
+    pub school_id: SchoolId,
 }
 
 /// Seed data for creating a branch (section).
 pub struct BranchSeed {
     pub name: String,
     pub description: Option<String>,
-    pub level_id: Uuid,
+    pub level_id: LevelId,
 }
 
 /// Seed data for creating a user.
@@ -31,10 +31,10 @@ pub struct UserSeed {
     pub last_name: String,
     pub email: String,
     pub password_hash: String,
-    pub role_id: Uuid,
-    pub school_id: Option<Uuid>,
-    pub level_id: Option<Uuid>,
-    pub branch_id: Option<Uuid>,
+    pub role_id: RoleId,
+    pub school_id: Option<SchoolId>,
+    pub level_id: Option<LevelId>,
+    pub branch_id: Option<BranchId>,
 }
 
 /// Configuration for number of staff users per school.

@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use validator::Validate;
 
+use crate::ids::UserId;
 use crate::roles::{Permission, RoleWithPermissions};
 use crate::users::{BranchInfo, LevelInfo, SchoolInfo};
 
@@ -31,7 +32,7 @@ pub struct LoginRequest {
 /// User info returned in login response with joined relations
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct LoginUser {
-    pub id: uuid::Uuid,
+    pub id: UserId,
     pub first_name: String,
     pub last_name: String,
     pub email: String,
