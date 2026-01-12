@@ -8,6 +8,7 @@ use chalkbyte::config::jwt::JwtConfig;
 use chalkbyte::config::rate_limit::RateLimitConfig;
 use chalkbyte::router::init_router;
 use chalkbyte::state::AppState;
+use chalkbyte_cache::CacheConfig;
 use common::{
     create_test_branch, create_test_level, create_test_school, create_test_user,
     generate_unique_branch_name, generate_unique_email, generate_unique_level_name,
@@ -27,6 +28,8 @@ async fn setup_test_app(pool: PgPool) -> axum::Router {
         email_config: EmailConfig::from_env(),
         cors_config: CorsConfig::from_env(),
         rate_limit_config: RateLimitConfig::default(),
+        cache_config: CacheConfig::default(),
+        cache: None,
     };
     init_router(state)
 }

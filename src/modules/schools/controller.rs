@@ -44,7 +44,7 @@ pub async fn create_school(
 ) -> Result<Json<School>, AppError> {
     debug!(school.name = %dto.name, "Creating new school");
 
-    let school = SchoolService::create_school(&state.db, dto).await?;
+    let school = SchoolService::create_school(&state.db, state.cache.as_ref(), dto).await?;
 
     info!(
         school.id = %school.id,
@@ -120,7 +120,7 @@ pub async fn get_school(
 ) -> Result<Json<School>, AppError> {
     debug!("Fetching school by ID");
 
-    let school = SchoolService::get_school_by_id(&state.db, id).await?;
+    let school = SchoolService::get_school_by_id(&state.db, state.cache.as_ref(), id).await?;
 
     debug!(school.name = %school.name, "School found");
 
@@ -150,7 +150,7 @@ pub async fn delete_school(
 ) -> Result<(), AppError> {
     debug!("Deleting school");
 
-    SchoolService::delete_school(&state.db, id).await?;
+    SchoolService::delete_school(&state.db, state.cache.as_ref(), id).await?;
 
     info!(school.id = %id, "School deleted successfully");
 
@@ -378,7 +378,8 @@ pub async fn get_school_levels(
     }
 
     // Verify school exists
-    SchoolService::get_school_by_id(&state.db, school_id.into_inner()).await?;
+    SchoolService::get_school_by_id(&state.db, state.cache.as_ref(), school_id.into_inner())
+        .await?;
 
     debug!("Fetching levels for school");
 
@@ -441,7 +442,8 @@ pub async fn get_school_level_branches(
     }
 
     // Verify school exists
-    SchoolService::get_school_by_id(&state.db, school_id.into_inner()).await?;
+    SchoolService::get_school_by_id(&state.db, state.cache.as_ref(), school_id.into_inner())
+        .await?;
 
     debug!("Fetching branches for level");
 

@@ -49,7 +49,7 @@ pub async fn create_level(
 
     dto.validate()?;
 
-    let level = LevelService::create_level(&state.db, school_id, dto).await?;
+    let level = LevelService::create_level(&state.db, state.cache.as_ref(), school_id, dto).await?;
 
     Ok((StatusCode::CREATED, Json(level)))
 }
@@ -146,12 +146,20 @@ pub async fn update_level(
 
     // For resource operations, system admins don't need school_id
     if is_system_admin_jwt(&auth_user) {
-        let level = LevelService::update_level_no_school_filter(&state.db, level_id, dto).await?;
+        let level = LevelService::update_level_no_school_filter(
+            &state.db,
+            state.cache.as_ref(),
+            level_id,
+            dto,
+        )
+        .await?;
         return Ok(Json(level));
     }
 
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
-    let level = LevelService::update_level(&state.db, level_id, school_id, dto).await?;
+    let level =
+        LevelService::update_level(&state.db, state.cache.as_ref(), level_id, school_id, dto)
+            .await?;
 
     Ok(Json(level))
 }
@@ -181,12 +189,13 @@ pub async fn delete_level(
 
     // For resource operations, system admins don't need school_id
     if is_system_admin_jwt(&auth_user) {
-        LevelService::delete_level_no_school_filter(&state.db, level_id).await?;
+        LevelService::delete_level_no_school_filter(&state.db, state.cache.as_ref(), level_id)
+            .await?;
         return Ok(StatusCode::NO_CONTENT);
     }
 
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
-    LevelService::delete_level(&state.db, level_id, school_id).await?;
+    LevelService::delete_level(&state.db, state.cache.as_ref(), level_id, school_id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

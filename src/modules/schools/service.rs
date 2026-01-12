@@ -2,6 +2,7 @@ use sqlx::PgPool;
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
+use chalkbyte_cache::{RedisCache, invalidate, keys};
 use chalkbyte_core::{AppError, PaginationMeta};
 
 use crate::metrics;
@@ -13,8 +14,12 @@ use crate::modules::users::model::{
 pub struct SchoolService;
 
 impl SchoolService {
-    #[instrument(skip(db, dto), fields(school.name = %dto.name, db.operation = "INSERT", db.table = "schools"))]
-    pub async fn create_school(db: &PgPool, dto: CreateSchoolDto) -> Result<School, AppError> {
+    #[instrument(skip(db, cache, dto), fields(school.name = %dto.name, db.operation = "INSERT", db.table = "schools"))]
+    pub async fn create_school(
+        db: &PgPool,
+        cache: Option<&RedisCache>,
+        dto: CreateSchoolDto,
+    ) -> Result<School, AppError> {
         debug!(school.name = %dto.name, school.address = ?dto.address, "Creating new school");
 
         metrics::track_school_created();
@@ -37,6 +42,9 @@ impl SchoolService {
             error!(error = %e, school.name = %dto.name, "Database error creating school");
             AppError::from(e)
         })?;
+
+        // Invalidate list caches (new school should appear in lists)
+        invalidate::school(cache, Some(school.id.into())).await;
 
         info!(
             school.id = %school.id,
@@ -124,9 +132,23 @@ impl SchoolService {
         })
     }
 
-    #[instrument(skip(db), fields(school.id = %school_id, db.operation = "SELECT", db.table = "schools"))]
-    pub async fn get_school_by_id(db: &PgPool, school_id: Uuid) -> Result<School, AppError> {
-        debug!("Fetching school by ID");
+    #[instrument(skip(db, cache), fields(school.id = %school_id, db.operation = "SELECT", db.table = "schools"))]
+    pub async fn get_school_by_id(
+        db: &PgPool,
+        cache: Option<&RedisCache>,
+        school_id: Uuid,
+    ) -> Result<School, AppError> {
+        let cache_key = keys::schools::by_id(school_id);
+
+        // Try cache first
+        if let Some(cache) = cache {
+            if let Some(school) = cache.get::<School>(&cache_key).await {
+                debug!(school.id = %school_id, "School found in cache");
+                return Ok(school);
+            }
+        }
+
+        debug!("Fetching school by ID from database");
 
         let school = sqlx::query_as::<_, School>(
             "SELECT id, name, address, created_at, updated_at FROM schools WHERE id = $1",
@@ -143,13 +165,24 @@ impl SchoolService {
             AppError::not_found(anyhow::anyhow!("School not found"))
         })?;
 
+        // Cache the result
+        if let Some(cache) = cache {
+            if let Err(e) = cache.set(&cache_key, &school).await {
+                warn!(error = %e, "Failed to cache school");
+            }
+        }
+
         debug!(school.name = %school.name, "School found");
 
         Ok(school)
     }
 
-    #[instrument(skip(db), fields(school.id = %school_id, db.operation = "DELETE", db.table = "schools"))]
-    pub async fn delete_school(db: &PgPool, school_id: Uuid) -> Result<(), AppError> {
+    #[instrument(skip(db, cache), fields(school.id = %school_id, db.operation = "DELETE", db.table = "schools"))]
+    pub async fn delete_school(
+        db: &PgPool,
+        cache: Option<&RedisCache>,
+        school_id: Uuid,
+    ) -> Result<(), AppError> {
         debug!("Deleting school");
 
         let result = sqlx::query("DELETE FROM schools WHERE id = $1")
@@ -165,6 +198,9 @@ impl SchoolService {
             debug!(school.id = %school_id, "School not found for deletion");
             return Err(AppError::not_found(anyhow::anyhow!("School not found")));
         }
+
+        // Invalidate cache
+        invalidate::school(cache, Some(school_id.into())).await;
 
         info!(school.id = %school_id, "School deleted successfully");
 

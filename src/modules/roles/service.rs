@@ -2,6 +2,7 @@ use anyhow::anyhow;
 use sqlx::PgPool;
 use tracing::instrument;
 
+use chalkbyte_cache::{RedisCache, invalidate};
 use chalkbyte_core::{AppError, PaginationMeta};
 use chalkbyte_models::ids::{PermissionId, RoleId, SchoolId, UserId};
 
@@ -153,9 +154,10 @@ pub async fn get_permissions_by_ids(
 
 // ============ Role Services ============
 
-#[instrument(skip(db))]
+#[instrument(skip(db, cache))]
 pub async fn create_role(
     db: &PgPool,
+    cache: Option<&RedisCache>,
     dto: CreateRoleDto,
     requester_school_id: Option<SchoolId>,
     is_system_admin: bool,
@@ -211,6 +213,9 @@ pub async fn create_role(
     } else {
         vec![]
     };
+
+    // Invalidate role caches
+    invalidate::role(cache, Some(role.id.into_inner())).await;
 
     Ok(RoleWithPermissions { role, permissions })
 }
@@ -398,9 +403,10 @@ pub async fn get_role_by_id(
     Ok(RoleWithPermissions { role, permissions })
 }
 
-#[instrument(skip(db))]
+#[instrument(skip(db, cache))]
 pub async fn update_role(
     db: &PgPool,
+    cache: Option<&RedisCache>,
     id: RoleId,
     dto: UpdateRoleDto,
     requester_school_id: Option<SchoolId>,
@@ -443,12 +449,16 @@ pub async fn update_role(
 
     let permissions = get_role_permissions(db, role.id).await?;
 
+    // Invalidate role caches
+    invalidate::role(cache, Some(id.into_inner())).await;
+
     Ok(RoleWithPermissions { role, permissions })
 }
 
-#[instrument(skip(db))]
+#[instrument(skip(db, cache))]
 pub async fn delete_role(
     db: &PgPool,
+    cache: Option<&RedisCache>,
     id: RoleId,
     requester_school_id: Option<SchoolId>,
     is_system_admin: bool,
@@ -460,6 +470,9 @@ pub async fn delete_role(
         .bind(id)
         .execute(db)
         .await?;
+
+    // Invalidate role caches
+    invalidate::role(cache, Some(id.into_inner())).await;
 
     Ok(())
 }
@@ -506,11 +519,12 @@ async fn assign_permissions_to_role_internal(
     get_role_permissions(db, role_id).await
 }
 
-#[instrument(skip(db))]
+#[instrument(skip(db, cache))]
 pub async fn assign_permissions_to_role(
     db: &PgPool,
+    cache: Option<&RedisCache>,
     role_id: RoleId,
-    permission_ids: Vec<PermissionId>,
+    permission_ids: &[PermissionId],
     requester_school_id: Option<SchoolId>,
     is_system_admin: bool,
 ) -> Result<RoleWithPermissions, AppError> {
@@ -518,7 +532,7 @@ pub async fn assign_permissions_to_role(
     let role = get_role_by_id(db, role_id, requester_school_id, is_system_admin).await?;
 
     // Verify all permission IDs exist
-    let existing_permissions = get_permissions_by_ids(db, &permission_ids).await?;
+    let existing_permissions = get_permissions_by_ids(db, permission_ids).await?;
     if existing_permissions.len() != permission_ids.len() {
         return Err(AppError::bad_request(anyhow!(
             "One or more permission IDs are invalid"
@@ -535,7 +549,10 @@ pub async fn assign_permissions_to_role(
         }
     }
 
-    let permissions = assign_permissions_to_role_internal(db, role_id, &permission_ids).await?;
+    let permissions = assign_permissions_to_role_internal(db, role_id, permission_ids).await?;
+
+    // Invalidate role caches
+    invalidate::role(cache, Some(role_id.into_inner())).await;
 
     Ok(RoleWithPermissions {
         role: role.role,
@@ -543,9 +560,10 @@ pub async fn assign_permissions_to_role(
     })
 }
 
-#[instrument(skip(db))]
+#[instrument(skip(db, cache))]
 pub async fn remove_permission_from_role(
     db: &PgPool,
+    cache: Option<&RedisCache>,
     role_id: RoleId,
     permission_id: PermissionId,
     requester_school_id: Option<SchoolId>,
@@ -562,6 +580,9 @@ pub async fn remove_permission_from_role(
 
     let permissions = get_role_permissions(db, role_id).await?;
 
+    // Invalidate role caches
+    invalidate::role(cache, Some(role_id.into_inner())).await;
+
     Ok(RoleWithPermissions {
         role: role.role,
         permissions,
@@ -577,9 +598,10 @@ struct UserSchoolRow {
     school_id: Option<SchoolId>,
 }
 
-#[instrument(skip(db))]
+#[instrument(skip(db, cache))]
 pub async fn assign_role_to_user(
     db: &PgPool,
+    cache: Option<&RedisCache>,
     user_id: UserId,
     role_id: RoleId,
     assigned_by: UserId,
@@ -631,6 +653,9 @@ pub async fn assign_role_to_user(
         AppError::from(e)
     })?;
 
+    // Invalidate user roles cache
+    invalidate::user_roles(cache, user_id.into_inner()).await;
+
     Ok(RoleAssignmentResponse {
         message: "Role assigned successfully".to_string(),
         user_id,
@@ -638,9 +663,10 @@ pub async fn assign_role_to_user(
     })
 }
 
-#[instrument(skip(db))]
+#[instrument(skip(db, cache))]
 pub async fn remove_role_from_user(
     db: &PgPool,
+    cache: Option<&RedisCache>,
     user_id: UserId,
     role_id: RoleId,
     requester_school_id: Option<SchoolId>,
@@ -682,6 +708,9 @@ pub async fn remove_role_from_user(
             "User does not have this role assigned"
         )));
     }
+
+    // Invalidate user roles cache
+    invalidate::user_roles(cache, user_id.into_inner()).await;
 
     Ok(())
 }

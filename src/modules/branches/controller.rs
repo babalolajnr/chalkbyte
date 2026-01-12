@@ -52,13 +52,20 @@ pub async fn create_branch(
 
     // System admins can create branches for any level
     if is_system_admin_jwt(&auth_user) {
-        let branch =
-            BranchService::create_branch_no_school_filter(&state.db, level_id, dto).await?;
+        let branch = BranchService::create_branch_no_school_filter(
+            &state.db,
+            state.cache.as_ref(),
+            level_id,
+            dto,
+        )
+        .await?;
         return Ok((StatusCode::CREATED, Json(branch)));
     }
 
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
-    let branch = BranchService::create_branch(&state.db, level_id, school_id, dto).await?;
+    let branch =
+        BranchService::create_branch(&state.db, state.cache.as_ref(), level_id, school_id, dto)
+            .await?;
 
     Ok((StatusCode::CREATED, Json(branch)))
 }
@@ -167,12 +174,15 @@ pub async fn update_branch(
 
     // System admins can update any branch
     if is_system_admin_jwt(&auth_user) {
-        let branch = BranchService::update_branch_no_school_filter(&state.db, id, dto).await?;
+        let branch =
+            BranchService::update_branch_no_school_filter(&state.db, state.cache.as_ref(), id, dto)
+                .await?;
         return Ok(Json(branch));
     }
 
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
-    let branch = BranchService::update_branch(&state.db, id, school_id, dto).await?;
+    let branch =
+        BranchService::update_branch(&state.db, state.cache.as_ref(), id, school_id, dto).await?;
 
     Ok(Json(branch))
 }
@@ -202,12 +212,13 @@ pub async fn delete_branch(
 
     // System admins can delete any branch
     if is_system_admin_jwt(&auth_user) {
-        BranchService::delete_branch_no_school_filter(&state.db, id).await?;
+        BranchService::delete_branch_no_school_filter(&state.db, state.cache.as_ref(), id, None)
+            .await?;
         return Ok(StatusCode::NO_CONTENT);
     }
 
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
-    BranchService::delete_branch(&state.db, id, school_id).await?;
+    BranchService::delete_branch(&state.db, state.cache.as_ref(), id, school_id, None).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

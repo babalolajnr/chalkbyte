@@ -38,12 +38,18 @@ async fn health_handler() -> impl IntoResponse {
 /// Initialize router with rate limiting (for production use)
 #[cfg(not(feature = "test-utils"))]
 pub fn init_router(state: AppState) -> Router {
+    use chalkbyte_cache::{CacheControlConfig, cache_control, etag_middleware};
     use tower_governor::GovernorLayer;
 
     // Create rate limiter configs
     let general_governor_config = state.rate_limit_config.general_governor_config();
     let auth_governor_config = state.rate_limit_config.auth_governor_config();
     let mfa_governor_config = state.rate_limit_config.auth_governor_config();
+
+    // Cache-Control configurations
+    let no_cache = cache_control(CacheControlConfig::no_store());
+    let private_short = cache_control(CacheControlConfig::private(60).with_must_revalidate());
+    let private_medium = cache_control(CacheControlConfig::private(300).with_must_revalidate());
 
     let router = Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
@@ -57,44 +63,66 @@ pub fn init_router(state: AppState) -> Router {
                     init_users_router()
                         .nest("/{user_id}/roles", init_user_roles_router())
                         .nest("/{user_id}/permissions", init_user_permissions_router())
-                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
+                        // Users list: private cache, short TTL with ETag
+                        .layer(private_short.clone())
+                        .layer(middleware::from_fn(etag_middleware)),
                 )
-                // Auth endpoints with stricter rate limiting
+                // Auth endpoints - no caching (sensitive)
                 .nest(
                     "/auth",
-                    init_auth_router().layer(GovernorLayer::new(auth_governor_config)),
+                    init_auth_router()
+                        .layer(GovernorLayer::new(auth_governor_config))
+                        .layer(no_cache.clone()),
                 )
-                // MFA endpoints with stricter rate limiting (auth-related)
+                // MFA endpoints - no caching (sensitive)
                 .nest(
                     "/mfa",
-                    init_mfa_router().layer(GovernorLayer::new(mfa_governor_config)),
+                    init_mfa_router()
+                        .layer(GovernorLayer::new(mfa_governor_config))
+                        .layer(no_cache.clone()),
                 )
                 .nest(
                     "/schools",
                     init_schools_router()
-                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
+                        // Schools: private cache, medium TTL with ETag
+                        .layer(private_medium.clone())
+                        .layer(middleware::from_fn(etag_middleware)),
                 )
                 .nest(
                     "/students",
                     init_students_router()
-                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
+                        // Students: private cache, short TTL
+                        .layer(private_short.clone())
+                        .layer(middleware::from_fn(etag_middleware)),
                 )
                 .nest(
                     "/levels",
                     init_levels_router()
                         .nest("/{level_id}/branches", init_level_branches_router())
-                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
+                        // Levels/branches: private cache, medium TTL
+                        .layer(private_medium.clone())
+                        .layer(middleware::from_fn(etag_middleware)),
                 )
                 .nest(
                     "/branches",
                     init_branches_router()
-                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
+                        // Branches: private cache, medium TTL
+                        .layer(private_medium.clone())
+                        .layer(middleware::from_fn(etag_middleware)),
                 )
                 // Roles and permissions endpoints
                 .nest(
                     "/roles",
                     init_roles_router()
-                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
+                        // Roles: private cache, medium TTL (rarely changes)
+                        .layer(private_medium.clone())
+                        .layer(middleware::from_fn(etag_middleware)),
                 )
                 // Apply general rate limiting to all API routes
                 .layer(GovernorLayer::new(general_governor_config)),
@@ -122,7 +150,9 @@ pub fn init_router(state: AppState) -> Router {
                     axum::http::header::AUTHORIZATION,
                     axum::http::header::CONTENT_TYPE,
                     axum::http::header::ACCEPT,
+                    axum::http::header::IF_NONE_MATCH,
                 ])
+                .expose_headers([axum::http::header::ETAG, axum::http::header::CACHE_CONTROL])
                 .allow_credentials(true)
         })
         .layer(
@@ -153,6 +183,13 @@ pub fn init_router(state: AppState) -> Router {
 /// Initialize router without rate limiting (for tests)
 #[cfg(feature = "test-utils")]
 pub fn init_router(state: AppState) -> Router {
+    use chalkbyte_cache::{CacheControlConfig, cache_control, etag_middleware};
+
+    // Cache-Control configurations for tests
+    let no_cache = cache_control(CacheControlConfig::no_store());
+    let private_short = cache_control(CacheControlConfig::private(60).with_must_revalidate());
+    let private_medium = cache_control(CacheControlConfig::private(300).with_must_revalidate());
+
     let router = Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .merge(Scalar::with_url("/scalar", ApiDoc::openapi()))
@@ -165,35 +202,47 @@ pub fn init_router(state: AppState) -> Router {
                     init_users_router()
                         .nest("/{user_id}/roles", init_user_roles_router())
                         .nest("/{user_id}/permissions", init_user_permissions_router())
-                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
+                        .layer(private_short.clone())
+                        .layer(middleware::from_fn(etag_middleware)),
                 )
-                .nest("/auth", init_auth_router())
-                .nest("/mfa", init_mfa_router())
+                .nest("/auth", init_auth_router().layer(no_cache.clone()))
+                .nest("/mfa", init_mfa_router().layer(no_cache.clone()))
                 .nest(
                     "/schools",
                     init_schools_router()
-                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
+                        .layer(private_medium.clone())
+                        .layer(middleware::from_fn(etag_middleware)),
                 )
                 .nest(
                     "/students",
                     init_students_router()
-                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
+                        .layer(private_short.clone())
+                        .layer(middleware::from_fn(etag_middleware)),
                 )
                 .nest(
                     "/levels",
                     init_levels_router()
                         .nest("/{level_id}/branches", init_level_branches_router())
-                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
+                        .layer(private_medium.clone())
+                        .layer(middleware::from_fn(etag_middleware)),
                 )
                 .nest(
                     "/branches",
                     init_branches_router()
-                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
+                        .layer(private_medium.clone())
+                        .layer(middleware::from_fn(etag_middleware)),
                 )
                 .nest(
                     "/roles",
                     init_roles_router()
-                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin)),
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
+                        .layer(private_medium.clone())
+                        .layer(middleware::from_fn(etag_middleware)),
                 ),
         )
         .with_state(state.clone())
@@ -219,7 +268,9 @@ pub fn init_router(state: AppState) -> Router {
                     axum::http::header::AUTHORIZATION,
                     axum::http::header::CONTENT_TYPE,
                     axum::http::header::ACCEPT,
+                    axum::http::header::IF_NONE_MATCH,
                 ])
+                .expose_headers([axum::http::header::ETAG, axum::http::header::CACHE_CONTROL])
                 .allow_credentials(true)
         })
         .layer(

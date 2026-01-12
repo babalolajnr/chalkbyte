@@ -49,7 +49,13 @@ pub async fn create_student(
     let school_id =
         get_school_id_for_scoped_operation(&state.db, &auth_user, dto.school_id).await?;
 
-    let student = StudentService::create_student(&state.db, dto, school_id.into_inner()).await?;
+    let student = StudentService::create_student(
+        &state.db,
+        dto,
+        school_id.into_inner(),
+        state.cache.as_ref(),
+    )
+    .await?;
     Ok(Json(student))
 }
 
@@ -170,14 +176,26 @@ pub async fn update_student(
 
     // System admins can update any student
     if is_system_admin_jwt(&auth_user) {
-        let student = StudentService::update_student_no_school_filter(&state.db, id, dto).await?;
+        let student = StudentService::update_student_no_school_filter(
+            &state.db,
+            id,
+            dto,
+            state.cache.as_ref(),
+        )
+        .await?;
         return Ok(Json(student));
     }
 
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
-    let student =
-        StudentService::update_student(&state.db, id, school_id.into_inner(), dto).await?;
+    let student = StudentService::update_student(
+        &state.db,
+        id,
+        school_id.into_inner(),
+        dto,
+        state.cache.as_ref(),
+    )
+    .await?;
     Ok(Json(student))
 }
 
@@ -207,12 +225,14 @@ pub async fn delete_student(
 ) -> Result<Json<serde_json::Value>, AppError> {
     // System admins can delete any student
     if is_system_admin_jwt(&auth_user) {
-        StudentService::delete_student_no_school_filter(&state.db, id).await?;
+        StudentService::delete_student_no_school_filter(&state.db, id, state.cache.as_ref())
+            .await?;
         return Ok(Json(json!({"message": "Student deleted successfully"})));
     }
 
     let school_id = get_admin_school_id(&state.db, &auth_user).await?;
 
-    StudentService::delete_student(&state.db, id, school_id.into_inner()).await?;
+    StudentService::delete_student(&state.db, id, school_id.into_inner(), state.cache.as_ref())
+        .await?;
     Ok(Json(json!({"message": "Student deleted successfully"})))
 }

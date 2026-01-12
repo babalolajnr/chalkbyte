@@ -82,10 +82,11 @@ pub async fn create_user(
     // Validate school_id exists if provided
     if let Some(school_id) = &dto.school_id {
         use crate::modules::schools::service::SchoolService;
-        SchoolService::get_school_by_id(&state.db, school_id.into_inner()).await?;
+        SchoolService::get_school_by_id(&state.db, state.cache.as_ref(), school_id.into_inner())
+            .await?;
     }
 
-    let user = UserService::create_user(&state.db, dto).await?;
+    let user = UserService::create_user(&state.db, dto, state.cache.as_ref()).await?;
 
     info!(
         created_user.id = %user.id,
@@ -214,7 +215,7 @@ pub async fn update_profile(
             .map_err(|_| AppError::bad_request(anyhow::anyhow!("Invalid user ID")))?,
     );
 
-    UserService::update_profile(&state.db, user_id, dto).await?;
+    UserService::update_profile(&state.db, user_id, dto, state.cache.as_ref()).await?;
 
     let user = UserService::get_user_with_school(&state.db, user_id).await?;
 
@@ -254,7 +255,7 @@ pub async fn change_password(
             .map_err(|_| AppError::bad_request(anyhow::anyhow!("Invalid user ID")))?,
     );
 
-    UserService::change_password(&state.db, user_id, dto).await?;
+    UserService::change_password(&state.db, user_id, dto, state.cache.as_ref()).await?;
 
     info!(user.id = %user_id, "Password changed successfully");
 

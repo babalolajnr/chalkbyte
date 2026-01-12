@@ -7,6 +7,7 @@ members = [
     "crates/chalkbyte-auth",
     "crates/chalkbyte-models",
     "crates/chalkbyte-cli",
+    "crates/chalkbyte-cache",
 ]
 
 [workspace.package]
@@ -23,12 +24,13 @@ chalkbyte-db = { path = "crates/chalkbyte-db" }
 chalkbyte-auth = { path = "crates/chalkbyte-auth" }
 chalkbyte-models = { path = "crates/chalkbyte-models" }
 chalkbyte-cli = { path = "crates/chalkbyte-cli" }
+chalkbyte-cache = { path = "crates/chalkbyte-cache" }
 
 # Web framework
 axum = { version = "0.8", features = ["macros"] }
 axum-extra = { version = "0.12", features = ["typed-header"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "trace"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "set-header"] }
 
 # Async runtime
 tokio = { version = "1.48", features = ["full"] }
@@ -97,6 +99,12 @@ metrics-exporter-prometheus = "0.15"
 tower_governor = "0.8.0"
 governor = "0.10.4"
 
+# Caching
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+sha2 = "0.10"
+hex = "0.4"
+http-body-util = "0.1"
+
 # Testing / Utilities
 rayon = "1.11.0"
 fake = { version = "4", features = ["derive", "chrono", "uuid"] }
@@ -126,6 +134,7 @@ chalkbyte-db.workspace = true
 chalkbyte-auth.workspace = true
 chalkbyte-models.workspace = true
 chalkbyte-cli.workspace = true
+chalkbyte-cache.workspace = true
 
 # Web framework
 axum.workspace = true

@@ -4,6 +4,7 @@ use crate::{
     utils::{errors::AppError, password::hash_password},
 };
 use anyhow::Context;
+use chalkbyte_cache::{RedisCache, invalidate};
 use chalkbyte_models::Email;
 use sqlx::PgPool;
 use tracing::instrument;
@@ -12,11 +13,12 @@ use uuid::Uuid;
 pub struct StudentService;
 
 impl StudentService {
-    #[instrument(skip(db, dto))]
+    #[instrument(skip(db, dto, cache))]
     pub async fn create_student(
         db: &PgPool,
         dto: CreateStudentDto,
         school_id: Uuid,
+        cache: Option<&RedisCache>,
     ) -> Result<Student, AppError> {
         let hashed_password = hash_password(&dto.password)?;
 
@@ -58,6 +60,9 @@ impl StudentService {
         .execute(db)
         .await
         .map_err(|e| AppError::database(anyhow::Error::from(e)))?;
+
+        // Invalidate user caches (students are users)
+        invalidate::user(cache, Some(student.id.into()), Some(school_id)).await;
 
         Ok(student)
     }
@@ -171,12 +176,13 @@ impl StudentService {
         Ok(student)
     }
 
-    #[instrument(skip(db, dto))]
+    #[instrument(skip(db, dto, cache))]
     pub async fn update_student(
         db: &PgPool,
         id: Uuid,
         school_id: Uuid,
         dto: UpdateStudentDto,
+        cache: Option<&RedisCache>,
     ) -> Result<Student, AppError> {
         let existing = Self::get_student_by_id(db, id, school_id).await?;
 
@@ -243,11 +249,19 @@ impl StudentService {
             AppError::database(anyhow::Error::from(e))
         })?;
 
+        // Invalidate user caches
+        invalidate::user(cache, Some(id), Some(school_id.into())).await;
+
         Ok(updated_student)
     }
 
-    #[instrument(skip(db))]
-    pub async fn delete_student(db: &PgPool, id: Uuid, school_id: Uuid) -> Result<(), AppError> {
+    #[instrument(skip(db, cache))]
+    pub async fn delete_student(
+        db: &PgPool,
+        id: Uuid,
+        school_id: Uuid,
+        cache: Option<&RedisCache>,
+    ) -> Result<(), AppError> {
         let student_role_id = system_roles::STUDENT;
 
         // Check if user exists and is a student
@@ -303,6 +317,9 @@ impl StudentService {
             .context("Failed to delete student")
             .map_err(AppError::database)?;
 
+        // Invalidate user caches
+        invalidate::user(cache, Some(id), Some(school_id.into())).await;
+
         Ok(())
     }
 
@@ -334,11 +351,12 @@ impl StudentService {
         Ok(student)
     }
 
-    #[instrument(skip(db, dto))]
+    #[instrument(skip(db, dto, cache))]
     pub async fn update_student_no_school_filter(
         db: &PgPool,
         id: Uuid,
         dto: UpdateStudentDto,
+        cache: Option<&RedisCache>,
     ) -> Result<Student, AppError> {
         let existing = Self::get_student_by_id_no_school_filter(db, id).await?;
 
@@ -403,11 +421,18 @@ impl StudentService {
             AppError::database(anyhow::Error::from(e))
         })?;
 
+        // Invalidate user caches
+        invalidate::user(cache, Some(id), None).await;
+
         Ok(updated_student)
     }
 
-    #[instrument(skip(db))]
-    pub async fn delete_student_no_school_filter(db: &PgPool, id: Uuid) -> Result<(), AppError> {
+    #[instrument(skip(db, cache))]
+    pub async fn delete_student_no_school_filter(
+        db: &PgPool,
+        id: Uuid,
+        cache: Option<&RedisCache>,
+    ) -> Result<(), AppError> {
         let student_role_id = system_roles::STUDENT;
 
         // Check if user exists and is a student
@@ -446,6 +471,9 @@ impl StudentService {
             .await
             .context("Failed to delete student")
             .map_err(AppError::database)?;
+
+        // Invalidate user caches
+        invalidate::user(cache, Some(id), None).await;
 
         Ok(())
     }

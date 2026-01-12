@@ -106,7 +106,15 @@ pub async fn create_role(
         Some(get_admin_school_id(&state.db, &auth_user).await?)
     };
 
-    let role = service::create_role(&state.db, dto, school_id, is_sys_admin, user_id).await?;
+    let role = service::create_role(
+        &state.db,
+        state.cache.as_ref(),
+        dto,
+        school_id,
+        is_sys_admin,
+        user_id,
+    )
+    .await?;
 
     Ok(Json(role))
 }
@@ -221,8 +229,15 @@ pub async fn update_role(
         ));
     }
 
-    let updated_role =
-        service::update_role(&state.db, role_id, dto, school_id, is_sys_admin).await?;
+    let updated_role = service::update_role(
+        &state.db,
+        state.cache.as_ref(),
+        role_id,
+        dto,
+        school_id,
+        is_sys_admin,
+    )
+    .await?;
 
     Ok(Json(updated_role))
 }
@@ -263,7 +278,14 @@ pub async fn delete_role(
         Some(get_admin_school_id(&state.db, &auth_user).await?)
     };
 
-    service::delete_role(&state.db, role_id, school_id, is_sys_admin).await?;
+    service::delete_role(
+        &state.db,
+        state.cache.as_ref(),
+        role_id,
+        school_id,
+        is_sys_admin,
+    )
+    .await?;
 
     Ok(())
 }
@@ -310,8 +332,9 @@ pub async fn assign_permissions(
 
     let updated_role = service::assign_permissions_to_role(
         &state.db,
+        state.cache.as_ref(),
         role_id,
-        dto.permission_ids,
+        &dto.permission_ids,
         school_id,
         is_sys_admin,
     )
@@ -361,6 +384,7 @@ pub async fn remove_permission(
 
     let updated_role = service::remove_permission_from_role(
         &state.db,
+        state.cache.as_ref(),
         role_id,
         permission_id,
         school_id,
@@ -432,6 +456,7 @@ pub async fn assign_role_to_user(
 
     let response = service::assign_role_to_user(
         &state.db,
+        state.cache.as_ref(),
         target_user_id,
         dto.role_id,
         requester_id,
@@ -481,8 +506,15 @@ pub async fn remove_role_from_user(
         ));
     }
 
-    service::remove_role_from_user(&state.db, target_user_id, role_id, school_id, is_sys_admin)
-        .await?;
+    service::remove_role_from_user(
+        &state.db,
+        state.cache.as_ref(),
+        target_user_id,
+        role_id,
+        school_id,
+        is_sys_admin,
+    )
+    .await?;
 
     Ok(())
 }

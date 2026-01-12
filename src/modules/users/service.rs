@@ -12,6 +12,7 @@ use crate::{
     },
 };
 use anyhow::Context;
+use chalkbyte_cache::{RedisCache, invalidate};
 use chalkbyte_models::ids::{BranchId, LevelId, RoleId, SchoolId, UserId};
 use sqlx::{PgPool, Row};
 use std::collections::HashMap;
@@ -22,7 +23,11 @@ pub struct UserService;
 
 impl UserService {
     #[instrument(skip(db, dto), fields(user.email = %dto.email))]
-    pub async fn create_user(db: &PgPool, dto: CreateUserDto) -> Result<User, AppError> {
+    pub async fn create_user(
+        db: &PgPool,
+        dto: CreateUserDto,
+        cache: Option<&RedisCache>,
+    ) -> Result<User, AppError> {
         debug!(email = %dto.email, "Creating new user");
 
         let password_hash = hash_password(&dto.password)?;
@@ -80,6 +85,9 @@ impl UserService {
             "none".to_string()
         };
         metrics::track_user_created(&role_name);
+
+        // Invalidate user caches
+        invalidate::user(cache, Some(user.id.into()), user.school_id.map(Into::into)).await;
 
         info!(user.id = %user.id, user.email = %user.email, "User created successfully");
         Ok(user)
@@ -455,6 +463,7 @@ impl UserService {
         db: &PgPool,
         user_id: UserId,
         dto: UpdateProfileDto,
+        cache: Option<&RedisCache>,
     ) -> Result<User, AppError> {
         debug!("Updating user profile");
 
@@ -502,15 +511,19 @@ impl UserService {
                 AppError::database(e)
             })?;
 
+        // Invalidate user caches
+        invalidate::user(cache, Some(user.id.into()), user.school_id.map(Into::into)).await;
+
         info!(user.id = %user.id, "Profile updated successfully");
         Ok(user)
     }
 
-    #[instrument(skip(db, dto), fields(user.id = %user_id))]
+    #[instrument(skip(db, dto, cache), fields(user.id = %user_id))]
     pub async fn change_password(
         db: &PgPool,
         user_id: UserId,
         dto: ChangePasswordDto,
+        cache: Option<&RedisCache>,
     ) -> Result<(), AppError> {
         debug!("Changing user password");
 
@@ -546,6 +559,9 @@ impl UserService {
                 error!(error = %e, "Database error updating password");
                 AppError::database(e)
             })?;
+
+        // Invalidate user caches
+        invalidate::user(cache, Some(user_id.into()), None).await;
 
         info!(user.id = %user_id, "Password changed successfully");
         Ok(())

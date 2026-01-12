@@ -1,6 +1,7 @@
 use sqlx::PgPool;
 use tracing::instrument;
 
+use chalkbyte_cache::RedisCache;
 use chalkbyte_core::{AppError, PaginationMeta};
 use chalkbyte_models::ids::{LevelId, SchoolId, UserId};
 
@@ -13,9 +14,10 @@ use crate::modules::users::model::system_roles;
 pub struct LevelService;
 
 impl LevelService {
-    #[instrument]
+    #[instrument(skip(cache))]
     pub async fn create_level(
         db: &PgPool,
+        cache: Option<&RedisCache>,
         school_id: SchoolId,
         dto: CreateLevelDto,
     ) -> Result<Level, AppError> {
@@ -39,6 +41,14 @@ impl LevelService {
             }
             AppError::from(e)
         })?;
+
+        // Invalidate level caches
+        chalkbyte_cache::keys::invalidate::level(
+            cache,
+            Some(level.id.into()),
+            Some(school_id.into()),
+        )
+        .await;
 
         Ok(level)
     }
@@ -178,6 +188,7 @@ impl LevelService {
     #[instrument]
     pub async fn update_level(
         db: &PgPool,
+        cache: Option<&RedisCache>,
         level_id: LevelId,
         school_id: SchoolId,
         dto: UpdateLevelDto,
@@ -221,13 +232,22 @@ impl LevelService {
             AppError::from(e)
         })?;
 
+        // Invalidate level caches
+        chalkbyte_cache::keys::invalidate::level(
+            cache,
+            Some(level_id.into()),
+            Some(school_id.into()),
+        )
+        .await;
+
         Ok(level)
     }
 
     /// Update level without school filtering (for system admins)
-    #[instrument]
+    #[instrument(skip(cache))]
     pub async fn update_level_no_school_filter(
         db: &PgPool,
+        cache: Option<&RedisCache>,
         level_id: LevelId,
         dto: UpdateLevelDto,
     ) -> Result<Level, AppError> {
@@ -239,6 +259,7 @@ impl LevelService {
         .await?
         .ok_or_else(|| AppError::not_found(anyhow::anyhow!("Level not found")))?;
 
+        let school_id = existing_level.school_id;
         let name = dto.name.unwrap_or(existing_level.name);
         let description = if dto.description.is_some() {
             dto.description
@@ -268,12 +289,21 @@ impl LevelService {
             AppError::from(e)
         })?;
 
+        // Invalidate level caches
+        chalkbyte_cache::keys::invalidate::level(
+            cache,
+            Some(level_id.into()),
+            Some(school_id.into()),
+        )
+        .await;
+
         Ok(level)
     }
 
-    #[instrument]
+    #[instrument(skip(cache))]
     pub async fn delete_level(
         db: &PgPool,
+        cache: Option<&RedisCache>,
         level_id: LevelId,
         school_id: SchoolId,
     ) -> Result<(), AppError> {
@@ -287,15 +317,34 @@ impl LevelService {
             return Err(AppError::not_found(anyhow::anyhow!("Level not found")));
         }
 
+        // Invalidate level caches
+        chalkbyte_cache::keys::invalidate::level(
+            cache,
+            Some(level_id.into()),
+            Some(school_id.into()),
+        )
+        .await;
+
         Ok(())
     }
 
     /// Delete level without school filtering (for system admins)
-    #[instrument]
+    #[instrument(skip(cache))]
     pub async fn delete_level_no_school_filter(
         db: &PgPool,
+        cache: Option<&RedisCache>,
         level_id: LevelId,
     ) -> Result<(), AppError> {
+        // Get school_id before deletion for cache invalidation
+        let level = sqlx::query_as::<_, Level>(
+            "SELECT id, name, description, school_id, created_at, updated_at FROM levels WHERE id = $1",
+        )
+        .bind(level_id)
+        .fetch_optional(db)
+        .await?;
+
+        let school_id = level.as_ref().map(|l| l.school_id);
+
         let result = sqlx::query("DELETE FROM levels WHERE id = $1")
             .bind(level_id)
             .execute(db)
@@ -304,6 +353,14 @@ impl LevelService {
         if result.rows_affected() == 0 {
             return Err(AppError::not_found(anyhow::anyhow!("Level not found")));
         }
+
+        // Invalidate level caches
+        chalkbyte_cache::keys::invalidate::level(
+            cache,
+            Some(level_id.into()),
+            school_id.map(Into::into),
+        )
+        .await;
 
         Ok(())
     }
@@ -723,7 +780,7 @@ mod tests {
             school_id: None,
         };
 
-        let result = LevelService::create_level(&pool, school_id, dto).await;
+        let result = LevelService::create_level(&pool, None, school_id, dto).await;
 
         assert!(result.is_ok());
         let level = result.unwrap();
@@ -742,7 +799,7 @@ mod tests {
             school_id: None,
         };
 
-        LevelService::create_level(&pool, school_id, dto)
+        LevelService::create_level(&pool, None, school_id, dto)
             .await
             .unwrap();
 
@@ -752,7 +809,7 @@ mod tests {
             school_id: None,
         };
 
-        let result = LevelService::create_level(&pool, school_id, dto2).await;
+        let result = LevelService::create_level(&pool, None, school_id, dto2).await;
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -776,8 +833,8 @@ mod tests {
             school_id: None,
         };
 
-        let result1 = LevelService::create_level(&pool, school1_id, dto).await;
-        let result2 = LevelService::create_level(&pool, school2_id, dto2).await;
+        let result1 = LevelService::create_level(&pool, None, school1_id, dto).await;
+        let result2 = LevelService::create_level(&pool, None, school2_id, dto2).await;
 
         assert!(result1.is_ok());
         assert!(result2.is_ok());
@@ -798,10 +855,10 @@ mod tests {
             school_id: None,
         };
 
-        LevelService::create_level(&pool, school_id, dto1)
+        LevelService::create_level(&pool, None, school_id, dto1)
             .await
             .unwrap();
-        LevelService::create_level(&pool, school_id, dto2)
+        LevelService::create_level(&pool, None, school_id, dto2)
             .await
             .unwrap();
 
@@ -838,10 +895,10 @@ mod tests {
             school_id: None,
         };
 
-        LevelService::create_level(&pool, school_id, dto1)
+        LevelService::create_level(&pool, None, school_id, dto1)
             .await
             .unwrap();
-        LevelService::create_level(&pool, school_id, dto2)
+        LevelService::create_level(&pool, None, school_id, dto2)
             .await
             .unwrap();
 
@@ -873,7 +930,7 @@ mod tests {
                 description: None,
                 school_id: None,
             };
-            LevelService::create_level(&pool, school_id, dto)
+            LevelService::create_level(&pool, None, school_id, dto)
                 .await
                 .unwrap();
         }
@@ -907,7 +964,7 @@ mod tests {
             school_id: None,
         };
 
-        let created = LevelService::create_level(&pool, school_id, dto)
+        let created = LevelService::create_level(&pool, None, school_id, dto)
             .await
             .unwrap();
 
@@ -943,7 +1000,7 @@ mod tests {
             school_id: None,
         };
 
-        let created = LevelService::create_level(&pool, school1_id, dto)
+        let created = LevelService::create_level(&pool, None, school1_id, dto)
             .await
             .unwrap();
 
@@ -964,7 +1021,7 @@ mod tests {
             school_id: None,
         };
 
-        let created = LevelService::create_level(&pool, school_id, dto)
+        let created = LevelService::create_level(&pool, None, school_id, dto)
             .await
             .unwrap();
 
@@ -973,7 +1030,8 @@ mod tests {
             description: Some("Updated description".to_string()),
         };
 
-        let result = LevelService::update_level(&pool, created.id, school_id, update_dto).await;
+        let result =
+            LevelService::update_level(&pool, None, created.id, school_id, update_dto).await;
 
         assert!(result.is_ok());
         let updated = result.unwrap();
@@ -991,7 +1049,7 @@ mod tests {
             school_id: None,
         };
 
-        let created = LevelService::create_level(&pool, school_id, dto)
+        let created = LevelService::create_level(&pool, None, school_id, dto)
             .await
             .unwrap();
 
@@ -1000,7 +1058,8 @@ mod tests {
             description: None,
         };
 
-        let result = LevelService::update_level(&pool, created.id, school_id, update_dto).await;
+        let result =
+            LevelService::update_level(&pool, None, created.id, school_id, update_dto).await;
 
         assert!(result.is_ok());
         let updated = result.unwrap();
@@ -1021,7 +1080,8 @@ mod tests {
             description: None,
         };
 
-        let result = LevelService::update_level(&pool, random_id, school_id, update_dto).await;
+        let result =
+            LevelService::update_level(&pool, None, random_id, school_id, update_dto).await;
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -1038,11 +1098,11 @@ mod tests {
             school_id: None,
         };
 
-        let created = LevelService::create_level(&pool, school_id, dto)
+        let created = LevelService::create_level(&pool, None, school_id, dto)
             .await
             .unwrap();
 
-        let result = LevelService::delete_level(&pool, created.id, school_id).await;
+        let result = LevelService::delete_level(&pool, None, created.id, school_id).await;
 
         assert!(result.is_ok());
 
@@ -1055,7 +1115,7 @@ mod tests {
         let school_id = create_test_school(&pool, &format!("School {}", Uuid::new_v4())).await;
         let random_id = LevelId::new();
 
-        let result = LevelService::delete_level(&pool, random_id, school_id).await;
+        let result = LevelService::delete_level(&pool, None, random_id, school_id).await;
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -1071,7 +1131,7 @@ mod tests {
             description: None,
             school_id: None,
         };
-        let level = LevelService::create_level(&pool, school_id, dto)
+        let level = LevelService::create_level(&pool, None, school_id, dto)
             .await
             .unwrap();
 
@@ -1102,7 +1162,7 @@ mod tests {
             description: None,
             school_id: None,
         };
-        let level = LevelService::create_level(&pool, school_id, dto)
+        let level = LevelService::create_level(&pool, None, school_id, dto)
             .await
             .unwrap();
 
@@ -1151,6 +1211,7 @@ mod tests {
 
         let level1 = LevelService::create_level(
             &pool,
+            None,
             school_id,
             CreateLevelDto {
                 name: "Grade 9".to_string(),
@@ -1163,6 +1224,7 @@ mod tests {
 
         let level2 = LevelService::create_level(
             &pool,
+            None,
             school_id,
             CreateLevelDto {
                 name: "Grade 10".to_string(),
@@ -1209,6 +1271,7 @@ mod tests {
 
         let level = LevelService::create_level(
             &pool,
+            None,
             school_id,
             CreateLevelDto {
                 name: "Grade 10".to_string(),
@@ -1247,6 +1310,7 @@ mod tests {
 
         let level = LevelService::create_level(
             &pool,
+            None,
             school_id,
             CreateLevelDto {
                 name: "Grade 10".to_string(),
@@ -1298,6 +1362,7 @@ mod tests {
 
         let level = LevelService::create_level(
             &pool,
+            None,
             school_id,
             CreateLevelDto {
                 name: "Grade 10".to_string(),
@@ -1351,6 +1416,7 @@ mod tests {
 
         let level = LevelService::create_level(
             &pool,
+            None,
             school_id,
             CreateLevelDto {
                 name: "Grade 10".to_string(),

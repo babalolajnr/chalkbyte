@@ -1,6 +1,7 @@
 use sqlx::PgPool;
 use tracing::instrument;
 
+use chalkbyte_cache::{RedisCache, invalidate};
 use chalkbyte_core::{AppError, PaginationMeta};
 use chalkbyte_models::ids::{BranchId, LevelId, SchoolId, UserId};
 
@@ -14,9 +15,10 @@ use super::model::{
 pub struct BranchService;
 
 impl BranchService {
-    #[instrument(skip(db))]
+    #[instrument(skip(db, cache))]
     pub async fn create_branch(
         db: &PgPool,
+        cache: Option<&RedisCache>,
         level_id: LevelId,
         school_id: SchoolId,
         dto: CreateBranchDto,
@@ -59,6 +61,13 @@ impl BranchService {
             }
             AppError::from(e)
         })?;
+
+        invalidate::branch(
+            cache,
+            Some(branch.id.into()),
+            Some(level_id.into_inner().into()),
+        )
+        .await;
 
         Ok(branch)
     }
@@ -213,6 +222,7 @@ impl BranchService {
     #[instrument(skip(db))]
     pub async fn update_branch(
         db: &PgPool,
+        cache: Option<&RedisCache>,
         id: BranchId,
         school_id: SchoolId,
         dto: UpdateBranchDto,
@@ -272,14 +282,23 @@ impl BranchService {
             AppError::from(e)
         })?;
 
+        invalidate::branch(
+            cache,
+            Some(id.into_inner().into()),
+            Some(branch.level_id.into()),
+        )
+        .await;
+
         Ok(branch)
     }
 
-    #[instrument(skip(db))]
+    #[instrument(skip(db, cache))]
     pub async fn delete_branch(
         db: &PgPool,
+        cache: Option<&RedisCache>,
         id: BranchId,
         school_id: SchoolId,
+        level_id: Option<LevelId>,
     ) -> Result<(), AppError> {
         let result = sqlx::query!(
             r#"
@@ -297,6 +316,13 @@ impl BranchService {
         if result.rows_affected() == 0 {
             return Err(AppError::not_found(anyhow::anyhow!("Branch not found")));
         }
+
+        invalidate::branch(
+            cache,
+            Some(id.into_inner().into()),
+            level_id.map(|l| l.into_inner().into()),
+        )
+        .await;
 
         Ok(())
     }
@@ -520,6 +546,7 @@ impl BranchService {
     #[instrument(skip(db))]
     pub async fn create_branch_no_school_filter(
         db: &PgPool,
+        cache: Option<&RedisCache>,
         level_id: LevelId,
         dto: CreateBranchDto,
     ) -> Result<Branch, AppError> {
@@ -558,6 +585,13 @@ impl BranchService {
             }
             AppError::from(e)
         })?;
+
+        invalidate::branch(
+            cache,
+            Some(branch.id.into()),
+            Some(level_id.into_inner().into()),
+        )
+        .await;
 
         Ok(branch)
     }
@@ -705,6 +739,7 @@ impl BranchService {
     #[instrument(skip(db))]
     pub async fn update_branch_no_school_filter(
         db: &PgPool,
+        cache: Option<&RedisCache>,
         id: BranchId,
         dto: UpdateBranchDto,
     ) -> Result<Branch, AppError> {
@@ -754,11 +789,23 @@ impl BranchService {
             AppError::from(e)
         })?;
 
+        invalidate::branch(
+            cache,
+            Some(id.into_inner().into()),
+            Some(branch.level_id.into()),
+        )
+        .await;
+
         Ok(branch)
     }
 
-    #[instrument(skip(db))]
-    pub async fn delete_branch_no_school_filter(db: &PgPool, id: BranchId) -> Result<(), AppError> {
+    #[instrument(skip(db, cache))]
+    pub async fn delete_branch_no_school_filter(
+        db: &PgPool,
+        cache: Option<&RedisCache>,
+        id: BranchId,
+        level_id: Option<LevelId>,
+    ) -> Result<(), AppError> {
         let result = sqlx::query!(r#"DELETE FROM branches WHERE id = $1"#, id.into_inner())
             .execute(db)
             .await?;
@@ -766,6 +813,13 @@ impl BranchService {
         if result.rows_affected() == 0 {
             return Err(AppError::not_found(anyhow::anyhow!("Branch not found")));
         }
+
+        invalidate::branch(
+            cache,
+            Some(id.into_inner().into()),
+            level_id.map(|l| l.into_inner().into()),
+        )
+        .await;
 
         Ok(())
     }
@@ -1032,7 +1086,7 @@ mod tests {
             description: Some("Test Description".to_string()),
         };
 
-        let result = BranchService::create_branch(&pool, level_id, school_id, dto).await;
+        let result = BranchService::create_branch(&pool, None, level_id, school_id, dto).await;
 
         assert!(result.is_ok());
         let branch = result.unwrap();
@@ -1052,7 +1106,7 @@ mod tests {
         };
 
         let result =
-            BranchService::create_branch(&pool, non_existent_level_id, school_id, dto).await;
+            BranchService::create_branch(&pool, None, non_existent_level_id, school_id, dto).await;
 
         assert!(result.is_err());
     }
@@ -1067,7 +1121,8 @@ mod tests {
             description: None,
         };
 
-        let result = BranchService::create_branch(&pool, level_id, wrong_school_id, dto).await;
+        let result =
+            BranchService::create_branch(&pool, None, level_id, wrong_school_id, dto).await;
 
         assert!(result.is_err());
     }
@@ -1081,7 +1136,7 @@ mod tests {
             description: None,
         };
 
-        BranchService::create_branch(&pool, level_id, school_id, dto1)
+        BranchService::create_branch(&pool, None, level_id, school_id, dto1)
             .await
             .unwrap();
 
@@ -1090,7 +1145,7 @@ mod tests {
             description: None,
         };
 
-        let result = BranchService::create_branch(&pool, level_id, school_id, dto2).await;
+        let result = BranchService::create_branch(&pool, None, level_id, school_id, dto2).await;
 
         assert!(result.is_err());
     }
@@ -1104,7 +1159,7 @@ mod tests {
                 name: format!("Branch {}", i),
                 description: None,
             };
-            BranchService::create_branch(&pool, level_id, school_id, dto)
+            BranchService::create_branch(&pool, None, level_id, school_id, dto)
                 .await
                 .unwrap();
         }
@@ -1135,7 +1190,7 @@ mod tests {
             name: "Science Branch".to_string(),
             description: None,
         };
-        BranchService::create_branch(&pool, level_id, school_id, dto1)
+        BranchService::create_branch(&pool, None, level_id, school_id, dto1)
             .await
             .unwrap();
 
@@ -1143,7 +1198,7 @@ mod tests {
             name: "Arts Branch".to_string(),
             description: None,
         };
-        BranchService::create_branch(&pool, level_id, school_id, dto2)
+        BranchService::create_branch(&pool, None, level_id, school_id, dto2)
             .await
             .unwrap();
 
@@ -1173,7 +1228,7 @@ mod tests {
             name: "Test Branch".to_string(),
             description: None,
         };
-        let branch = BranchService::create_branch(&pool, level_id, school_id, dto)
+        let branch = BranchService::create_branch(&pool, None, level_id, school_id, dto)
             .await
             .unwrap();
 
@@ -1204,7 +1259,7 @@ mod tests {
             name: "Original Name".to_string(),
             description: Some("Original Description".to_string()),
         };
-        let branch = BranchService::create_branch(&pool, level_id, school_id, dto)
+        let branch = BranchService::create_branch(&pool, None, level_id, school_id, dto)
             .await
             .unwrap();
 
@@ -1213,7 +1268,8 @@ mod tests {
             description: Some("Updated Description".to_string()),
         };
 
-        let result = BranchService::update_branch(&pool, branch.id, school_id, update_dto).await;
+        let result =
+            BranchService::update_branch(&pool, None, branch.id, school_id, update_dto).await;
 
         assert!(result.is_ok());
         let updated = result.unwrap();
@@ -1229,7 +1285,7 @@ mod tests {
             name: "Original Name".to_string(),
             description: Some("Original Description".to_string()),
         };
-        let branch = BranchService::create_branch(&pool, level_id, school_id, dto)
+        let branch = BranchService::create_branch(&pool, None, level_id, school_id, dto)
             .await
             .unwrap();
 
@@ -1238,7 +1294,8 @@ mod tests {
             description: None,
         };
 
-        let result = BranchService::update_branch(&pool, branch.id, school_id, update_dto).await;
+        let result =
+            BranchService::update_branch(&pool, None, branch.id, school_id, update_dto).await;
 
         assert!(result.is_ok());
         let updated = result.unwrap();
@@ -1257,11 +1314,11 @@ mod tests {
             name: "To Be Deleted".to_string(),
             description: None,
         };
-        let branch = BranchService::create_branch(&pool, level_id, school_id, dto)
+        let branch = BranchService::create_branch(&pool, None, level_id, school_id, dto)
             .await
             .unwrap();
 
-        let result = BranchService::delete_branch(&pool, branch.id, school_id).await;
+        let result = BranchService::delete_branch(&pool, None, branch.id, school_id, None).await;
 
         assert!(result.is_ok());
 
@@ -1274,7 +1331,8 @@ mod tests {
         let (school_id, _, _) = setup_test_data(&pool).await;
         let non_existent_id = BranchId::new();
 
-        let result = BranchService::delete_branch(&pool, non_existent_id, school_id).await;
+        let result =
+            BranchService::delete_branch(&pool, None, non_existent_id, school_id, None).await;
 
         assert!(result.is_err());
     }
@@ -1287,7 +1345,7 @@ mod tests {
             name: "Test Branch".to_string(),
             description: None,
         };
-        let branch = BranchService::create_branch(&pool, level_id, school_id, dto)
+        let branch = BranchService::create_branch(&pool, None, level_id, school_id, dto)
             .await
             .unwrap();
 
@@ -1315,7 +1373,7 @@ mod tests {
             name: "Test Branch".to_string(),
             description: None,
         };
-        let branch = BranchService::create_branch(&pool, level_id, school_id, dto)
+        let branch = BranchService::create_branch(&pool, None, level_id, school_id, dto)
             .await
             .unwrap();
 
@@ -1344,7 +1402,7 @@ mod tests {
             name: "Target Branch".to_string(),
             description: None,
         };
-        let branch = BranchService::create_branch(&pool, level_id, school_id, dto)
+        let branch = BranchService::create_branch(&pool, None, level_id, school_id, dto)
             .await
             .unwrap();
 
@@ -1378,7 +1436,7 @@ mod tests {
             name: "Initial Branch".to_string(),
             description: None,
         };
-        let branch = BranchService::create_branch(&pool, level_id, school_id, dto)
+        let branch = BranchService::create_branch(&pool, None, level_id, school_id, dto)
             .await
             .unwrap();
 
@@ -1419,7 +1477,7 @@ mod tests {
             name: "Test Branch".to_string(),
             description: None,
         };
-        let branch = BranchService::create_branch(&pool, level_id, school_id, dto)
+        let branch = BranchService::create_branch(&pool, None, level_id, school_id, dto)
             .await
             .unwrap();
 
@@ -1457,7 +1515,7 @@ mod tests {
             name: "Test Branch".to_string(),
             description: None,
         };
-        let branch = BranchService::create_branch(&pool, level_id, school_id, dto)
+        let branch = BranchService::create_branch(&pool, None, level_id, school_id, dto)
             .await
             .unwrap();
 
@@ -1488,7 +1546,7 @@ mod tests {
             name: "Test Branch".to_string(),
             description: None,
         };
-        let branch = BranchService::create_branch(&pool, level_id, school_id, dto)
+        let branch = BranchService::create_branch(&pool, None, level_id, school_id, dto)
             .await
             .unwrap();
 
