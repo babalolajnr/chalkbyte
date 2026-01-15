@@ -1,6 +1,10 @@
 use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa::{Modify, OpenApi};
 
+use crate::modules::academic_sessions::model::{
+    AcademicSession, AcademicSessionFilterParams, AcademicSessionWithStats,
+    CreateAcademicSessionDto, PaginatedAcademicSessionsResponse, UpdateAcademicSessionDto,
+};
 use crate::modules::auth::controller::ErrorResponse;
 use crate::modules::auth::model::{
     ForgotPasswordRequest, LoginRequest, LoginResponse, LoginUser, MessageResponse,
@@ -25,6 +29,10 @@ use crate::modules::roles::model::{
     RoleFilterParams, RoleWithPermissions, UpdateRoleDto, UserRole,
 };
 use crate::modules::students::model::{CreateStudentDto, Student, UpdateStudentDto};
+use crate::modules::terms::model::{
+    CreateTermDto, PaginatedTermsResponse, Term, TermFilterParams, TermWithSessionInfo,
+    UpdateTermDto,
+};
 use crate::modules::users::controller::ProfileResponse;
 use crate::modules::users::model::{
     ChangePasswordDto, CreateSchoolDto, CreateUserDto, PaginatedSchoolsResponse,
@@ -98,6 +106,23 @@ use chalkbyte_core::{PaginationMeta, PaginationParams};
         crate::modules::roles::controller::remove_role_from_user,
         crate::modules::roles::controller::get_user_roles,
         crate::modules::roles::controller::get_user_permissions,
+        // Academic Sessions
+        crate::modules::academic_sessions::controller::create_academic_session,
+        crate::modules::academic_sessions::controller::get_academic_sessions,
+        crate::modules::academic_sessions::controller::get_active_academic_session,
+        crate::modules::academic_sessions::controller::get_academic_session_by_id,
+        crate::modules::academic_sessions::controller::update_academic_session,
+        crate::modules::academic_sessions::controller::delete_academic_session,
+        crate::modules::academic_sessions::controller::activate_academic_session,
+        crate::modules::academic_sessions::controller::deactivate_academic_session,
+        // Terms
+        crate::modules::terms::controller::create_session_term,
+        crate::modules::terms::controller::get_session_terms,
+        crate::modules::terms::controller::get_current_term,
+        crate::modules::terms::controller::get_term_by_id,
+        crate::modules::terms::controller::update_term,
+        crate::modules::terms::controller::delete_term,
+        crate::modules::terms::controller::set_current_term,
     ),
     components(
         schemas(
@@ -164,6 +189,20 @@ use chalkbyte_core::{PaginationMeta, PaginationParams};
             PaginatedRolesResponse,
             PaginatedPermissionsResponse,
             RoleAssignmentResponse,
+            // Academic Sessions
+            AcademicSession,
+            AcademicSessionWithStats,
+            CreateAcademicSessionDto,
+            UpdateAcademicSessionDto,
+            AcademicSessionFilterParams,
+            PaginatedAcademicSessionsResponse,
+            // Terms
+            Term,
+            TermWithSessionInfo,
+            CreateTermDto,
+            UpdateTermDto,
+            TermFilterParams,
+            PaginatedTermsResponse,
         )
     ),
     modifiers(&SecurityAddon),
@@ -175,7 +214,9 @@ use chalkbyte_core::{PaginationMeta, PaginationParams};
         (name = "Students", description = "Student management endpoints"),
         (name = "Levels", description = "Level/Grade management endpoints"),
         (name = "Branches", description = "Branch management endpoints"),
-        (name = "Roles", description = "Custom roles and permissions management")
+        (name = "Roles", description = "Custom roles and permissions management"),
+        (name = "Academic Sessions", description = "Academic session/year management endpoints"),
+        (name = "Terms", description = "Term/semester management endpoints")
     ),
     info(
         title = "Chalkbyte API",

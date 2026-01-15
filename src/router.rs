@@ -3,6 +3,7 @@ use crate::logging::is_observability_enabled;
 use crate::logging::logging_middleware;
 use crate::metrics::metrics_middleware;
 use crate::middleware::role::require_admin;
+use crate::modules::academic_sessions::router::init_academic_sessions_router;
 use crate::modules::auth::router::init_auth_router;
 use crate::modules::branches::router::{init_branches_router, init_level_branches_router};
 use crate::modules::levels::router::init_levels_router;
@@ -12,6 +13,7 @@ use crate::modules::roles::router::{
 };
 use crate::modules::schools::router::init_schools_router;
 use crate::modules::students::router::init_students_router;
+use crate::modules::terms::router::{init_session_terms_router, init_terms_router};
 use crate::modules::users::router::init_users_router;
 use crate::state::AppState;
 
@@ -122,6 +124,22 @@ pub fn init_router(state: AppState) -> Router {
                         .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
                         // Roles: private cache, medium TTL (rarely changes)
                         .layer(private_medium.clone())
+                        .layer(middleware::from_fn(etag_middleware)),
+                )
+                // Academic sessions and terms endpoints
+                .nest(
+                    "/academic-sessions",
+                    init_academic_sessions_router()
+                        .nest("/{session_id}/terms", init_session_terms_router())
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
+                        .layer(private_medium.clone())
+                        .layer(middleware::from_fn(etag_middleware)),
+                )
+                .nest(
+                    "/terms",
+                    init_terms_router()
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
+                        .layer(private_short.clone())
                         .layer(middleware::from_fn(etag_middleware)),
                 )
                 // Apply general rate limiting to all API routes
@@ -242,6 +260,22 @@ pub fn init_router(state: AppState) -> Router {
                     init_roles_router()
                         .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
                         .layer(private_medium.clone())
+                        .layer(middleware::from_fn(etag_middleware)),
+                )
+                // Academic sessions and terms endpoints
+                .nest(
+                    "/academic-sessions",
+                    init_academic_sessions_router()
+                        .nest("/{session_id}/terms", init_session_terms_router())
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
+                        .layer(private_medium.clone())
+                        .layer(middleware::from_fn(etag_middleware)),
+                )
+                .nest(
+                    "/terms",
+                    init_terms_router()
+                        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
+                        .layer(private_short.clone())
                         .layer(middleware::from_fn(etag_middleware)),
                 ),
         )

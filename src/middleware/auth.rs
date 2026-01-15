@@ -436,6 +436,18 @@ require_permission!(RequireReportsExport, "reports:export");
 require_permission!(RequireSettingsRead, "settings:read");
 require_permission!(RequireSettingsUpdate, "settings:update");
 
+// Academic sessions permissions
+require_permission!(RequireAcademicSessionsCreate, "academic_sessions:create");
+require_permission!(RequireAcademicSessionsRead, "academic_sessions:read");
+require_permission!(RequireAcademicSessionsUpdate, "academic_sessions:update");
+require_permission!(RequireAcademicSessionsDelete, "academic_sessions:delete");
+
+// Terms permissions
+require_permission!(RequireTermsCreate, "terms:create");
+require_permission!(RequireTermsRead, "terms:read");
+require_permission!(RequireTermsUpdate, "terms:update");
+require_permission!(RequireTermsDelete, "terms:delete");
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -222,6 +222,16 @@ define_id!(
     UserRoleId
 );
 
+define_id!(
+    /// Strongly-typed ID for AcademicSession entities.
+    AcademicSessionId
+);
+
+define_id!(
+    /// Strongly-typed ID for Term entities.
+    TermId
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;

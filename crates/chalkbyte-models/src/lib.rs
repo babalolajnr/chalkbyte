@@ -40,6 +40,7 @@
 //! }
 //! ```
 
+pub mod academic_sessions;
 pub mod auth;
 pub mod branches;
 pub mod ids;
@@ -47,12 +48,14 @@ pub mod levels;
 pub mod mfa;
 pub mod roles;
 pub mod students;
+pub mod terms;
 pub mod users;
 pub mod value_types;
 
 // Re-export ID types at crate root for convenience
 pub use ids::{
-    BranchId, LevelId, PermissionId, RoleId, RolePermissionId, SchoolId, UserId, UserRoleId,
+    AcademicSessionId, BranchId, LevelId, PermissionId, RoleId, RolePermissionId, SchoolId, TermId,
+    UserId, UserRoleId,
 };
 
 // Re-export value types at crate root for convenience
@@ -99,4 +102,14 @@ pub use mfa::{
 pub use students::{
     CreateStudentDto, PaginatedStudentsResponse, QueryParams as StudentQueryParams, Student,
     UpdateStudentDto,
+};
+
+pub use academic_sessions::{
+    AcademicSession, AcademicSessionFilterParams, AcademicSessionWithStats,
+    CreateAcademicSessionDto, PaginatedAcademicSessionsResponse, UpdateAcademicSessionDto,
+};
+
+pub use terms::{
+    CreateTermDto, PaginatedTermsResponse, Term, TermFilterParams, TermWithSessionInfo,
+    UpdateTermDto,
 };
