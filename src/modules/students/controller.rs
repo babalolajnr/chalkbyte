@@ -24,6 +24,7 @@ use validator::Validate;
 #[utoipa::path(
     post,
     path = "/api/students",
+    summary = "Create student",
     request_body = CreateStudentDto,
     responses(
         (status = 200, description = "Student created successfully", body = Student),
@@ -62,6 +63,7 @@ pub async fn create_student(
 #[utoipa::path(
     get,
     path = "/api/students",
+    summary = "List students",
     params(
         QueryParams
     ),
@@ -111,6 +113,7 @@ pub async fn get_students(
 #[utoipa::path(
     get,
     path = "/api/students/{id}",
+    summary = "Get student by ID",
     params(
         ("id" = Uuid, Path, description = "Student ID")
     ),
@@ -147,6 +150,7 @@ pub async fn get_student(
 #[utoipa::path(
     put,
     path = "/api/students/{id}",
+    summary = "Update student",
     params(
         ("id" = Uuid, Path, description = "Student ID")
     ),
@@ -202,6 +206,7 @@ pub async fn update_student(
 #[utoipa::path(
     delete,
     path = "/api/students/{id}",
+    summary = "Delete student",
     params(
         ("id" = Uuid, Path, description = "Student ID")
     ),

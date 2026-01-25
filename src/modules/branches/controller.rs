@@ -26,6 +26,7 @@ use crate::state::AppState;
 #[utoipa::path(
     post,
     path = "/api/levels/{level_id}/branches",
+    summary = "Create branch",
     params(
         ("level_id" = Uuid, Path, description = "Level ID")
     ),
@@ -73,6 +74,7 @@ pub async fn create_branch(
 #[utoipa::path(
     get,
     path = "/api/levels/{level_id}/branches",
+    summary = "List branches",
     params(
         ("level_id" = Uuid, Path, description = "Level ID"),
         BranchFilterParams
@@ -112,6 +114,7 @@ pub async fn get_branches(
 #[utoipa::path(
     get,
     path = "/api/branches/{id}",
+    summary = "Get branch by ID",
     params(
         ("id" = Uuid, Path, description = "Branch ID")
     ),
@@ -147,6 +150,7 @@ pub async fn get_branch_by_id(
 #[utoipa::path(
     put,
     path = "/api/branches/{id}",
+    summary = "Update branch",
     params(
         ("id" = Uuid, Path, description = "Branch ID")
     ),
@@ -190,6 +194,7 @@ pub async fn update_branch(
 #[utoipa::path(
     delete,
     path = "/api/branches/{id}",
+    summary = "Delete branch",
     params(
         ("id" = Uuid, Path, description = "Branch ID")
     ),
@@ -226,6 +231,7 @@ pub async fn delete_branch(
 #[utoipa::path(
     post,
     path = "/api/branches/{id}/students",
+    summary = "Assign students to branch",
     params(
         ("id" = Uuid, Path, description = "Branch ID")
     ),
@@ -267,6 +273,7 @@ pub async fn assign_students_to_branch(
 #[utoipa::path(
     get,
     path = "/api/branches/{id}/students",
+    summary = "Get branch students",
     params(
         ("id" = Uuid, Path, description = "Branch ID")
     ),
@@ -303,6 +310,7 @@ pub async fn get_students_in_branch(
 #[utoipa::path(
     patch,
     path = "/api/branches/students/{student_id}/move",
+    summary = "Move student to branch",
     params(
         ("student_id" = Uuid, Path, description = "Student ID")
     ),
@@ -343,6 +351,7 @@ pub async fn move_student_to_branch(
 #[utoipa::path(
     delete,
     path = "/api/branches/students/{student_id}",
+    summary = "Remove student from branch",
     params(
         ("student_id" = Uuid, Path, description = "Student ID")
     ),

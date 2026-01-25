@@ -29,6 +29,7 @@ use super::service;
 #[utoipa::path(
     get,
     path = "/api/roles/permissions",
+    summary = "List permissions",
     params(
         ("category" = Option<String>, Query, description = "Filter by permission category"),
         ("page" = Option<u32>, Query, description = "Page number"),
@@ -55,6 +56,7 @@ pub async fn get_permissions(
 #[utoipa::path(
     get,
     path = "/api/roles/permissions/{id}",
+    summary = "Get permission by ID",
     params(
         ("id" = Uuid, Path, description = "Permission ID")
     ),
@@ -82,6 +84,7 @@ pub async fn get_permission_by_id(
 #[utoipa::path(
     post,
     path = "/api/roles",
+    summary = "Create role",
     request_body = CreateRoleDto,
     responses(
         (status = 201, description = "Role created successfully", body = RoleWithPermissions),
@@ -122,6 +125,7 @@ pub async fn create_role(
 #[utoipa::path(
     get,
     path = "/api/roles",
+    summary = "List roles",
     params(
         ("school_id" = Option<Uuid>, Query, description = "Filter by school ID"),
         ("is_system_role" = Option<bool>, Query, description = "Filter system roles only"),
@@ -158,6 +162,7 @@ pub async fn get_roles(
 #[utoipa::path(
     get,
     path = "/api/roles/{id}",
+    summary = "Get role by ID",
     params(
         ("id" = Uuid, Path, description = "Role ID")
     ),
@@ -192,6 +197,7 @@ pub async fn get_role_by_id(
 #[utoipa::path(
     put,
     path = "/api/roles/{id}",
+    summary = "Update role",
     params(
         ("id" = Uuid, Path, description = "Role ID")
     ),
@@ -245,6 +251,7 @@ pub async fn update_role(
 #[utoipa::path(
     delete,
     path = "/api/roles/{id}",
+    summary = "Delete role",
     params(
         ("id" = Uuid, Path, description = "Role ID")
     ),
@@ -293,6 +300,7 @@ pub async fn delete_role(
 #[utoipa::path(
     post,
     path = "/api/roles/{id}/permissions",
+    summary = "Assign permissions to role",
     params(
         ("id" = Uuid, Path, description = "Role ID")
     ),
@@ -346,6 +354,7 @@ pub async fn assign_permissions(
 #[utoipa::path(
     delete,
     path = "/api/roles/{role_id}/permissions/{permission_id}",
+    summary = "Remove permission from role",
     params(
         ("role_id" = Uuid, Path, description = "Role ID"),
         ("permission_id" = Uuid, Path, description = "Permission ID")
@@ -400,6 +409,7 @@ pub async fn remove_permission(
 #[utoipa::path(
     post,
     path = "/api/users/{user_id}/roles",
+    summary = "Assign role to user",
     params(
         ("user_id" = Uuid, Path, description = "User ID")
     ),
@@ -471,6 +481,7 @@ pub async fn assign_role_to_user(
 #[utoipa::path(
     delete,
     path = "/api/users/{user_id}/roles/{role_id}",
+    summary = "Remove role from user",
     params(
         ("user_id" = Uuid, Path, description = "User ID"),
         ("role_id" = Uuid, Path, description = "Role ID")
@@ -522,6 +533,7 @@ pub async fn remove_role_from_user(
 #[utoipa::path(
     get,
     path = "/api/users/{user_id}/roles",
+    summary = "Get user roles",
     params(
         ("user_id" = Uuid, Path, description = "User ID")
     ),
@@ -570,6 +582,7 @@ pub async fn get_user_roles(
 #[utoipa::path(
     get,
     path = "/api/users/{user_id}/permissions",
+    summary = "Get user permissions",
     params(
         ("user_id" = Uuid, Path, description = "User ID")
     ),

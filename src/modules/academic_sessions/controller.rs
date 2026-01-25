@@ -27,6 +27,7 @@ use crate::utils::auth_helpers::{get_admin_school_id, get_school_id_for_scoped_o
 #[utoipa::path(
     post,
     path = "/api/academic-sessions",
+    summary = "Create academic session",
     request_body = CreateAcademicSessionDto,
     responses(
         (status = 201, description = "Academic session created successfully", body = AcademicSession),
@@ -58,6 +59,7 @@ pub async fn create_academic_session(
 #[utoipa::path(
     get,
     path = "/api/academic-sessions",
+    summary = "List academic sessions",
     params(AcademicSessionFilterParams),
     responses(
         (status = 200, description = "List of academic sessions", body = PaginatedAcademicSessionsResponse),
@@ -88,6 +90,7 @@ pub async fn get_academic_sessions(
 #[utoipa::path(
     get,
     path = "/api/academic-sessions/active",
+    summary = "Get active academic session",
     params(
         ("school_id" = Option<Uuid>, Query, description = "School ID (required for system admins)")
     ),
@@ -118,6 +121,7 @@ pub async fn get_active_academic_session(
 #[utoipa::path(
     get,
     path = "/api/academic-sessions/{id}",
+    summary = "Get academic session by ID",
     params(
         ("id" = Uuid, Path, description = "Academic session ID")
     ),
@@ -158,6 +162,7 @@ pub async fn get_academic_session_by_id(
 #[utoipa::path(
     put,
     path = "/api/academic-sessions/{id}",
+    summary = "Update academic session",
     params(
         ("id" = Uuid, Path, description = "Academic session ID")
     ),
@@ -202,6 +207,7 @@ pub async fn update_academic_session(
 #[utoipa::path(
     delete,
     path = "/api/academic-sessions/{id}",
+    summary = "Delete academic session",
     params(
         ("id" = Uuid, Path, description = "Academic session ID")
     ),
@@ -238,6 +244,7 @@ pub async fn delete_academic_session(
 #[utoipa::path(
     post,
     path = "/api/academic-sessions/{id}/activate",
+    summary = "Activate academic session",
     params(
         ("id" = Uuid, Path, description = "Academic session ID")
     ),
@@ -277,6 +284,7 @@ pub async fn activate_academic_session(
 #[utoipa::path(
     post,
     path = "/api/academic-sessions/{id}/deactivate",
+    summary = "Deactivate academic session",
     params(
         ("id" = Uuid, Path, description = "Academic session ID")
     ),

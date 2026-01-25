@@ -17,6 +17,7 @@ use super::service::MfaService;
 #[utoipa::path(
     get,
     path = "/api/mfa/status",
+    summary = "Get MFA status",
     responses(
         (status = 200, description = "MFA status retrieved", body = MfaStatusResponse),
         (status = 401, description = "Unauthorized")
@@ -39,6 +40,7 @@ pub async fn get_mfa_status(
 #[utoipa::path(
     post,
     path = "/api/mfa/enable",
+    summary = "Enable MFA",
     responses(
         (status = 200, description = "MFA secret generated, awaiting verification", body = EnableMfaResponse),
         (status = 400, description = "MFA already enabled"),
@@ -63,6 +65,7 @@ pub async fn enable_mfa(
 #[utoipa::path(
     post,
     path = "/api/mfa/verify",
+    summary = "Verify MFA code",
     request_body = VerifyMfaRequest,
     responses(
         (status = 200, description = "MFA enabled successfully", body = RegenerateMfaRecoveryCodesResponse),
@@ -88,6 +91,7 @@ pub async fn verify_mfa(
 #[utoipa::path(
     post,
     path = "/api/mfa/disable",
+    summary = "Disable MFA",
     request_body = DisableMfaRequest,
     responses(
         (status = 200, description = "MFA disabled successfully", body = MessageResponse),
@@ -115,6 +119,7 @@ pub async fn disable_mfa(
 #[utoipa::path(
     post,
     path = "/api/mfa/recovery-codes/regenerate",
+    summary = "Regenerate recovery codes",
     responses(
         (status = 200, description = "Recovery codes regenerated", body = RegenerateMfaRecoveryCodesResponse),
         (status = 400, description = "MFA not enabled"),

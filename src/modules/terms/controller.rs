@@ -26,6 +26,7 @@ use crate::utils::auth_helpers::{get_admin_school_id, get_school_id_for_scoped_o
 #[utoipa::path(
     post,
     path = "/api/academic-sessions/{session_id}/terms",
+    summary = "Create term",
     params(
         ("session_id" = Uuid, Path, description = "Academic session ID")
     ),
@@ -59,6 +60,7 @@ pub async fn create_session_term(
 #[utoipa::path(
     get,
     path = "/api/academic-sessions/{session_id}/terms",
+    summary = "List session terms",
     params(
         ("session_id" = Uuid, Path, description = "Academic session ID"),
         TermFilterParams
@@ -89,6 +91,7 @@ pub async fn get_session_terms(
 #[utoipa::path(
     get,
     path = "/api/terms/current",
+    summary = "Get current term",
     params(
         ("school_id" = Option<Uuid>, Query, description = "School ID (required for system admins)")
     ),
@@ -119,6 +122,7 @@ pub async fn get_current_term(
 #[utoipa::path(
     get,
     path = "/api/terms/{id}",
+    summary = "Get term by ID",
     params(
         ("id" = Uuid, Path, description = "Term ID")
     ),
@@ -155,6 +159,7 @@ pub async fn get_term_by_id(
 #[utoipa::path(
     put,
     path = "/api/terms/{id}",
+    summary = "Update term",
     params(
         ("id" = Uuid, Path, description = "Term ID")
     ),
@@ -195,6 +200,7 @@ pub async fn update_term(
 #[utoipa::path(
     delete,
     path = "/api/terms/{id}",
+    summary = "Delete term",
     params(
         ("id" = Uuid, Path, description = "Term ID")
     ),
@@ -230,6 +236,7 @@ pub async fn delete_term(
 #[utoipa::path(
     post,
     path = "/api/terms/{id}/set-current",
+    summary = "Set current term",
     params(
         ("id" = Uuid, Path, description = "Term ID")
     ),
