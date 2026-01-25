@@ -26,9 +26,10 @@ use tower_http::LatencyUnit;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
+#[cfg(feature = "scalar")]
 use utoipa::OpenApi;
+#[cfg(feature = "scalar")]
 use utoipa_scalar::{Scalar, Servable as _};
-use utoipa_swagger_ui::SwaggerUi;
 
 async fn health_handler() -> impl IntoResponse {
     axum::Json(serde_json::json!({
@@ -172,12 +173,20 @@ fn build_api_router(state: AppState, apply_rate_limiting: bool) -> Router {
         api_routes
     };
 
+    #[cfg(feature = "scalar")]
     let router = Router::new()
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .merge(Scalar::with_url("/scalar", ApiDoc::openapi()))
         .route("/health", axum::routing::get(health_handler))
         .nest("/api", api_routes)
-        .with_state(state.clone())
+        .with_state(state.clone());
+
+    #[cfg(not(feature = "scalar"))]
+    let router = Router::new()
+        .route("/health", axum::routing::get(health_handler))
+        .nest("/api", api_routes)
+        .with_state(state.clone());
+
+    let router = router
         .layer({
             let allowed_origins = state
                 .cors_config

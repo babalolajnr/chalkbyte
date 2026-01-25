@@ -74,7 +74,6 @@ dialoguer = "0.12"
 
 # API Documentation
 utoipa = { version = "5.4", features = ["axum_extras", "uuid", "chrono"] }
-utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 utoipa-scalar = { version = "0.3", features = ["axum"] }
 
 # Email
@@ -120,6 +119,7 @@ edition.workspace = true
 default = []
 observability = ["chalkbyte-observability/observability"]
 no-observability = []
+scalar = ["utoipa-scalar"]
 
 [[bin]]
 name = "chalkbyte"
@@ -170,8 +170,7 @@ bcrypt.workspace = true
 
 # API Documentation
 utoipa.workspace = true
-utoipa-swagger-ui.workspace = true
-utoipa-scalar.workspace = true
+utoipa-scalar = { version = "0.3", features = ["axum"], optional = true }
 
 # Email
 lettre.workspace = true

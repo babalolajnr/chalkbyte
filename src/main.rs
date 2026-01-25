@@ -23,11 +23,11 @@ async fn start_main_server(state: state::AppState, port: u16) {
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
 
     println!("🚀 Server running on http://localhost:{}", port);
-    println!(
-        "📚 Swagger UI available at http://localhost:{}/swagger-ui",
-        port
-    );
+    #[cfg(feature = "scalar")]
     println!("📖 Scalar UI available at http://localhost:{}/scalar", port);
+
+    #[cfg(not(feature = "scalar"))]
+    println!("Scalar UI is disabled. Enable the 'scalar' feature to use it.");
 
     let shutdown_signal = async {
         tokio::signal::ctrl_c()
@@ -81,7 +81,9 @@ async fn main() {
 
     #[cfg(feature = "observability")]
     {
-        use chalkbyte_observability::{init_tracing, shutdown_tracer, is_observability_enabled, init_metrics};
+        use chalkbyte_observability::{
+            init_metrics, init_tracing, is_observability_enabled, shutdown_tracer,
+        };
 
         // Check if observability is enabled (default: true)
         let observability_enabled = is_observability_enabled();
@@ -134,7 +136,7 @@ async fn main() {
         eprintln!("   Observability (metrics, tracing) is not available.");
         eprintln!("   To enable, rebuild with: cargo build --features observability");
         eprintln!();
-        
+
         let state = init_app_state().await;
 
         // Get the port from the environment variable, default to 3000 if not set
@@ -143,14 +145,9 @@ async fn main() {
             .and_then(|p| p.parse::<u16>().ok())
             .unwrap_or(3000);
 
-        println!("🚀 Server running on http://localhost:{}", port);
-        println!(
-            "📚 Swagger UI available at http://localhost:{}/swagger-ui",
-            port
+        info!(
+            "Observability is disabled (compiled without observability feature). To enable, rebuild with: cargo build --features observability"
         );
-        println!("📖 Scalar UI available at http://localhost:{}/scalar", port);
-        
-        info!("Observability is disabled (compiled without observability feature). To enable, rebuild with: cargo build --features observability");
 
         start_main_server(state, port).await;
     }
