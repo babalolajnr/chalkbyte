@@ -39,10 +39,10 @@ cargo test
 ### Run Specific Test Suite
 
 ```bash
-# Integration tests (requires test database and test-utils feature)
-cargo test --features test-utils integration_auth
-cargo test --features test-utils integration_levels
-cargo test --features test-utils integration_roles
+# Integration tests (requires test database)
+cargo test integration_auth
+cargo test integration_levels
+cargo test integration_roles
 
 # Unit tests (in source files)
 cargo test --lib jwt::tests
@@ -54,24 +54,24 @@ cargo test --lib levels::service::tests
 ### Run Single Test
 
 ```bash
-cargo test --features test-utils test_login_success
+cargo test test_login_success
 ```
 
 ### Run Tests with Output
 
 ```bash
-cargo test --features test-utils -- --nocapture
+cargo test -- --nocapture
 ```
 
-### Important: test-utils Feature Flag
+### Rate Limiting in Tests
 
-Integration tests require the `test-utils` feature flag to disable rate limiting.
-The rate limiter uses `PeerIpKeyExtractor` which requires socket connection info
-that isn't available in test environments using `tower::ServiceExt::oneshot`.
+Tests automatically disable rate limiting through Rust's `#[cfg(test)]` conditional compilation.
+The rate limiter uses `PeerIpKeyExtractor` which requires socket connection info that isn't available 
+in test environments using `tower::ServiceExt::oneshot`.
 
 ```bash
-# Always use --features test-utils for integration tests
-cargo test --features test-utils --test integration_roles -- --test-threads=1
+# Run integration tests normally - rate limiting is disabled automatically
+cargo test --test integration_roles -- --test-threads=1
 ```
 
 ## Test Database Setup
@@ -191,6 +191,6 @@ For comprehensive test coverage details, see:
 - Unit tests call functions/methods directly without HTTP layer
 - Run with `--test-threads=1` for stable database test execution
 - Integration tests require PostgreSQL test database with migrations applied
-- Integration tests require `--features test-utils` flag to disable rate limiting
+- Rate limiting is automatically disabled during test runs via `#[cfg(test)]`
 - Total unit tests: 70 (JWT: 20, Password: 10, Role: 16, Levels: 24)
 - Total integration tests for roles: 26 (permissions, role CRUD, role-permission mapping, user-role assignments, authorization checks)
