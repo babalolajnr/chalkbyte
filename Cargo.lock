@@ -488,9 +488,7 @@ dependencies = [
  "chalkbyte-models",
  "chalkbyte-observability",
  "chrono",
- "clap",
  "data-encoding",
- "dialoguer",
  "dotenvy",
  "fake",
  "governor",
@@ -557,9 +555,13 @@ dependencies = [
  "bcrypt",
  "chalkbyte-core",
  "chalkbyte-models",
+ "clap",
+ "dialoguer",
+ "dotenvy",
  "fake",
  "rayon",
  "sqlx",
+ "tokio",
  "uuid",
 ]
 

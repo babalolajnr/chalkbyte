@@ -6,6 +6,10 @@ description = "CLI tools for Chalkbyte administration and database seeding"
 license.workspace = true
 repository.workspace = true
 
+[[bin]]
+name = "chalkbyte-cli"
+path = "src/main.rs"
+
 [dependencies]
 # Internal crates
 chalkbyte-core.workspace = true
@@ -23,3 +27,14 @@ bcrypt.workspace = true
 # Data generation
 fake.workspace = true
 rayon.workspace = true
+
+# CLI
+clap.workspace = true
+dialoguer.workspace = true
+
+# Environment
+dotenvy.workspace = true
+
+# Async runtime
+tokio.workspace = true
+

@@ -30,10 +30,10 @@ cp .env.example .env
 cargo sqlx migrate run
 
 # 4. Create system admin (CLI - interactive mode)
-cargo run --bin chalkbyte-cli -- create-sysadmin
+cargo run -p chalkbyte-cli -- create-sysadmin
 
 # 5. Start server
-cargo run --bin chalkbyte
+cargo run -p chalkbyte
 ```
 
 Open `http://localhost:3000/swagger-ui` to explore the API! 🚀
@@ -182,27 +182,27 @@ http://localhost:3000/api-docs/openapi.json
 
 ## CLI Tool
 
-The project includes a separate CLI binary for administrative tasks with support for both interactive and non-interactive modes:
+The project includes a standalone CLI binary (separate crate) for administrative tasks with support for both interactive and non-interactive modes.
 
 ### Create System Admin
 
 ```bash
 # Show CLI help
-cargo run --bin chalkbyte-cli -- --help
-cargo run --bin chalkbyte-cli -- create-sysadmin --help
+cargo run -p chalkbyte-cli -- --help
+cargo run -p chalkbyte-cli -- create-sysadmin --help
 
 # Interactive mode - prompts for all inputs with secure password entry
-cargo run --bin chalkbyte-cli -- create-sysadmin
+cargo run -p chalkbyte-cli -- create-sysadmin
 
 # Non-interactive mode - provide all arguments
-cargo run --bin chalkbyte-cli -- create-sysadmin \
+cargo run -p chalkbyte-cli -- create-sysadmin \
   --first-name John \
   --last-name Doe \
   --email john@example.com \
   --password secure123
 
 # Mixed mode - provide some arguments, prompted for the rest
-cargo run --bin chalkbyte-cli -- create-sysadmin \
+cargo run -p chalkbyte-cli -- create-sysadmin \
   --first-name John \
   --last-name Doe
 
@@ -217,16 +217,16 @@ Populate your database with fake data for development and testing:
 
 ```bash
 # Seed with default values (5 schools, 2 admins, 5 teachers, 20 students per school)
-cargo run --bin chalkbyte-cli -- seed
+cargo run -p chalkbyte-cli -- seed
 
 # Custom seed
-cargo run --bin chalkbyte-cli -- seed -s 10 --admins 3 --teachers 8 --students 30
+cargo run -p chalkbyte-cli -- seed -s 10 --admins 3 --teachers 8 --students 30
 
 # Minimal seed for quick testing
-cargo run --bin chalkbyte-cli -- seed -s 2 --admins 1 --teachers 2 --students 5
+cargo run -p chalkbyte-cli -- seed -s 2 --admins 1 --teachers 2 --students 5
 
 # Clear all seeded data (keeps system admins)
-cargo run --bin chalkbyte-cli -- clear-seed
+cargo run -p chalkbyte-cli -- clear-seed
 
 # Using justfile shortcuts
 just seed                    # Default seed
@@ -245,7 +245,20 @@ just clear-seed              # Cleanup
 
 See [docs/SEEDERS.md](./docs/SEEDERS.md) for detailed seeder documentation.
 
-The CLI binary is separate from the main server application for better separation of concerns and reduced binary size.
+### Installing as Standalone Binary
+
+To install the CLI as a standalone binary on your system:
+
+```bash
+# Install the CLI
+cargo install --path crates/chalkbyte-cli
+
+# Now you can run it from anywhere
+chalkbyte-cli create-sysadmin
+chalkbyte-cli seed -s 5
+```
+
+The CLI is packaged as a separate crate in the workspace for better separation of concerns and to keep the API server binary lean.
 
 ## Role-Based Access Control
 

@@ -125,10 +125,6 @@ no-observability = []
 name = "chalkbyte"
 path = "src/main.rs"
 
-[[bin]]
-name = "chalkbyte-cli"
-path = "src/bin/cli.rs"
-
 [dependencies]
 # Internal crates
 chalkbyte-core.workspace = true
@@ -171,10 +167,6 @@ dotenvy.workspace = true
 
 # Auth (needed for seeder)
 bcrypt.workspace = true
-
-# CLI
-clap.workspace = true
-dialoguer.workspace = true
 
 # API Documentation
 utoipa.workspace = true
