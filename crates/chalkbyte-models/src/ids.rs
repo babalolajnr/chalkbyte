@@ -344,15 +344,6 @@ mod tests {
     }
 
     #[test]
-    fn test_id_clone_copy() {
-        let id = SchoolId::new();
-        let cloned = id.clone();
-        let copied = id; // Copy
-        assert_eq!(id, cloned);
-        assert_eq!(id, copied);
-    }
-
-    #[test]
     fn test_id_as_ref() {
         let uuid = Uuid::new_v4();
         let id = LevelId::from_uuid(uuid);

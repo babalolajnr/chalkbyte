@@ -59,10 +59,10 @@ impl TermService {
 
         for term in existing_terms {
             // Skip the term being updated
-            if let Some(exclude_id) = exclude_term_id {
-                if term.id == exclude_id {
-                    continue;
-                }
+            if let Some(exclude_id) = exclude_term_id
+                && term.id == exclude_id
+            {
+                continue;
             }
 
             if Self::dates_overlap(start_date, end_date, term.start_date, term.end_date) {
@@ -125,18 +125,18 @@ impl TermService {
         .fetch_one(db)
         .await
         .map_err(|e| {
-            if let sqlx::Error::Database(db_err) = &e {
-                if db_err.is_unique_violation() {
-                    if db_err.message().contains("unique_term_name_per_session") {
-                        return AppError::bad_request(anyhow::anyhow!(
-                            "A term with this name already exists in this session"
-                        ));
-                    }
-                    if db_err.message().contains("unique_term_sequence_per_session") {
-                        return AppError::bad_request(anyhow::anyhow!(
-                            "A term with this sequence already exists in this session"
-                        ));
-                    }
+            if let sqlx::Error::Database(db_err) = &e
+                && db_err.is_unique_violation()
+            {
+                if db_err.message().contains("unique_term_name_per_session") {
+                    return AppError::bad_request(anyhow::anyhow!(
+                        "A term with this name already exists in this session"
+                    ));
+                }
+                if db_err.message().contains("unique_term_sequence_per_session") {
+                    return AppError::bad_request(anyhow::anyhow!(
+                        "A term with this sequence already exists in this session"
+                    ));
                 }
             }
             AppError::from(e)
@@ -380,18 +380,18 @@ impl TermService {
         .fetch_one(db)
         .await
         .map_err(|e| {
-            if let sqlx::Error::Database(db_err) = &e {
-                if db_err.is_unique_violation() {
-                    if db_err.message().contains("unique_term_name_per_session") {
-                        return AppError::bad_request(anyhow::anyhow!(
-                            "A term with this name already exists in this session"
-                        ));
-                    }
-                    if db_err.message().contains("unique_term_sequence_per_session") {
-                        return AppError::bad_request(anyhow::anyhow!(
-                            "A term with this sequence already exists in this session"
-                        ));
-                    }
+            if let sqlx::Error::Database(db_err) = &e
+                && db_err.is_unique_violation()
+            {
+                if db_err.message().contains("unique_term_name_per_session") {
+                    return AppError::bad_request(anyhow::anyhow!(
+                        "A term with this name already exists in this session"
+                    ));
+                }
+                if db_err.message().contains("unique_term_sequence_per_session") {
+                    return AppError::bad_request(anyhow::anyhow!(
+                        "A term with this sequence already exists in this session"
+                    ));
                 }
             }
             AppError::from(e)

@@ -273,12 +273,11 @@ pub async fn etag_middleware(request: Request, next: Next) -> Response {
 
     // Skip if response already has an ETag
     if response.headers().contains_key(ETAG) {
-        if let Some(client_etag) = if_none_match {
-            if let Some(server_etag) = response.headers().get(ETAG).and_then(|v| v.to_str().ok()) {
-                if etags_match(&client_etag, server_etag) {
-                    return StatusCode::NOT_MODIFIED.into_response();
-                }
-            }
+        if let Some(client_etag) = if_none_match
+            && let Some(server_etag) = response.headers().get(ETAG).and_then(|v| v.to_str().ok())
+            && etags_match(&client_etag, server_etag)
+        {
+            return StatusCode::NOT_MODIFIED.into_response();
         }
         return response;
     }

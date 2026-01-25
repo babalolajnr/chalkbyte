@@ -250,7 +250,7 @@ impl StudentService {
         })?;
 
         // Invalidate user caches
-        invalidate::user(cache, Some(id), Some(school_id.into())).await;
+        invalidate::user(cache, Some(id), Some(school_id)).await;
 
         Ok(updated_student)
     }
@@ -318,7 +318,7 @@ impl StudentService {
             .map_err(AppError::database)?;
 
         // Invalidate user caches
-        invalidate::user(cache, Some(id), Some(school_id.into())).await;
+        invalidate::user(cache, Some(id), Some(school_id)).await;
 
         Ok(())
     }

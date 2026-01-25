@@ -69,6 +69,7 @@ pub struct AppState {
     /// Redis cache configuration.
     ///
     /// Used for cache key generation and TTL settings.
+    #[allow(dead_code)]
     pub cache_config: CacheConfig,
 
     /// Redis cache client for distributed caching.

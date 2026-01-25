@@ -143,6 +143,7 @@ pub async fn require_permission(
 // ============================================================================
 
 /// Helper function for system admin only routes
+#[allow(dead_code)]
 pub async fn require_system_admin(
     State(state): State<AppState>,
     req: Request,

@@ -201,20 +201,19 @@ pub mod invalidate {
         let Some(cache) = cache else { return };
 
         // Invalidate specific user if ID provided
-        if let Some(id) = user_id {
-            if let Err(e) = cache.invalidate(&users::by_id(id)).await {
-                warn!(error = %e, user_id = %id, "Failed to invalidate user cache");
-            }
+        if let Some(id) = user_id
+            && let Err(e) = cache.invalidate(&users::by_id(id)).await
+        {
+            warn!(error = %e, user_id = %id, "Failed to invalidate user cache");
         }
 
         // Invalidate school's user list if school_id provided
-        if let Some(sid) = school_id {
-            if let Err(e) = cache
+        if let Some(sid) = school_id
+            && let Err(e) = cache
                 .invalidate_pattern(&users::school_invalidation_pattern(sid))
                 .await
-            {
-                warn!(error = %e, school_id = %sid, "Failed to invalidate school users cache");
-            }
+        {
+            warn!(error = %e, school_id = %sid, "Failed to invalidate school users cache");
         }
 
         // Invalidate general user list caches
@@ -237,17 +236,17 @@ pub mod invalidate {
         let Some(cache) = cache else { return };
 
         // Invalidate specific level if ID provided
-        if let Some(id) = level_id {
-            if let Err(e) = cache.invalidate(&levels::by_id(id)).await {
-                warn!(error = %e, level_id = %id, "Failed to invalidate level cache");
-            }
+        if let Some(id) = level_id
+            && let Err(e) = cache.invalidate(&levels::by_id(id)).await
+        {
+            warn!(error = %e, level_id = %id, "Failed to invalidate level cache");
         }
 
         // Invalidate school's level list if school_id provided
-        if let Some(sid) = school_id {
-            if let Err(e) = cache.invalidate(&levels::by_school(sid)).await {
-                warn!(error = %e, school_id = %sid, "Failed to invalidate school levels cache");
-            }
+        if let Some(sid) = school_id
+            && let Err(e) = cache.invalidate(&levels::by_school(sid)).await
+        {
+            warn!(error = %e, school_id = %sid, "Failed to invalidate school levels cache");
         }
 
         // Invalidate general level list caches
@@ -270,17 +269,17 @@ pub mod invalidate {
         let Some(cache) = cache else { return };
 
         // Invalidate specific branch if ID provided
-        if let Some(id) = branch_id {
-            if let Err(e) = cache.invalidate(&branches::by_id(id)).await {
-                warn!(error = %e, branch_id = %id, "Failed to invalidate branch cache");
-            }
+        if let Some(id) = branch_id
+            && let Err(e) = cache.invalidate(&branches::by_id(id)).await
+        {
+            warn!(error = %e, branch_id = %id, "Failed to invalidate branch cache");
         }
 
         // Invalidate level's branch list if level_id provided
-        if let Some(lid) = level_id {
-            if let Err(e) = cache.invalidate(&branches::by_level(lid)).await {
-                warn!(error = %e, level_id = %lid, "Failed to invalidate level branches cache");
-            }
+        if let Some(lid) = level_id
+            && let Err(e) = cache.invalidate(&branches::by_level(lid)).await
+        {
+            warn!(error = %e, level_id = %lid, "Failed to invalidate level branches cache");
         }
 
         // Invalidate general branch list caches
@@ -299,10 +298,10 @@ pub mod invalidate {
         let Some(cache) = cache else { return };
 
         // Invalidate specific role if ID provided
-        if let Some(id) = role_id {
-            if let Err(e) = cache.invalidate(&roles::by_id(id)).await {
-                warn!(error = %e, role_id = %id, "Failed to invalidate role cache");
-            }
+        if let Some(id) = role_id
+            && let Err(e) = cache.invalidate(&roles::by_id(id)).await
+        {
+            warn!(error = %e, role_id = %id, "Failed to invalidate role cache");
         }
 
         // Invalidate role list cache

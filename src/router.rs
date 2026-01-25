@@ -52,6 +52,8 @@ pub fn init_router(state: AppState) -> Router {
     let no_cache = cache_control(CacheControlConfig::no_store());
     let private_short = cache_control(CacheControlConfig::private(60).with_must_revalidate());
     let private_medium = cache_control(CacheControlConfig::private(300).with_must_revalidate());
+    // For frequently changing data - always revalidate but still use ETags
+    let revalidate_always = cache_control(CacheControlConfig::no_cache());
 
     let router = Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
@@ -126,20 +128,21 @@ pub fn init_router(state: AppState) -> Router {
                         .layer(private_medium.clone())
                         .layer(middleware::from_fn(etag_middleware)),
                 )
-                // Academic sessions and terms endpoints
+                // Academic sessions and terms endpoints - use no-cache to always revalidate
+                // since these are frequently modified and stale data causes UX issues
                 .nest(
                     "/academic-sessions",
                     init_academic_sessions_router()
                         .nest("/{session_id}/terms", init_session_terms_router())
                         .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
-                        .layer(private_medium.clone())
+                        .layer(revalidate_always.clone())
                         .layer(middleware::from_fn(etag_middleware)),
                 )
                 .nest(
                     "/terms",
                     init_terms_router()
                         .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
-                        .layer(private_short.clone())
+                        .layer(revalidate_always.clone())
                         .layer(middleware::from_fn(etag_middleware)),
                 )
                 // Apply general rate limiting to all API routes
@@ -207,6 +210,8 @@ pub fn init_router(state: AppState) -> Router {
     let no_cache = cache_control(CacheControlConfig::no_store());
     let private_short = cache_control(CacheControlConfig::private(60).with_must_revalidate());
     let private_medium = cache_control(CacheControlConfig::private(300).with_must_revalidate());
+    // For frequently changing data - always revalidate but still use ETags
+    let revalidate_always = cache_control(CacheControlConfig::no_cache());
 
     let router = Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
@@ -262,20 +267,21 @@ pub fn init_router(state: AppState) -> Router {
                         .layer(private_medium.clone())
                         .layer(middleware::from_fn(etag_middleware)),
                 )
-                // Academic sessions and terms endpoints
+                // Academic sessions and terms endpoints - use no-cache to always revalidate
+                // since these are frequently modified and stale data causes UX issues
                 .nest(
                     "/academic-sessions",
                     init_academic_sessions_router()
                         .nest("/{session_id}/terms", init_session_terms_router())
                         .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
-                        .layer(private_medium.clone())
+                        .layer(revalidate_always.clone())
                         .layer(middleware::from_fn(etag_middleware)),
                 )
                 .nest(
                     "/terms",
                     init_terms_router()
                         .route_layer(middleware::from_fn_with_state(state.clone(), require_admin))
-                        .layer(private_short.clone())
+                        .layer(revalidate_always.clone())
                         .layer(middleware::from_fn(etag_middleware)),
                 ),
         )

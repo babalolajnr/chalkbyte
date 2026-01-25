@@ -141,11 +141,11 @@ impl SchoolService {
         let cache_key = keys::schools::by_id(school_id);
 
         // Try cache first
-        if let Some(cache) = cache {
-            if let Some(school) = cache.get::<School>(&cache_key).await {
-                debug!(school.id = %school_id, "School found in cache");
-                return Ok(school);
-            }
+        if let Some(cache) = cache
+            && let Some(school) = cache.get::<School>(&cache_key).await
+        {
+            debug!(school.id = %school_id, "School found in cache");
+            return Ok(school);
         }
 
         debug!("Fetching school by ID from database");
@@ -166,10 +166,10 @@ impl SchoolService {
         })?;
 
         // Cache the result
-        if let Some(cache) = cache {
-            if let Err(e) = cache.set(&cache_key, &school).await {
-                warn!(error = %e, "Failed to cache school");
-            }
+        if let Some(cache) = cache
+            && let Err(e) = cache.set(&cache_key, &school).await
+        {
+            warn!(error = %e, "Failed to cache school");
         }
 
         debug!(school.name = %school.name, "School found");
@@ -200,7 +200,7 @@ impl SchoolService {
         }
 
         // Invalidate cache
-        invalidate::school(cache, Some(school_id.into())).await;
+        invalidate::school(cache, Some(school_id)).await;
 
         info!(school.id = %school_id, "School deleted successfully");
 

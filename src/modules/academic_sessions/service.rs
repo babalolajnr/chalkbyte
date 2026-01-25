@@ -43,12 +43,10 @@ impl AcademicSessionService {
         .fetch_one(db)
         .await
         .map_err(|e| {
-            if let sqlx::Error::Database(db_err) = &e {
-                if db_err.is_unique_violation() {
-                    return AppError::bad_request(anyhow::anyhow!(
-                        "An academic session with this name already exists in this school"
-                    ));
-                }
+            if let sqlx::Error::Database(db_err) = &e && db_err.is_unique_violation() {
+                return AppError::bad_request(anyhow::anyhow!(
+                    "An academic session with this name already exists in this school"
+                ));
             }
             AppError::from(e)
         })?;
@@ -289,12 +287,12 @@ impl AcademicSessionService {
         .fetch_one(db)
         .await
         .map_err(|e| {
-            if let sqlx::Error::Database(db_err) = &e {
-                if db_err.is_unique_violation() {
-                    return AppError::bad_request(anyhow::anyhow!(
-                        "An academic session with this name already exists in this school"
-                    ));
-                }
+            if let sqlx::Error::Database(db_err) = &e
+                && db_err.is_unique_violation()
+            {
+                return AppError::bad_request(anyhow::anyhow!(
+                    "An academic session with this name already exists in this school"
+                ));
             }
             AppError::from(e)
         })?;
@@ -367,12 +365,12 @@ impl AcademicSessionService {
         .fetch_one(db)
         .await
         .map_err(|e| {
-            if let sqlx::Error::Database(db_err) = &e {
-                if db_err.is_unique_violation() {
-                    return AppError::bad_request(anyhow::anyhow!(
-                        "An academic session with this name already exists in this school"
-                    ));
-                }
+            if let sqlx::Error::Database(db_err) = &e
+                && db_err.is_unique_violation()
+            {
+                return AppError::bad_request(anyhow::anyhow!(
+                    "An academic session with this name already exists in this school"
+                ));
             }
             AppError::from(e)
         })?;

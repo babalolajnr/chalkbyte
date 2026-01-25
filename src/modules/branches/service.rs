@@ -62,12 +62,7 @@ impl BranchService {
             AppError::from(e)
         })?;
 
-        invalidate::branch(
-            cache,
-            Some(branch.id.into()),
-            Some(level_id.into_inner().into()),
-        )
-        .await;
+        invalidate::branch(cache, Some(branch.id.into()), Some(level_id.into_inner())).await;
 
         Ok(branch)
     }
@@ -282,12 +277,7 @@ impl BranchService {
             AppError::from(e)
         })?;
 
-        invalidate::branch(
-            cache,
-            Some(id.into_inner().into()),
-            Some(branch.level_id.into()),
-        )
-        .await;
+        invalidate::branch(cache, Some(id.into_inner()), Some(branch.level_id.into())).await;
 
         Ok(branch)
     }
@@ -319,8 +309,8 @@ impl BranchService {
 
         invalidate::branch(
             cache,
-            Some(id.into_inner().into()),
-            level_id.map(|l| l.into_inner().into()),
+            Some(id.into_inner()),
+            level_id.map(|l| l.into_inner()),
         )
         .await;
 
@@ -588,8 +578,8 @@ impl BranchService {
 
         invalidate::branch(
             cache,
-            Some(branch.id.into()),
-            Some(level_id.into_inner().into()),
+            Some(branch.id.into_inner()),
+            Some(level_id.into_inner()),
         )
         .await;
 
@@ -791,7 +781,7 @@ impl BranchService {
 
         invalidate::branch(
             cache,
-            Some(id.into_inner().into()),
+            Some(id.into_inner()),
             Some(branch.level_id.into()),
         )
         .await;
@@ -816,8 +806,8 @@ impl BranchService {
 
         invalidate::branch(
             cache,
-            Some(id.into_inner().into()),
-            level_id.map(|l| l.into_inner().into()),
+            Some(id.into_inner()),
+            level_id.map(|l| l.into_inner()),
         )
         .await;
 

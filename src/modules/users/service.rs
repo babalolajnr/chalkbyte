@@ -107,11 +107,11 @@ impl UserService {
             keys::users::list(&hash_filters(&filters))
         };
 
-        if let Some(cache) = cache {
-            if let Some(cached) = cache.get::<PaginatedUsersResponse>(&cache_key).await {
-                debug!("Cache hit for users list");
-                return Ok(cached);
-            }
+        if let Some(cache) = cache
+            && let Some(cached) = cache.get::<PaginatedUsersResponse>(&cache_key).await
+        {
+            debug!("Cache hit for users list");
+            return Ok(cached);
         }
 
         let limit = filters.pagination.limit();
@@ -415,10 +415,10 @@ impl UserService {
         let response = PaginatedUsersResponse { data: users, meta };
 
         // Cache the result
-        if let Some(cache) = cache {
-            if let Err(e) = cache.set(&cache_key, &response).await {
-                warn!(error = %e, "Failed to cache users list");
-            }
+        if let Some(cache) = cache
+            && let Err(e) = cache.set(&cache_key, &response).await
+        {
+            warn!(error = %e, "Failed to cache users list");
         }
 
         Ok(response)
@@ -434,11 +434,11 @@ impl UserService {
 
         // Try cache first
         let cache_key = keys::users::by_id(id.into());
-        if let Some(cache) = cache {
-            if let Some(cached) = cache.get::<User>(&cache_key).await {
-                debug!("Cache hit for user");
-                return Ok(cached);
-            }
+        if let Some(cache) = cache
+            && let Some(cached) = cache.get::<User>(&cache_key).await
+        {
+            debug!("Cache hit for user");
+            return Ok(cached);
         }
 
         let user = sqlx::query_as::<_, User>(
@@ -463,10 +463,10 @@ impl UserService {
         debug!(user.email = %user.email, "User fetched successfully");
 
         // Cache the result
-        if let Some(cache) = cache {
-            if let Err(e) = cache.set(&cache_key, &user).await {
-                warn!(error = %e, "Failed to cache user");
-            }
+        if let Some(cache) = cache
+            && let Err(e) = cache.set(&cache_key, &user).await
+        {
+            warn!(error = %e, "Failed to cache user");
         }
 
         Ok(user)
