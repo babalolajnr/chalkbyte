@@ -487,6 +487,7 @@ dependencies = [
  "chalkbyte-core",
  "chalkbyte-db",
  "chalkbyte-models",
+ "chalkbyte-observability",
  "chrono",
  "clap",
  "data-encoding",
@@ -497,12 +498,6 @@ dependencies = [
  "http-body-util",
  "hyper 1.8.1",
  "lettre",
- "metrics",
- "metrics-exporter-prometheus",
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry-semantic-conventions",
- "opentelemetry_sdk",
  "rand 0.8.5",
  "rayon",
  "reqwest",
@@ -516,9 +511,6 @@ dependencies = [
  "tower-http",
  "tower_governor",
  "tracing",
- "tracing-appender",
- "tracing-opentelemetry",
- "tracing-subscriber",
  "utoipa",
  "utoipa-scalar",
  "utoipa-swagger-ui",
@@ -616,6 +608,29 @@ dependencies = [
  "utoipa",
  "uuid",
  "validator",
+]
+
+[[package]]
+name = "chalkbyte-observability"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum 0.8.8",
+ "dotenvy",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry-semantic-conventions",
+ "opentelemetry_sdk",
+ "serde",
+ "tokio",
+ "tower 0.5.3",
+ "tracing",
+ "tracing-appender",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

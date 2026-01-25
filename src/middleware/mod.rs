@@ -51,3 +51,5 @@
 
 pub mod auth;
 pub mod role;
+#[cfg(not(feature = "observability"))]
+pub mod observability_stubs;

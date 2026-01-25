@@ -12,7 +12,8 @@ use chalkbyte_auth::{
 use chalkbyte_config::JwtConfig;
 use chalkbyte_core::{AppError, hash_password, verify_password};
 
-use crate::metrics;
+#[cfg(feature = "observability")]
+use chalkbyte_observability::metrics;
 use crate::modules::auth::model::{
     ForgotPasswordRequest, LoginRequest, LoginResponse, LoginUser, MessageResponse,
     MfaRecoveryLoginRequest, MfaRequiredResponse, MfaVerifyLoginRequest, RefreshTokenRequest,
@@ -133,6 +134,7 @@ impl AuthService {
         .fetch_optional(db)
         .await?
         .ok_or_else(|| {
+            #[cfg(feature = "observability")]
             metrics::track_user_login_failure("invalid_email");
             AppError::unauthorized("Invalid email or password".to_string())
         })?;
@@ -182,6 +184,7 @@ impl AuthService {
         let is_valid = verify_password(&dto.password, &password)?;
 
         if !is_valid {
+            #[cfg(feature = "observability")]
             metrics::track_user_login_failure("invalid_password");
             return Err(AppError::unauthorized(
                 "Invalid email or password".to_string(),
@@ -193,6 +196,7 @@ impl AuthService {
             // Generate temporary token for MFA verification
             let temp_token = create_mfa_temp_token(user_id, &email, jwt_config)?;
 
+            #[cfg(feature = "observability")]
             metrics::track_jwt_issued();
             return Ok(Err(MfaRequiredResponse {
                 mfa_required: true,
@@ -221,14 +225,17 @@ impl AuthService {
         let refresh_token = create_refresh_token(user_id, &email, jwt_config)?;
 
         // Track metrics
-        metrics::track_jwt_issued();
+        #[cfg(feature = "observability")]
+        {
+            metrics::track_jwt_issued();
 
-        // Determine primary role for metrics
-        let primary_role = roles
-            .first()
-            .map(|r| r.role.name.as_str())
-            .unwrap_or("none");
-        metrics::track_user_login_success(primary_role);
+            // Determine primary role for metrics
+            let primary_role = roles
+                .first()
+                .map(|r| r.role.name.as_str())
+                .unwrap_or("none");
+            metrics::track_user_login_success(primary_role);
+        }
 
         // Store refresh token in database
         let expires_at = Utc::now() + Duration::seconds(jwt_config.refresh_token_expiry);
@@ -280,7 +287,8 @@ impl AuthService {
         // Verify TOTP code
         let is_valid = MfaService::verify_totp_login(db, user_id, &dto.code).await?;
 
-        if !is_valid {
+         if !is_valid {
+            #[cfg(feature = "observability")]
             metrics::track_user_login_failure("invalid_mfa_code");
             return Err(AppError::unauthorized("Invalid MFA code".to_string()));
         }

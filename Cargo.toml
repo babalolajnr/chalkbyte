@@ -8,6 +8,7 @@ members = [
     "crates/chalkbyte-models",
     "crates/chalkbyte-cli",
     "crates/chalkbyte-cache",
+    "crates/chalkbyte-observability",
 ]
 
 [workspace.package]
@@ -25,6 +26,7 @@ chalkbyte-auth = { path = "crates/chalkbyte-auth" }
 chalkbyte-models = { path = "crates/chalkbyte-models" }
 chalkbyte-cli = { path = "crates/chalkbyte-cli" }
 chalkbyte-cache = { path = "crates/chalkbyte-cache" }
+chalkbyte-observability = { path = "crates/chalkbyte-observability" }
 
 # Web framework
 axum = { version = "0.8", features = ["macros"] }
@@ -116,6 +118,8 @@ edition.workspace = true
 
 [features]
 default = []
+observability = ["chalkbyte-observability/observability"]
+no-observability = []
 test-utils = []
 
 [[bin]]
@@ -135,6 +139,7 @@ chalkbyte-auth.workspace = true
 chalkbyte-models.workspace = true
 chalkbyte-cli.workspace = true
 chalkbyte-cache.workspace = true
+chalkbyte-observability = { workspace = true, features = ["observability"] }
 
 # Web framework
 axum.workspace = true
@@ -185,17 +190,8 @@ totp-rs.workspace = true
 data-encoding.workspace = true
 rand.workspace = true
 
-# Observability
+# Tracing (base crate, used by tower-http and modules)
 tracing.workspace = true
-tracing-subscriber.workspace = true
-tracing-appender.workspace = true
-tracing-opentelemetry.workspace = true
-opentelemetry.workspace = true
-opentelemetry_sdk.workspace = true
-opentelemetry-otlp.workspace = true
-opentelemetry-semantic-conventions.workspace = true
-metrics.workspace = true
-metrics-exporter-prometheus.workspace = true
 
 # Rate limiting
 tower_governor.workspace = true

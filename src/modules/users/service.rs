@@ -1,5 +1,4 @@
 use crate::{
-    metrics,
     modules::users::model::{
         BranchInfo, ChangePasswordDto, CreateUserDto, LevelInfo, PaginatedUsersResponse, RoleInfo,
         School, SchoolInfo, UpdateProfileDto, User, UserFilterParams, UserWithRelations,
@@ -11,6 +10,8 @@ use crate::{
         password::{hash_password, verify_password},
     },
 };
+#[cfg(feature = "observability")]
+use chalkbyte_observability::metrics;
 use anyhow::Context;
 use chalkbyte_cache::{RedisCache, hash_filters, invalidate, keys};
 use chalkbyte_models::ids::{BranchId, LevelId, RoleId, SchoolId, UserId};
@@ -77,6 +78,7 @@ impl UserService {
         }
 
         // Track metrics based on first role assigned
+        #[cfg(feature = "observability")]
         let role_name = if let Some(first_role_id) = dto.role_ids.first() {
             system_roles::get_name(first_role_id)
                 .unwrap_or("custom")
@@ -84,6 +86,7 @@ impl UserService {
         } else {
             "none".to_string()
         };
+        #[cfg(feature = "observability")]
         metrics::track_user_created(&role_name);
 
         // Invalidate user caches

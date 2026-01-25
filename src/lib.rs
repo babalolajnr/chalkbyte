@@ -109,17 +109,16 @@
 //!
 //! ## Modules
 //!
-//! - [`cli`]: Command-line interface utilities
 //! - [`config`]: Application configuration
 //! - [`docs`]: OpenAPI documentation setup
-//! - [`logging`]: Distributed tracing and logging
-//! - [`metrics`]: Prometheus metrics endpoint
 //! - [`middleware`]: Authentication and authorization middleware
 //! - [`modules`]: Feature modules (auth, users, schools, etc.)
 //! - [`router`]: Main application router
 //! - [`state`]: Shared application state
 //! - [`utils`]: Shared utilities (errors, JWT, password hashing)
 //! - [`validator`]: Request validation utilities
+//!
+//! For observability features (tracing, logging, and metrics), see [`chalkbyte_observability`].
 //!
 //! ## Security Considerations
 //!
@@ -131,8 +130,6 @@
 
 pub mod config;
 pub mod docs;
-pub mod logging;
-pub mod metrics;
 pub mod middleware;
 pub mod modules;
 pub mod router;

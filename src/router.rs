@@ -1,7 +1,8 @@
 use crate::docs::ApiDoc;
-use crate::logging::is_observability_enabled;
-use crate::logging::logging_middleware;
-use crate::metrics::metrics_middleware;
+#[cfg(feature = "observability")]
+use chalkbyte_observability::{logging_middleware, metrics_middleware, is_observability_enabled};
+#[cfg(not(feature = "observability"))]
+use crate::middleware::observability_stubs::{logging_middleware, metrics_middleware, is_observability_enabled};
 use crate::middleware::role::require_admin;
 use crate::modules::academic_sessions::router::init_academic_sessions_router;
 use crate::modules::auth::router::init_auth_router;

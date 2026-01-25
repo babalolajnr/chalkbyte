@@ -17,7 +17,8 @@
 //! - [`auth_helpers`]: Helper functions for authentication and authorization
 //! - [`email`]: Email sending utilities using SMTP
 //! - [`jwt`]: JWT token creation and verification (re-exports from `chalkbyte-auth`)
-//! - [`tracing`]: Distributed tracing utilities
+//!
+//! For tracing utilities, see [`chalkbyte_observability`].
 
 // Re-export from chalkbyte-core
 pub use chalkbyte_core::errors;
@@ -34,4 +35,3 @@ pub mod jwt {
 // Local modules
 pub mod auth_helpers;
 pub mod email;
-pub mod tracing;

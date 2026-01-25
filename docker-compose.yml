@@ -6,12 +6,10 @@ services:
       dockerfile: Dockerfile
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
-      - "${METRICS_PORT:-9091}:${METRICS_PORT:-9091}"
     env_file:
       - .env
     environment:
       - DATABASE_URL=postgresql://chalkbyte:chalkbyte_password@postgres:5432/chalkbyte_db
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
       - LOG_DIR=/var/log/chalkbyte
     volumes:
       - ./storage/logs:/var/log/chalkbyte

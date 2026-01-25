@@ -5,7 +5,8 @@ use uuid::Uuid;
 use chalkbyte_cache::{RedisCache, invalidate, keys};
 use chalkbyte_core::{AppError, PaginationMeta};
 
-use crate::metrics;
+#[cfg(feature = "observability")]
+use chalkbyte_observability::metrics;
 use crate::modules::users::model::{
     CreateSchoolDto, PaginatedBasicUsersResponse, PaginatedSchoolsResponse, School,
     SchoolFilterParams, SchoolFullInfo, User, UserFilterParams, system_roles,
@@ -22,6 +23,7 @@ impl SchoolService {
     ) -> Result<School, AppError> {
         debug!(school.name = %dto.name, school.address = ?dto.address, "Creating new school");
 
+        #[cfg(feature = "observability")]
         metrics::track_school_created();
 
         let school = sqlx::query_as::<_, School>(
