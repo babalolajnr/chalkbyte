@@ -27,6 +27,7 @@ pub struct ErrorResponse {
 #[utoipa::path(
     post,
     path = "/api/auth/login",
+    summary = "Login user",
     request_body = LoginRequest,
     responses(
         (status = 200, description = "Login successful", body = LoginResponse),
@@ -52,6 +53,7 @@ pub async fn login_user(
 #[utoipa::path(
     post,
     path = "/api/auth/mfa/verify",
+    summary = "Verify MFA code",
     request_body = MfaVerifyLoginRequest,
     responses(
         (status = 200, description = "MFA verification successful", body = LoginResponse),
@@ -74,6 +76,7 @@ pub async fn verify_mfa_login(
 #[utoipa::path(
     post,
     path = "/api/auth/mfa/recovery",
+    summary = "Verify recovery code",
     request_body = MfaRecoveryLoginRequest,
     responses(
         (status = 200, description = "Recovery code verification successful", body = LoginResponse),
@@ -97,6 +100,7 @@ pub async fn verify_mfa_recovery_login(
 #[utoipa::path(
     post,
     path = "/api/auth/forgot-password",
+    summary = "Request password reset",
     request_body = ForgotPasswordRequest,
     responses(
         (status = 200, description = "Password reset email sent if account exists", body = MessageResponse),
@@ -121,6 +125,7 @@ pub async fn forgot_password(
 #[utoipa::path(
     post,
     path = "/api/auth/reset-password",
+    summary = "Reset password with token",
     request_body = ResetPasswordRequest,
     responses(
         (status = 200, description = "Password reset successful", body = MessageResponse),
@@ -145,6 +150,7 @@ pub async fn reset_password(
 #[utoipa::path(
     post,
     path = "/api/auth/refresh",
+    summary = "Refresh access token",
     request_body = RefreshTokenRequest,
     responses(
         (status = 200, description = "Token refreshed successfully", body = LoginResponse),
@@ -167,6 +173,7 @@ pub async fn refresh_token(
 #[utoipa::path(
     post,
     path = "/api/auth/logout",
+    summary = "Logout user",
     responses(
         (status = 200, description = "Logged out successfully", body = MessageResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),

@@ -31,6 +31,7 @@ use super::service::SchoolService;
 #[utoipa::path(
     post,
     path = "/api/schools",
+    summary = "Create school",
     request_body = CreateSchoolDto,
     responses(
         (status = 201, description = "School created successfully", body = School),
@@ -62,6 +63,7 @@ pub async fn create_school(
 #[utoipa::path(
     get,
     path = "/api/schools",
+    summary = "List schools",
     params(
         ("name" = Option<String>, Query, description = "Filter by school name (partial match)"),
         ("address" = Option<String>, Query, description = "Filter by address (partial match)"),
@@ -105,6 +107,7 @@ pub async fn get_all_schools(
 #[utoipa::path(
     get,
     path = "/api/schools/{id}",
+    summary = "Get school by ID",
     params(
         ("id" = Uuid, Path, description = "School ID")
     ),
@@ -134,6 +137,7 @@ pub async fn get_school(
 #[utoipa::path(
     delete,
     path = "/api/schools/{id}",
+    summary = "Delete school",
     params(
         ("id" = Uuid, Path, description = "School ID")
     ),
@@ -164,6 +168,7 @@ pub async fn delete_school(
 #[utoipa::path(
     get,
     path = "/api/schools/{id}/students",
+    summary = "Get school students",
     params(
         ("id" = Uuid, Path, description = "School ID"),
         ("first_name" = Option<String>, Query, description = "Filter by first name (partial match)"),
@@ -225,6 +230,7 @@ pub async fn get_school_students(
 #[utoipa::path(
     get,
     path = "/api/schools/{id}/admins",
+    summary = "Get school admins",
     params(
         ("id" = Uuid, Path, description = "School ID"),
         ("first_name" = Option<String>, Query, description = "Filter by first name (partial match)"),
@@ -285,6 +291,7 @@ pub async fn get_school_admins(
 #[utoipa::path(
     get,
     path = "/api/schools/{id}/full-info",
+    summary = "Get school full info",
     params(
         ("id" = Uuid, Path, description = "School ID")
     ),
@@ -339,6 +346,7 @@ pub async fn get_school_full_info(
 #[utoipa::path(
     get,
     path = "/api/schools/{id}/levels",
+    summary = "Get school levels",
     params(
         ("id" = Uuid, Path, description = "School ID"),
         ("name" = Option<String>, Query, description = "Filter by level name (partial match)"),
@@ -401,6 +409,7 @@ pub async fn get_school_levels(
 #[utoipa::path(
     get,
     path = "/api/schools/{id}/levels/{level_id}/branches",
+    summary = "Get school level branches",
     params(
         ("id" = Uuid, Path, description = "School ID"),
         ("level_id" = Uuid, Path, description = "Level ID"),
@@ -466,6 +475,7 @@ pub async fn get_school_level_branches(
 #[utoipa::path(
     post,
     path = "/api/schools/{id}/logo",
+    summary = "Upload school logo",
     request_body(content = Vec<u8>, description = "Image file (PNG/JPEG/WebP, max 5MB)"),
     responses(
         (status = 200, description = "Logo uploaded successfully", body = School),
@@ -541,6 +551,7 @@ pub async fn upload_school_logo(
 #[utoipa::path(
     delete,
     path = "/api/schools/{id}/logo",
+    summary = "Delete school logo",
     params(
         ("id" = Uuid, Path, description = "School ID")
     ),

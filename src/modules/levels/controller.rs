@@ -27,6 +27,7 @@ use crate::utils::auth_helpers::{get_admin_school_id, get_school_id_for_scoped_o
 #[utoipa::path(
     post,
     path = "/api/levels",
+    summary = "Create level",
     request_body = CreateLevelDto,
     responses(
         (status = 201, description = "Level created successfully", body = Level),
@@ -57,6 +58,7 @@ pub async fn create_level(
 #[utoipa::path(
     get,
     path = "/api/levels",
+    summary = "List levels",
     params(LevelFilterParams),
     responses(
         (status = 200, description = "List of levels", body = PaginatedLevelsResponse),
@@ -85,6 +87,7 @@ pub async fn get_levels(
 #[utoipa::path(
     get,
     path = "/api/levels/{id}",
+    summary = "Get level by ID",
     params(
         ("id" = Uuid, Path, description = "Level ID")
     ),
@@ -120,6 +123,7 @@ pub async fn get_level_by_id(
 #[utoipa::path(
     put,
     path = "/api/levels/{id}",
+    summary = "Update level",
     params(
         ("id" = Uuid, Path, description = "Level ID")
     ),
@@ -167,6 +171,7 @@ pub async fn update_level(
 #[utoipa::path(
     delete,
     path = "/api/levels/{id}",
+    summary = "Delete level",
     params(
         ("id" = Uuid, Path, description = "Level ID")
     ),
@@ -203,6 +208,7 @@ pub async fn delete_level(
 #[utoipa::path(
     post,
     path = "/api/levels/{id}/students",
+    summary = "Assign students to level",
     params(
         ("id" = Uuid, Path, description = "Level ID")
     ),
@@ -245,6 +251,7 @@ pub async fn assign_students_to_level(
 #[utoipa::path(
     get,
     path = "/api/levels/{id}/students",
+    summary = "Get level students",
     params(
         ("id" = Uuid, Path, description = "Level ID")
     ),
@@ -281,6 +288,7 @@ pub async fn get_students_in_level(
 #[utoipa::path(
     patch,
     path = "/api/levels/students/{student_id}/move",
+    summary = "Move student to level",
     params(
         ("student_id" = Uuid, Path, description = "Student ID")
     ),
@@ -320,6 +328,7 @@ pub async fn move_student_to_level(
 #[utoipa::path(
     delete,
     path = "/api/levels/students/{student_id}",
+    summary = "Remove student from level",
     params(
         ("student_id" = Uuid, Path, description = "Student ID")
     ),

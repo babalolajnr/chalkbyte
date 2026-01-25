@@ -30,6 +30,7 @@ pub struct ProfileResponse {
 #[utoipa::path(
     post,
     path = "/api/users",
+    summary = "Create user",
     request_body = CreateUserDto,
     responses(
         (status = 200, description = "User created successfully", body = User),
@@ -101,6 +102,7 @@ pub async fn create_user(
 #[utoipa::path(
     get,
     path = "/api/users",
+    summary = "List users",
     params(
         ("first_name" = Option<String>, Query, description = "Filter by first name (partial match)"),
         ("last_name" = Option<String>, Query, description = "Filter by last name (partial match)"),
@@ -161,6 +163,7 @@ pub async fn get_users(
 #[utoipa::path(
     get,
     path = "/api/users/profile",
+    summary = "Get current user profile",
     responses(
         (status = 200, description = "User profile", body = UserWithSchool),
         (status = 401, description = "Unauthorized - missing or invalid token", body = ErrorResponse),
@@ -190,6 +193,7 @@ pub async fn get_profile(
 #[utoipa::path(
     put,
     path = "/api/users/profile",
+    summary = "Update user profile",
     request_body = UpdateProfileDto,
     responses(
         (status = 200, description = "Profile updated successfully", body = UserWithSchool),
@@ -234,6 +238,7 @@ pub async fn update_profile(
 #[utoipa::path(
     post,
     path = "/api/users/profile/change-password",
+    summary = "Change password",
     request_body = ChangePasswordDto,
     responses(
         (status = 200, description = "Password changed successfully", body = inline(serde_json::Value)),
