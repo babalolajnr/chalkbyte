@@ -586,3 +586,128 @@ Before suggesting code:
 - Refer to `docs/SYSTEM_ADMIN_IMPLEMENTATION.md`
 - Follow Axum and SQLx best practices
 - Maintain consistency with existing code style
+
+## File Upload & File Storage
+
+### Overview
+
+The application supports file uploads via an abstracted file storage interface (`FileStorage` trait) that allows swapping storage backends without changing business logic.
+
+### Current Implementation
+
+**LocalFileStorage**: Stores files on the local filesystem in the `./uploads` directory.
+
+Future implementations can include S3, MinIO, Google Cloud Storage, etc.
+
+### School Logo Upload Endpoints
+
+#### Upload/Replace School Logo
+```
+POST /api/schools/{school_id}/logo
+Content-Type: image/{png,jpeg,webp}
+Authorization: Bearer <token>
+Body: <binary file data>
+
+Response: 200 OK
+{
+  "id": "uuid",
+  "name": "School Name",
+  "logo_path": "schools/abc-123-timestamp.png",
+  ...
+}
+```
+
+#### Delete School Logo
+```
+DELETE /api/schools/{school_id}/logo
+Authorization: Bearer <token>
+
+Response: 204 No Content
+```
+
+#### Access School Logo
+```
+GET /files/schools/abc-123-timestamp.png
+
+Response: 200 OK <binary image data>
+```
+
+### File Upload Restrictions
+
+- **Supported MIME Types**: `image/png`, `image/jpeg`, `image/webp`
+- **Maximum File Size**: 5 MB (configurable via `LocalFileStorage::with_max_size()`)
+- **Public Access**: Files served without authentication via `/files` path
+- **Storage Keys**: Timestamp-based keys prevent collisions (format: `schools/abc-123-timestamp.ext`)
+
+### Authorization
+
+- **System Admins**: Can upload logos for any school
+- **School Admins**: Can only upload logos for their own school
+- **Teachers/Students**: Cannot upload logos (403 Forbidden)
+
+### File Storage Architecture
+
+#### FileStorage Trait
+
+Located in `crates/chalkbyte-core/src/file_storage.rs`:
+
+```rust
+pub trait FileStorage: Send + Sync {
+    fn save<'a>(
+        &'a self,
+        key: &'a str,
+        content: &'a [u8],
+    ) -> Pin<Box<dyn Future<Output = Result<String, StorageError>> + Send + 'a>>;
+    
+    fn delete<'a>(
+        &'a self,
+        key: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), StorageError>> + Send + 'a>>;
+    
+    fn get_url(&self, key: &str) -> Result<String, StorageError>;
+}
+```
+
+#### LocalFileStorage Implementation
+
+```rust
+pub struct LocalFileStorage {
+    base_dir: PathBuf,              // Directory to store files
+    base_url: String,               // Public URL prefix
+    max_file_size: usize,          // Max bytes (default: 5MB)
+    allowed_mime_types: Vec<String> // Allowed MIME types
+}
+```
+
+### Adding Custom Storage Backends
+
+To add a new storage backend (e.g., S3):
+
+1. **Create implementation** of `FileStorage` trait in a new module/crate
+2. **Implement methods**: `save()`, `delete()`, `get_url()`
+3. **Ensure `Send + Sync`**: All async operations must return `Send` futures
+4. **Update AppState initialization** to use the new backend:
+   ```rust
+   let file_storage: Arc<dyn FileStorage> = Arc::new(S3FileStorage::new(...));
+   let state = AppState {
+       file_storage,
+       ...
+   };
+   ```
+
+### Database Schema
+
+Schools table includes:
+- `logo_path: TEXT UNIQUE` - Storage key for the logo file
+- Migration: `20260125150000_add_school_logo_path.sql`
+
+### Important Notes
+
+- **Public Access**: Logo files are publicly accessible (no auth required)
+- **Unique Paths**: Use timestamp-based keys to prevent collisions
+- **Path Safety**: Keys are validated to prevent directory traversal attacks
+- **Async Operations**: All file I/O uses Tokio for non-blocking operations
+- **Error Handling**: Use `StorageError` enum for consistent error reporting
+- **Cache Invalidation**: School cache is invalidated on logo changes
+- **Cleanup**: Old logos are deleted when replaced or when school logo is removed
+

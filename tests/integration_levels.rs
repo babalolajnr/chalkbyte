@@ -9,6 +9,9 @@ use chalkbyte::config::rate_limit::RateLimitConfig;
 use chalkbyte::router::init_router;
 use chalkbyte::state::AppState;
 use chalkbyte_cache::CacheConfig;
+use chalkbyte_core::file_storage::LocalFileStorage;
+use std::path::PathBuf;
+use std::sync::Arc;
 use common::{
     create_test_school, create_test_user, generate_unique_email, generate_unique_school_name,
 };
@@ -20,6 +23,15 @@ use uuid::Uuid;
 
 async fn setup_test_app(pool: PgPool) -> axum::Router {
     dotenvy::dotenv().ok();
+    
+    let test_uploads_dir = PathBuf::from("./test_uploads");
+    let _ = tokio::fs::create_dir_all(&test_uploads_dir).await;
+    
+    let file_storage = Arc::new(LocalFileStorage::new(
+        test_uploads_dir,
+        "http://localhost:3000/files".to_string(),
+    ));
+    
     let state = AppState {
         db: pool.clone(),
         jwt_config: JwtConfig::from_env(),
@@ -28,6 +40,7 @@ async fn setup_test_app(pool: PgPool) -> axum::Router {
         rate_limit_config: RateLimitConfig::default(),
         cache_config: CacheConfig::default(),
         cache: None,
+        file_storage,
     };
     init_router(state)
 }

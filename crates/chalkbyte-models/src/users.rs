@@ -62,6 +62,8 @@ pub struct School {
     pub id: SchoolId,
     pub name: String,
     pub address: Option<String>,
+    /// Storage key for the school logo (if uploaded)
+    pub logo_path: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }

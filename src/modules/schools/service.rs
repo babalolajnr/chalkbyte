@@ -467,4 +467,112 @@ impl SchoolService {
             total_admins,
         })
     }
+
+    #[instrument(skip(db, cache, file_bytes, file_storage), fields(school.id = %school_id, file.size = file_bytes.len(), db.operation = "UPDATE", db.table = "schools"))]
+    pub async fn upload_school_logo(
+        db: &PgPool,
+        cache: Option<&RedisCache>,
+        school_id: chalkbyte_models::ids::SchoolId,
+        file_bytes: Vec<u8>,
+        metadata: super::model::FileMetadata,
+        file_storage: &dyn chalkbyte_core::FileStorage,
+    ) -> Result<School, AppError> {
+        use super::model::LogoValidator;
+
+        debug!(school.id = %school_id, "Starting school logo upload");
+
+        // 1. Validate school exists
+        let school = Self::get_school_by_id(db, cache, school_id.into_inner()).await?;
+
+        // 2. Validate file
+        LogoValidator::validate(&metadata)?;
+
+        // 3. Delete old logo if exists
+        if let Some(old_path) = &school.logo_path {
+            debug!(school.id = %school_id, old_path = %old_path, "Deleting old logo");
+            // Ignore error if file doesn't exist
+            let _ = file_storage.delete(old_path).await;
+        }
+
+        // 4. Generate unique storage key with timestamp
+        let now = chrono::Utc::now().timestamp_millis();
+        let ext = LogoValidator::get_extension(&metadata.mime_type);
+        let storage_key = format!("schools/{}-{}.{}", school_id, now, ext);
+
+        debug!(school.id = %school_id, storage_key = %storage_key, "Saving logo file");
+
+        // 5. Save file
+        file_storage
+            .save(&storage_key, &file_bytes)
+            .await
+            .map_err(|e| {
+                error!(school.id = %school_id, error = %e, "Failed to save logo file");
+                AppError::bad_request(anyhow::anyhow!("Failed to save logo: {}", e))
+            })?;
+
+        // 6. Update database
+        debug!(school.id = %school_id, "Updating database with logo path");
+        sqlx::query("UPDATE schools SET logo_path = $1, updated_at = NOW() WHERE id = $2")
+            .bind(&storage_key)
+            .bind(school_id.into_inner())
+            .execute(db)
+            .await
+            .map_err(|e| {
+                error!(school.id = %school_id, error = %e, "Database error updating logo path");
+                AppError::from(e)
+            })?;
+
+        // 7. Invalidate cache
+        invalidate::school(cache, Some(school_id.into_inner())).await;
+
+        // 8. Fetch and return updated school
+        debug!(school.id = %school_id, "Logo uploaded successfully, fetching updated school");
+        Self::get_school_by_id(db, cache, school_id.into_inner()).await
+    }
+
+    #[instrument(skip(db, cache, file_storage), fields(school.id = %school_id, db.operation = "UPDATE", db.table = "schools"))]
+    pub async fn delete_school_logo(
+        db: &PgPool,
+        cache: Option<&RedisCache>,
+        school_id: chalkbyte_models::ids::SchoolId,
+        file_storage: &dyn chalkbyte_core::FileStorage,
+    ) -> Result<(), AppError> {
+        debug!(school.id = %school_id, "Starting school logo deletion");
+
+        // 1. Verify school exists
+        let _ = Self::get_school_by_id(db, cache, school_id.into_inner()).await?;
+
+        // 2. Get current logo path
+        let result = sqlx::query!("SELECT logo_path FROM schools WHERE id = $1", school_id.into_inner())
+            .fetch_one(db)
+            .await
+            .map_err(|e| {
+                error!(school.id = %school_id, error = %e, "Database error fetching school logo path");
+                AppError::from(e)
+            })?;
+
+        // 3. Delete file from storage if exists
+        if let Some(logo_path) = result.logo_path {
+            debug!(school.id = %school_id, logo_path = %logo_path, "Deleting logo file from storage");
+            // Ignore errors - file may not exist
+            let _ = file_storage.delete(&logo_path).await;
+        }
+
+        // 4. Update database to clear logo_path
+        debug!(school.id = %school_id, "Updating database to clear logo path");
+        sqlx::query("UPDATE schools SET logo_path = NULL, updated_at = NOW() WHERE id = $1")
+            .bind(school_id.into_inner())
+            .execute(db)
+            .await
+            .map_err(|e| {
+                error!(school.id = %school_id, error = %e, "Database error clearing logo path");
+                AppError::from(e)
+            })?;
+
+        // 5. Invalidate cache
+        invalidate::school(cache, Some(school_id.into_inner())).await;
+
+        info!(school.id = %school_id, "Logo deleted successfully");
+        Ok(())
+    }
 }

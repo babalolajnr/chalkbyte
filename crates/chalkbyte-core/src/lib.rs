@@ -28,6 +28,7 @@
 //! ```
 
 pub mod errors;
+pub mod file_storage;
 pub mod pagination;
 pub mod password;
 pub mod permissions;
@@ -35,5 +36,6 @@ pub mod serde;
 
 // Re-export commonly used types at crate root
 pub use errors::AppError;
+pub use file_storage::{FileStorage, LocalFileStorage, StorageError};
 pub use pagination::{PaginationMeta, PaginationParams};
 pub use password::{hash_password, verify_password};

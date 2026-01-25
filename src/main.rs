@@ -17,6 +17,17 @@ mod utils;
 mod validator;
 
 async fn start_main_server(state: state::AppState, port: u16) {
+    // Ensure uploads directory exists
+    let uploads_dir = std::path::PathBuf::from("./uploads");
+    if !uploads_dir.exists() {
+        if let Err(e) = std::fs::create_dir_all(&uploads_dir) {
+            eprintln!(
+                "⚠️  Warning: Failed to create uploads directory: {}",
+                e
+            );
+        }
+    }
+
     let app = init_router(state);
 
     let addr = format!("0.0.0.0:{}", port);

@@ -8,6 +8,9 @@ edition.workspace = true
 # Web framework (for IntoResponse on AppError)
 axum = { workspace = true }
 
+# Async runtime
+tokio = { workspace = true, features = ["fs"] }
+
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }

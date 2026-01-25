@@ -1,5 +1,8 @@
 use axum::{
-    Json, extract::Path, extract::Query, extract::State, extract::rejection::QueryRejection,
+    extract::{Path, Query, State, rejection::QueryRejection},
+    Json,
+    body::Bytes,
+    http::header,
 };
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
@@ -8,7 +11,7 @@ use chalkbyte_core::AppError;
 use chalkbyte_models::ids::{LevelId, SchoolId};
 
 use crate::middleware::auth::{
-    AuthUser, RequireSchoolsCreate, RequireSchoolsDelete, RequireSchoolsRead,
+    AuthUser, RequireSchoolsCreate, RequireSchoolsDelete, RequireSchoolsRead, RequireSchoolsUpdate,
 };
 use crate::middleware::role::is_system_admin_jwt;
 use crate::modules::branches::model::{BranchFilterParams, PaginatedBranchesResponse};
@@ -22,6 +25,7 @@ use crate::modules::users::model::{
 use crate::state::AppState;
 use crate::utils::auth_helpers::get_admin_school_id;
 
+use super::model::FileMetadata;
 use super::service::SchoolService;
 
 #[utoipa::path(
@@ -457,4 +461,133 @@ pub async fn get_school_level_branches(
     );
 
     Ok(Json(branches))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/schools/{id}/logo",
+    request_body(content = Vec<u8>, description = "Image file (PNG/JPEG/WebP, max 5MB)"),
+    responses(
+        (status = 200, description = "Logo uploaded successfully", body = School),
+        (status = 400, description = "Invalid file format or size"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - requires schools:update permission"),
+        (status = 404, description = "School not found")
+    ),
+    tag = "Schools",
+    security(("bearer_auth" = []))
+)]
+#[axum::debug_handler]
+#[instrument(skip(state, file_bytes), fields(school.id = %id))]
+pub async fn upload_school_logo(
+    State(state): State<AppState>,
+    RequireSchoolsUpdate(auth_user): RequireSchoolsUpdate,
+    Path(id): Path<Uuid>,
+    headers: axum::http::HeaderMap,
+    file_bytes: Bytes,
+) -> Result<Json<School>, AppError> {
+    let school_id = SchoolId::from(id);
+
+    // Authorization: system admin OR school admin for own school
+    if !is_system_admin_jwt(&auth_user) {
+        let user_school_id = auth_user
+            .school_id()
+            .ok_or_else(|| AppError::forbidden("User has no associated school".to_string()))?;
+        if user_school_id != school_id {
+            warn!(
+                user.school_id = %user_school_id,
+                requested.school_id = %school_id,
+                "School admin attempted to upload logo for different school"
+            );
+            return Err(AppError::forbidden(
+                "Can only update your own school's logo".to_string(),
+            ));
+        }
+    }
+
+    // Extract MIME type from Content-Type header
+    let content_type = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream");
+
+    let metadata = FileMetadata {
+        mime_type: content_type.to_string(),
+        size_bytes: file_bytes.len(),
+        filename: "logo".to_string(),
+    };
+
+    debug!(
+        school.id = %id,
+        file.size = metadata.size_bytes,
+        file.mime_type = %metadata.mime_type,
+        "Uploading school logo"
+    );
+
+    let school = SchoolService::upload_school_logo(
+        &state.db,
+        state.cache.as_ref(),
+        school_id,
+        file_bytes.to_vec(),
+        metadata,
+        state.file_storage.as_ref(),
+    )
+    .await?;
+
+    info!(school.id = %id, "School logo uploaded successfully");
+    Ok(Json(school))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/schools/{id}/logo",
+    params(
+        ("id" = Uuid, Path, description = "School ID")
+    ),
+    responses(
+        (status = 204, description = "Logo deleted successfully"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - requires schools:update permission"),
+        (status = 404, description = "School not found")
+    ),
+    tag = "Schools",
+    security(("bearer_auth" = []))
+)]
+#[instrument(skip(state), fields(school.id = %id))]
+pub async fn delete_school_logo(
+    State(state): State<AppState>,
+    RequireSchoolsUpdate(auth_user): RequireSchoolsUpdate,
+    Path(id): Path<Uuid>,
+) -> Result<(), AppError> {
+    let school_id = SchoolId::from(id);
+
+    // Authorization: system admin OR school admin for own school
+    if !is_system_admin_jwt(&auth_user) {
+        let user_school_id = auth_user
+            .school_id()
+            .ok_or_else(|| AppError::forbidden("User has no associated school".to_string()))?;
+        if user_school_id != school_id {
+            warn!(
+                user.school_id = %user_school_id,
+                requested.school_id = %school_id,
+                "School admin attempted to delete logo for different school"
+            );
+            return Err(AppError::forbidden(
+                "Can only delete your own school's logo".to_string(),
+            ));
+        }
+    }
+
+    debug!(school.id = %id, "Deleting school logo");
+
+    SchoolService::delete_school_logo(
+        &state.db,
+        state.cache.as_ref(),
+        school_id,
+        state.file_storage.as_ref(),
+    )
+    .await?;
+
+    info!(school.id = %id, "School logo deleted successfully");
+    Ok(())
 }

@@ -1,4 +1,3 @@
-use crate::docs::ApiDoc;
 #[cfg(feature = "observability")]
 use chalkbyte_observability::{logging_middleware, metrics_middleware, is_observability_enabled};
 #[cfg(not(feature = "observability"))]
@@ -21,11 +20,15 @@ use crate::state::AppState;
 use axum::http::{HeaderValue, Method};
 use axum::response::IntoResponse;
 use axum::{Router, middleware};
+use std::path::PathBuf;
 
 use tower_http::LatencyUnit;
 use tower_http::cors::CorsLayer;
+use tower_http::services::ServeDir;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
+#[cfg(feature = "scalar")]
+use crate::docs::ApiDoc;
 #[cfg(feature = "scalar")]
 use utoipa::OpenApi;
 #[cfg(feature = "scalar")]
@@ -178,12 +181,14 @@ fn build_api_router(state: AppState, apply_rate_limiting: bool) -> Router {
         .merge(Scalar::with_url("/scalar", ApiDoc::openapi()))
         .route("/health", axum::routing::get(health_handler))
         .nest("/api", api_routes)
+        .nest_service("/files", ServeDir::new(PathBuf::from("./uploads")))
         .with_state(state.clone());
 
     #[cfg(not(feature = "scalar"))]
     let router = Router::new()
         .route("/health", axum::routing::get(health_handler))
         .nest("/api", api_routes)
+        .nest_service("/files", ServeDir::new(PathBuf::from("./uploads")))
         .with_state(state.clone());
 
     let router = router

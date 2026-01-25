@@ -17,11 +17,15 @@
 //! }
 //! ```
 
+use std::sync::Arc;
 use std::time::Duration;
+use std::fmt;
 
 use chalkbyte_cache::{CacheConfig, RedisCache};
 use chalkbyte_config::{CorsConfig, EmailConfig, JwtConfig, RateLimitConfig};
+use chalkbyte_core::{FileStorage, LocalFileStorage};
 use chalkbyte_db::{PgPool, init_db_pool};
+use std::path::PathBuf;
 use tracing::{info, warn};
 
 /// Shared application state passed to all request handlers.
@@ -37,7 +41,8 @@ use tracing::{info, warn};
 /// - `cors_config`: CORS configuration for cross-origin requests
 /// - `rate_limit_config`: Rate limiting configuration (reserved for future use)
 /// - `cache`: Optional Redis cache for distributed caching
-#[derive(Clone, Debug)]
+/// - `file_storage`: File storage backend for uploads (local filesystem, S3, etc.)
+#[derive(Clone)]
 pub struct AppState {
     /// PostgreSQL connection pool.
     ///
@@ -76,6 +81,26 @@ pub struct AppState {
     ///
     /// Optional - if Redis is unavailable, the application continues without caching.
     pub cache: Option<RedisCache>,
+
+    /// File storage backend for handling uploads.
+    ///
+    /// Abstracted trait allowing different storage implementations (local FS, S3, etc.).
+    pub file_storage: Arc<dyn FileStorage>,
+}
+
+impl fmt::Debug for AppState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AppState")
+            .field("db", &"<PgPool>")
+            .field("jwt_config", &"<JwtConfig>")
+            .field("email_config", &"<EmailConfig>")
+            .field("cors_config", &"<CorsConfig>")
+            .field("rate_limit_config", &"<RateLimitConfig>")
+            .field("cache_config", &"<CacheConfig>")
+            .field("cache", &self.cache.as_ref().map(|_| "<RedisCache>"))
+            .field("file_storage", &"<FileStorage>")
+            .finish()
+    }
 }
 
 /// Initializes the application state with all required configurations.
@@ -101,6 +126,13 @@ pub async fn init_app_state() -> AppState {
     let cache_config = CacheConfig::from_env();
     let cache = init_cache(&cache_config).await;
 
+    // Initialize file storage (local filesystem)
+    let uploads_dir = PathBuf::from("./uploads");
+    let base_url = std::env::var("FILES_BASE_URL")
+        .unwrap_or_else(|_| "http://localhost:3000/files".to_string());
+
+    let file_storage = Arc::new(LocalFileStorage::new(uploads_dir, base_url));
+
     AppState {
         db: init_db_pool().await,
         jwt_config: JwtConfig::from_env(),
@@ -109,6 +141,7 @@ pub async fn init_app_state() -> AppState {
         rate_limit_config: RateLimitConfig::from_env(),
         cache_config,
         cache,
+        file_storage,
     }
 }
 

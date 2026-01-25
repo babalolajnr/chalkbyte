@@ -32,7 +32,7 @@ chalkbyte-observability = { path = "crates/chalkbyte-observability" }
 axum = { version = "0.8", features = ["macros"] }
 axum-extra = { version = "0.12", features = ["typed-header"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "trace", "set-header"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "set-header", "fs"] }
 
 # Async runtime
 tokio = { version = "1.48", features = ["full"] }
@@ -117,7 +117,7 @@ edition.workspace = true
 
 [features]
 default = []
-observability = ["chalkbyte-observability/observability"]
+observability = ["chalkbyte-observability", "chalkbyte-observability/observability"]
 no-observability = []
 scalar = ["utoipa-scalar"]
 
@@ -134,7 +134,7 @@ chalkbyte-auth.workspace = true
 chalkbyte-models.workspace = true
 chalkbyte-cli.workspace = true
 chalkbyte-cache.workspace = true
-chalkbyte-observability = { workspace = true, features = ["observability"] }
+chalkbyte-observability = { workspace = true, optional = true }
 
 # Web framework
 axum.workspace = true

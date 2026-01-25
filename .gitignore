@@ -9,3 +9,7 @@
 **/prometheus-data/
 **/grafana-data/
 storage/logs
+
+# File uploads
+/uploads/
+/test_uploads/
