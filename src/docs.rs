@@ -65,6 +65,8 @@ use chalkbyte_core::{PaginationMeta, PaginationParams};
         crate::modules::schools::controller::get_all_schools,
         crate::modules::schools::controller::get_school,
         crate::modules::schools::controller::delete_school,
+        crate::modules::schools::controller::upload_school_logo,
+        crate::modules::schools::controller::delete_school_logo,
         crate::modules::schools::controller::get_school_students,
         crate::modules::schools::controller::get_school_admins,
         crate::modules::schools::controller::get_school_full_info,
