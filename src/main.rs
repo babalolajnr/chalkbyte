@@ -1,8 +1,5 @@
 use std::net::SocketAddr;
 
-#[cfg(not(feature = "observability"))]
-use tracing::info;
-
 use crate::router::init_router;
 use crate::state::init_app_state;
 use dotenvy::dotenv;
@@ -19,13 +16,10 @@ mod validator;
 async fn start_main_server(state: state::AppState, port: u16) {
     // Ensure uploads directory exists
     let uploads_dir = std::path::PathBuf::from("./uploads");
-    if !uploads_dir.exists() {
-        if let Err(e) = std::fs::create_dir_all(&uploads_dir) {
-            eprintln!(
-                "⚠️  Warning: Failed to create uploads directory: {}",
-                e
-            );
-        }
+    if !uploads_dir.exists()
+        && let Err(e) = std::fs::create_dir_all(&uploads_dir)
+    {
+        eprintln!("⚠️  Warning: Failed to create uploads directory: {}", e);
     }
 
     let app = init_router(state);
@@ -143,10 +137,15 @@ async fn main() {
 
     #[cfg(not(feature = "observability"))]
     {
+        use chalkbyte_observability::init_tracing;
+
         eprintln!("⚠️  OBSERVABILITY IS DISABLED");
         eprintln!("   Observability (metrics, tracing) is not available.");
         eprintln!("   To enable, rebuild with: cargo build --features observability");
         eprintln!();
+
+        // Initialize basic console logging
+        init_tracing();
 
         let state = init_app_state().await;
 
@@ -155,10 +154,6 @@ async fn main() {
             .ok()
             .and_then(|p| p.parse::<u16>().ok())
             .unwrap_or(3000);
-
-        info!(
-            "Observability is disabled (compiled without observability feature). To enable, rebuild with: cargo build --features observability"
-        );
 
         start_main_server(state, port).await;
     }

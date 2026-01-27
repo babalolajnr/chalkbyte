@@ -214,8 +214,7 @@ pub async fn create_test_role(
     // Truncate slug to fit VARCHAR(50) column
     let slug: String = name
         .to_lowercase()
-        .replace(' ', "_")
-        .replace('-', "_")
+        .replace([' ', '-'], "_")
         .chars()
         .take(50)
         .collect();
