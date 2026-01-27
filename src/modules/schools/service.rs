@@ -99,7 +99,7 @@ impl SchoolService {
         })?;
 
         let mut data_query =
-            String::from("SELECT id, name, address, created_at, updated_at FROM schools WHERE 1=1");
+            String::from("SELECT id, name, address, logo_path, created_at, updated_at FROM schools WHERE 1=1");
         data_query.push_str(&where_clause);
         data_query.push_str(" ORDER BY created_at DESC");
         data_query.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
@@ -153,7 +153,7 @@ impl SchoolService {
         debug!("Fetching school by ID from database");
 
         let school = sqlx::query_as::<_, School>(
-            "SELECT id, name, address, created_at, updated_at FROM schools WHERE id = $1",
+            "SELECT id, name, address, logo_path, created_at, updated_at FROM schools WHERE id = $1",
         )
         .bind(school_id)
         .fetch_optional(db)
@@ -397,7 +397,7 @@ impl SchoolService {
         debug!("Fetching full school information with statistics");
 
         let school = sqlx::query_as::<_, School>(
-            "SELECT id, name, address, created_at, updated_at FROM schools WHERE id = $1",
+            "SELECT id, name, address, logo_path, created_at, updated_at FROM schools WHERE id = $1",
         )
         .bind(school_id)
         .fetch_optional(db)

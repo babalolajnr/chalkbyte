@@ -34,6 +34,10 @@ pub mod metrics;
 #[cfg(feature = "observability")]
 pub mod tracing_utils;
 
+// Basic logging module for when observability feature is disabled
+#[cfg(not(feature = "observability"))]
+pub mod basic_logging;
+
 // Re-export PrometheusHandle type when observability is enabled
 #[cfg(feature = "observability")]
 pub use metrics_exporter_prometheus::PrometheusHandle;
@@ -68,8 +72,11 @@ pub mod stubs {
         next.run(req).await
     }
 
-    /// No-op tracing initialization when feature disabled
-    pub fn init_tracing() {}
+    /// Initialize basic console logging when observability feature disabled
+    pub fn init_tracing() {
+        use crate::basic_logging::init_basic_console_logging;
+        init_basic_console_logging();
+    }
 
     /// No-op tracer shutdown when feature disabled
     pub async fn shutdown_tracer() {}
